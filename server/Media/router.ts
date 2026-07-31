@@ -13,6 +13,7 @@ import Prefs from '../Prefs/Prefs.js'
 import Queue from '../Queue/Queue.js'
 import Rooms from '../Rooms/Rooms.js'
 import fileTypes from './fileTypes.js'
+import { getBrowserVideo } from './Transcoder.js'
 import { LIBRARY_PUSH_SONG, QUEUE_PUSH } from '../../shared/actionTypes.js'
 const log = getLogger('Media')
 const router = new KoaRouter({ prefix: '/api/media' })
@@ -75,10 +76,18 @@ router.get('/:mediaId', async (ctx) => {
     ctx.type = fileTypes[getExt(file)]?.mimeType
   }
 
+  if (type === 'video') {
+    file = await getBrowserVideo(file, mediaId)
+    const stats = await fsPromises.stat(file)
+    ctx.length = stats.size
+    ctx.type = 'video/mp4'
+    buffer = undefined
+  }
+
   if (!ctx.type) ctx.throw(404, `Unknown MIME type: ${file}`)
 
   log.verbose('streaming %s (%sMB): %s', ctx.type, (ctx.length / 1000000).toFixed(2), file)
-  ctx.body = buffer ? Readable.from(buffer) : fs.createReadStream(file)
+  streamMedia(ctx, file, buffer, ctx.length)
 })
 
 // set isPreferred flag
@@ -112,3 +121,44 @@ router.all('/:mediaId/prefer', (ctx) => {
 })
 
 export default router
+
+function streamMedia (ctx, file: string, buffer: Buffer | undefined, length: number) {
+  ctx.set('Accept-Ranges', 'bytes')
+  const range = ctx.request.headers.range
+
+  if (!range) {
+    ctx.body = buffer ? Readable.from(buffer) : fs.createReadStream(file)
+    return
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range)
+  if (!match || (!match[1] && !match[2])) {
+    ctx.set('Content-Range', `bytes */${length}`)
+    ctx.throw(416, 'Invalid byte range')
+  }
+
+  let start: number
+  let end: number
+
+  if (!match[1]) {
+    const suffixLength = parseInt(match[2], 10)
+    start = Math.max(length - suffixLength, 0)
+    end = length - 1
+  } else {
+    start = parseInt(match[1], 10)
+    end = match[2] ? parseInt(match[2], 10) : length - 1
+  }
+
+  if (start >= length || start > end) {
+    ctx.set('Content-Range', `bytes */${length}`)
+    ctx.throw(416, 'Byte range is outside the media file')
+  }
+
+  end = Math.min(end, length - 1)
+  ctx.status = 206
+  ctx.set('Content-Range', `bytes ${start}-${end}/${length}`)
+  ctx.length = end - start + 1
+  ctx.body = buffer
+    ? Readable.from(buffer.subarray(start, end + 1))
+    : fs.createReadStream(file, { start, end })
+}

@@ -82,7 +82,8 @@ See [Getting Started]({{< ref "docs/getting-started" >}}) if you're new to Karao
 The following file types are supported:
 
 - [MP3+G](https://en.wikipedia.org/wiki/MP3%2BG){{% icon-external %}} (including zipped; also supports .m4a instead of .mp3)
-- MP4 video (codec support can vary depending on the browser running the [player]({{< ref "docs/karaoke-eternal-app#player" >}}))
+- MP4 and MKV video. The customized source build transcodes video on first playback
+  to a temporary H.264/AAC MP4 cache for browser compatibility.
 
 Karaoke Eternal Server expects your media files to be named in **"Artist - Title"** format by default (you can [configure this](#metadata-parser)). Media with filenames that couldn't be parsed won't appear in the library, so check the [scanner log](#file-locations) or console output for these.
 
@@ -189,6 +190,17 @@ Karaoke Eternal Server supports the following CLI options and environment variab
 | <span style="white-space: nowrap;">`--serverLogLevel <number>`</span>| <span style="white-space: nowrap;">`KES_SERVER_LOG_LEVEL`</span> | Web server log file level | 3 |
 | <span style="white-space: nowrap;">`--urlPath <string>`</span>| <span style="white-space: nowrap;">`KES_URL_PATH`</span> | Web server base URL path (must begin with a forward slash) | / |
 | <span style="white-space: nowrap;">`-v, --version`</span>| | Show version and exit | |
+
+The customized source build also supports these video transcoding environment variables:
+
+| ENV | Description | Default |
+| --- | --- | --- |
+| `KES_PATH_FFMPEG` | Path to the FFmpeg executable | `ffmpeg` |
+| `KES_PATH_TRANSCODE` | Temporary H.264/AAC MP4 cache directory | System temporary directory |
+| `KES_TRANSCODE_PRESET` | FFmpeg x264 encoding preset | `veryfast` |
+| `KES_TRANSCODE_CRF` | FFmpeg x264 constant-rate-factor quality | `20` |
+| `KES_TRANSCODE_AUDIO_BITRATE` | AAC output bitrate | `192k` |
+| `KES_TRANSCODE_MAX_SIZE_GB` | Maximum completed transcode cache size in GiB; least-recently-used files are removed first | `8` |
 
 ## File Locations
 

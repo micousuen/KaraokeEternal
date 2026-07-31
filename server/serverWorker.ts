@@ -12,7 +12,6 @@ import { koaBody } from 'koa-body'
 import koaFavicon from 'koa-favicon'
 import koaLogger from 'koa-logger'
 import koaMount from 'koa-mount'
-import koaRange from 'koa-range'
 import koaStatic from 'koa-static'
 import Media from './Media/Media.js'
 import Prefs from './Prefs/Prefs.js'
@@ -135,7 +134,6 @@ async function serverWorker ({ env, startScanner, stopScanner, shutdownHandlers 
   app.use(koaLogger((str, args) => (args.length === 6 && args[3] >= 500) ? log.error(str) : log.debug(str)))
 
   app.use(koaFavicon(path.join(env.KES_PATH_ASSETS, 'favicon.ico')))
-  app.use(koaRange)
   app.use(koaBody({ multipart: true }))
 
   // all http requests

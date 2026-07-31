@@ -1,0 +1,11 @@
+.git
+build
+dockerfiles
+docs/**
+!docs/assets/
+!docs/assets/fonts/
+!docs/assets/fonts/**
+node_modules
+*.log
+*.sqlite3*
+test_folder/

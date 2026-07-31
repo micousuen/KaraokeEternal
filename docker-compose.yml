@@ -1,6 +1,10 @@
 services:
   karaoke-eternal:
-    image: radrootllc/karaoke-eternal:latest
+    # Build this customized image locally, or replace this with the registry
+    # image/tag you publish for TrueNAS.
+    build:
+      context: .
+    image: karaoke-eternal:transcode
     restart: unless-stopped
 
     environment:
@@ -9,6 +13,12 @@ services:
       PUID: "568"
       PGID: "568"
       TZ: "America/New_York"
+      KES_PATH_TRANSCODE: /transcode
+      # FFmpeg tuning for the browser-compatible H.264 output.
+      KES_TRANSCODE_PRESET: veryfast
+      KES_TRANSCODE_CRF: "20"
+      KES_TRANSCODE_AUDIO_BITRATE: 192k
+      KES_TRANSCODE_MAX_SIZE_GB: "8"
 
     ports:
       # Change 8088 if that host port is already in use.
@@ -22,3 +32,7 @@ services:
       # Replace this with your media dataset. Read-only access is sufficient.
       # Add /mnt/karaoke as a Media Folder inside Karaoke Eternal.
       - /mnt/tank/media/karaoke:/mnt/karaoke:ro
+
+      # Disk-backed transcode cache. Replace this host path independently of
+      # the config and media datasets. It must be writable by PUID/PGID.
+      - /mnt/tank/apps/karaoke-eternal/transcode:/transcode

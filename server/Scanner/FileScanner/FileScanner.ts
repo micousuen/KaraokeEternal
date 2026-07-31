@@ -1,6 +1,6 @@
 import path from 'path'
 import fsPromises from 'node:fs/promises'
-import { parseBuffer } from 'music-metadata'
+import { parseBuffer, parseFile } from 'music-metadata'
 import { unzip } from 'unzipit'
 import getLogger from '../../lib/Log.js'
 import { getExt } from '../../lib/util.js'
@@ -96,10 +96,11 @@ class FileScanner extends Scanner {
   }
 
   async process ({ file }, pathId) {
-    let buffer = await fsPromises.readFile(file)
     let mimeType = fileTypes[getExt(file)].mimeType
+    let data
 
     if (getExt(file) === '.zip') {
+      const buffer = await fsPromises.readFile(file)
       const { entries } = await unzip(new Uint8Array(buffer))
 
       const audioName = Object.keys(entries).find(f => !f.includes('/') && audioExts.includes(getExt(f)))
@@ -108,16 +109,19 @@ class FileScanner extends Scanner {
       const cdgName = Object.keys(entries).find(f => !f.includes('/') && getExt(f) === '.cdg')
       if (!cdgName) throw new Error('no .cdg sidecar found in archive')
 
-      buffer = Buffer.from(await entries[audioName].arrayBuffer())
+      const audioBuffer = Buffer.from(await entries[audioName].arrayBuffer())
       mimeType = fileTypes[getExt(audioName)].mimeType
+      data = await parseBuffer(audioBuffer, mimeType, {
+        duration: true,
+        skipCovers: true,
+      })
     } else {
       if (fileTypes[getExt(file)].requiresCDG && !(getCdgName(file))) throw new Error('no .cdg sidecar found')
+      data = await parseFile(file, {
+        duration: true,
+        skipCovers: true,
+      })
     }
-
-    const data = await parseBuffer(buffer, mimeType, {
-      duration: true,
-      skipCovers: true,
-    })
 
     if (!data.format.duration) {
       throw new Error('could not determine duration')

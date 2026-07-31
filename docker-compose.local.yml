@@ -1,0 +1,25 @@
+services:
+  karaoke-eternal:
+    container_name: karaoke-eternal-local
+    build:
+      context: .
+    image: karaoke-eternal:transcode
+    restart: unless-stopped
+
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: America/New_York
+      KES_PATH_TRANSCODE: /transcode
+      KES_TRANSCODE_PRESET: veryfast
+      KES_TRANSCODE_CRF: "20"
+      KES_TRANSCODE_AUDIO_BITRATE: 192k
+      KES_TRANSCODE_MAX_SIZE_GB: "8"
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./test_folder/config:/config
+      - ./test_folder/media:/media
+      - ./test_folder/transcode:/transcode

@@ -117,12 +117,20 @@ class Player extends React.Component<PlayerProps> {
   render () {
     if (!this.props.isVisible || typeof this.props.mediaId !== 'number') return null
 
-    let PlayerComponent
+    const playerProps = {
+      ...this.props,
+      onAudioElement: this.handleAudioElement,
+      onPlay: this.handlePlay,
+    }
+    let player: React.ReactNode
 
-    if (this.props.mediaType === 'cdg') PlayerComponent = CDGPlayer
-    else if (this.props.mediaType === 'mp4') PlayerComponent = this.props.isVideoKeyingEnabled ? MP4AlphaPlayer : MP4Player
-
-    if (typeof PlayerComponent === 'undefined') {
+    if (this.props.mediaType === 'cdg') {
+      player = <CDGPlayer {...playerProps} />
+    } else if (this.props.mediaType === 'mp4') {
+      player = this.props.isVideoKeyingEnabled
+        ? <MP4AlphaPlayer {...playerProps} />
+        : <MP4Player {...playerProps} />
+    } else {
       this.props.onError(`No player for mediaType: ${this.props.mediaType}`)
       return null
     }
@@ -134,11 +142,7 @@ class Player extends React.Component<PlayerProps> {
 
     return (
       <>
-        <PlayerComponent
-          {...this.props}
-          onAudioElement={this.handleAudioElement}
-          onPlay={this.handlePlay}
-        />
+        {player}
         {isVisualizerActive && (
           <PlayerVisualizer
             audioSourceNode={this.state.visualizerAudioSourceNode}

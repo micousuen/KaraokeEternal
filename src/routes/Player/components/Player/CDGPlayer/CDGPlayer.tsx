@@ -12,7 +12,7 @@ interface CDGPlayerProps {
   cdgSize: number
   isPlaying: boolean
   mediaId: number
-  mediaKey: string
+  mediaKey: number
   mediaReplayKey?: number
   width: number
   height: number

@@ -3,6 +3,7 @@ dockerfiles/
 docs/public/
 docs/resources/
 node_modules/
+test_folder/
 
 .DS_Store
 *.log

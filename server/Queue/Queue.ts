@@ -204,7 +204,7 @@ class Queue {
    * Get media type from file extension
    */
   static getType (file: string): string {
-    return /\.mp4/i.test(path.extname(file)) ? 'mp4' : 'cdg'
+    return ['.mkv', '.mp4'].includes(path.extname(file).toLowerCase()) ? 'mp4' : 'cdg'
   }
 }
 
