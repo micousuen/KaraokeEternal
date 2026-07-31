@@ -33,6 +33,7 @@ const playerCmdPlay = createAction(PLAYER_CMD_PLAY)
 const playerCmdReplay = createAction<{ queueId: number }>(PLAYER_CMD_REPLAY)
 const playerCmdVolume = createAction<number>(PLAYER_CMD_VOLUME)
 const playerCmdOptions = createAction<{
+  audioTrack?: 0 | 1
   cdgAlpha: number
   cdgSize: number
   mp4Alpha: number
@@ -95,6 +96,8 @@ export function playerLeave (): AppThunk {
 // Reducer
 // ------------------------------------
 export interface PlayerState {
+  audioTrack: 0 | 1
+  audioTrackCount: number
   cdgAlpha: number
   cdgSize: number
   errorMessage: string
@@ -119,6 +122,8 @@ export interface PlayerState {
 }
 
 const initialState: PlayerState = {
+  audioTrack: 0,
+  audioTrackCount: 0,
   cdgAlpha: 0.5,
   cdgSize: 0.65,
   errorMessage: '',
@@ -150,6 +155,7 @@ const playerReducer = createReducer(initialState, (builder) => {
     })
     .addCase(playerCmdOptions, (state, { payload }) => ({
       ...state,
+      audioTrack: payload.audioTrack === 0 || payload.audioTrack === 1 ? payload.audioTrack : state.audioTrack,
       cdgAlpha: typeof payload.cdgAlpha === 'number' ? payload.cdgAlpha : state.cdgAlpha,
       cdgSize: typeof payload.cdgSize === 'number' ? payload.cdgSize : state.cdgSize,
       mp4Alpha: typeof payload.mp4Alpha === 'number' ? payload.mp4Alpha : state.mp4Alpha,

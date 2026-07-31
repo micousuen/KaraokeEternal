@@ -8,6 +8,7 @@ import { type PlayerVisualizerState } from '../../modules/playerVisualizer'
 const PlayerVisualizer = React.lazy(() => import('./PlayerVisualizer/PlayerVisualizer'))
 
 interface PlayerProps {
+  audioTrack: 0 | 1
   cdgAlpha: number
   cdgSize: number
   isPlaying: boolean

@@ -33,6 +33,9 @@ const PlaybackCtrl = () => {
   const handlePlay = () => dispatch(requestPlay())
   const handlePlayNext = () => dispatch(requestPlayNext())
   const handleVolume = (val: number) => dispatch(requestVolume(val))
+  const handleAudioTrack = () => handleOptions({
+    audioTrack: status.audioTrack === 0 ? 1 : 0,
+  })
 
   const toggleDisplayCtrl = () => {
     setDisplayCtrlVisible(!isDisplayCtrlVisible)
@@ -64,6 +67,19 @@ const PlaybackCtrl = () => {
         volume={status.volume}
         onVolumeChange={handleVolume}
       />
+
+      {status.mediaType === 'mp4' && status.audioTrackCount > 1 && (
+        <Button
+          animateClassName={styles.btnAnimate}
+          className={clsx(styles.btn, styles.audioTrack)}
+          onClick={handleAudioTrack}
+          aria-label={`Switch to audio track ${status.audioTrack === 0 ? 2 : 1}`}
+          title={`Audio track ${status.audioTrack + 1}`}
+        >
+          A
+          {status.audioTrack + 1}
+        </Button>
+      )}
 
       <Button
         className={clsx(styles.btn, styles.displayCtrl)}

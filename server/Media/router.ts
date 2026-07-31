@@ -13,7 +13,7 @@ import Prefs from '../Prefs/Prefs.js'
 import Queue from '../Queue/Queue.js'
 import Rooms from '../Rooms/Rooms.js'
 import fileTypes from './fileTypes.js'
-import { getBrowserVideo } from './Transcoder.js'
+import { getBrowserMedia } from './Transcoder.js'
 import { LIBRARY_PUSH_SONG, QUEUE_PUSH } from '../../shared/actionTypes.js'
 const log = getLogger('Media')
 const router = new KoaRouter({ prefix: '/api/media' })
@@ -76,11 +76,29 @@ router.get('/:mediaId', async (ctx) => {
     ctx.type = fileTypes[getExt(file)]?.mimeType
   }
 
-  if (type === 'video') {
-    file = await getBrowserVideo(file, mediaId)
+  if (['video', 'videoAudio', 'videoInfo'].includes(String(type))) {
+    const bundle = await getBrowserMedia(file, mediaId)
+
+    if (type === 'videoInfo') {
+      ctx.body = { audioTrackCount: bundle.audio.length }
+      ctx.type = 'application/json'
+      return
+    }
+
+    if (type === 'videoAudio') {
+      const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
+      if (!Number.isInteger(audioTrack) || !bundle.audio[audioTrack]) {
+        ctx.throw(404, 'Audio track not found')
+      }
+      file = bundle.audio[audioTrack]
+      ctx.type = 'audio/mp4'
+    } else {
+      file = bundle.video
+      ctx.type = 'video/mp4'
+    }
+
     const stats = await fsPromises.stat(file)
     ctx.length = stats.size
-    ctx.type = 'video/mp4'
     buffer = undefined
   }
 

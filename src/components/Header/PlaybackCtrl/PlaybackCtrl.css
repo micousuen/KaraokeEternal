@@ -33,6 +33,14 @@
   filter: var(--btn-active-filter);
 }
 
+.audioTrack {
+  color: var(--btn-active-bg-color);
+  filter: var(--btn-active-filter);
+  font-size: var(--font-size-s);
+  font-weight: bold;
+  min-width: 2.5rem;
+}
+
 .fullscreen {
   color: var(--btn-active-bg-color);
   filter: var(--btn-active-filter);

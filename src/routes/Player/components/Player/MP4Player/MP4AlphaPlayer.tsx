@@ -6,6 +6,7 @@ const BACKDROP_PADDING = 10 // px at 1:1 scale
 const BORDER_RADIUS = parseInt(getComputedStyle(document.body).getPropertyValue('--border-radius'))
 
 interface MP4AlphaPlayerProps {
+  audioTrack: 0 | 1
   isPlaying: boolean
   mediaId: number
   mediaKey: number
@@ -13,19 +14,21 @@ interface MP4AlphaPlayerProps {
   mp4Alpha: number
   width: number
   height: number
-  onAudioElement(video: HTMLVideoElement): void
+  onAudioElement(audio: HTMLAudioElement): void
   // media events
   onEnd(): void
   onError(error: string): void
   onLoad(): void
   onPlay(): void
-  onStatus(status: { position: number }): void
+  onStatus(status: { position?: number, audioTrackCount?: number }): void
 }
 
 class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   canvas = React.createRef<HTMLCanvasElement>()
   frameId: number | null = null
   video = document.createElement('video')
+  audio = document.createElement('audio')
+  pendingPosition = 0
   chroma: GLChroma
   supportsFilters = CSS.supports('backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)') || CSS.supports('-webkit-backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
   state = {
@@ -35,14 +38,19 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   componentDidMount () {
-    this.props.onAudioElement(this.video)
-    this.video.oncanplaythrough = this.updateIsPlaying
-    this.video.onended = this.handleEnded
-    this.video.onerror = this.handleError
-    this.video.onloadstart = this.props.onLoad
+    this.props.onAudioElement(this.audio)
+    this.audio.oncanplaythrough = this.updateIsPlaying
+    this.audio.onended = this.handleEnded
+    this.audio.onerror = this.handleAudioError
+    this.audio.onloadstart = this.props.onLoad
+    this.audio.onloadedmetadata = this.handleAudioMetadata
+    this.audio.onplay = this.handlePlay
+    this.audio.ontimeupdate = this.handleTimeUpdate
+    this.audio.preload = 'auto'
+
+    this.video.onerror = this.handleVideoError
     this.video.onloadedmetadata = this.handleLoadedMetadata
-    this.video.onplay = this.handlePlay
-    this.video.ontimeupdate = this.handleTimeUpdate
+    this.video.muted = true
     this.video.preload = 'auto'
 
     if (this.canvas.current) {
@@ -59,8 +67,13 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
       return
     }
 
+    if (prevProps.audioTrack !== this.props.audioTrack) {
+      this.updateAudioSource(this.audio.currentTime || 0)
+      return
+    }
+
     if (prevProps.mediaReplayKey !== this.props.mediaReplayKey) {
-      this.video.currentTime = 0
+      this.setCurrentTime(0)
       return
     }
 
@@ -82,13 +95,16 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   componentWillUnmount () {
-    this.video.ontimeupdate = null
+    this.audio.ontimeupdate = null
+    this.audio.pause()
     this.video.pause()
     this.stopChroma()
 
     this.chroma.unload()
     this.video.removeAttribute('src')
     this.video.load() // reset to ensure playback stops
+    this.audio.removeAttribute('src')
+    this.audio.load()
   }
 
   render () {
@@ -146,13 +162,32 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.stopChroma()
     this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video`
     this.video.load()
+    this.updateAudioSource()
+
+    fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await response.text())
+        return response.json()
+      })
+      .then(({ audioTrackCount }) => this.props.onStatus({ audioTrackCount }))
+      .catch(err => this.props.onError(err.message))
+  }
+
+  updateAudioSource = (position = 0) => {
+    this.video.pause()
+    this.audio.pause()
+    this.pendingPosition = position
+    this.audio.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}`
+    this.audio.load()
   }
 
   updateIsPlaying = () => {
     if (this.props.isPlaying) {
-      this.video.play()
+      this.video.currentTime = this.audio.currentTime
+      Promise.all([this.video.play(), this.audio.play()])
         .catch(err => this.props.onError(err.message))
     } else {
+      this.audio.pause()
       this.video.pause()
       this.stopChroma()
     }
@@ -178,9 +213,20 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.stopChroma()
   }
 
-  handleError = () => {
+  handleVideoError = () => {
     const { message, code } = this.video.error
-    this.props.onError(`${message} (code ${code})`)
+    this.props.onError(`${message} (video code ${code})`)
+  }
+
+  handleAudioError = () => {
+    const { message, code } = this.audio.error
+    this.props.onError(`${message} (audio code ${code})`)
+  }
+
+  handleAudioMetadata = () => {
+    if (this.pendingPosition <= 0) return
+    this.setCurrentTime(Math.min(this.pendingPosition, this.audio.duration))
+    this.pendingPosition = 0
   }
 
   handlePlay = () => {
@@ -189,9 +235,16 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   handleTimeUpdate = () => {
-    this.props.onStatus({
-      position: this.video.currentTime,
-    })
+    const position = this.audio.currentTime
+    if (Math.abs(this.video.currentTime - position) > 0.2) {
+      this.video.currentTime = position
+    }
+    this.props.onStatus({ position })
+  }
+
+  setCurrentTime = (position: number) => {
+    this.video.currentTime = position
+    this.audio.currentTime = position
   }
 }
 

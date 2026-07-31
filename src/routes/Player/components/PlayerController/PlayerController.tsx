@@ -44,6 +44,8 @@ const PlayerController = (props: PlayerControllerProps) => {
     }
 
     handleStatus({
+      audioTrack: 0,
+      audioTrackCount: 0,
       historyJSON: JSON.stringify(history),
       isAtQueueEnd: false,
       isPlaying: true,
@@ -78,6 +80,8 @@ const PlayerController = (props: PlayerControllerProps) => {
 
     // play next
     handleStatus({
+      audioTrack: 0,
+      audioTrackCount: 0,
       historyJSON: JSON.stringify(history),
       isAtQueueEnd: false,
       isPlaying: true,
@@ -107,6 +111,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     handleStatus,
     player.cdgAlpha,
     player.cdgSize,
+    player.audioTrack,
     player.isPlaying,
     player.mp4Alpha,
     player.volume,
@@ -148,6 +153,7 @@ const PlayerController = (props: PlayerControllerProps) => {
   return (
     <>
       <Player
+        audioTrack={player.audioTrack}
         cdgAlpha={player.cdgAlpha}
         cdgSize={player.cdgSize}
         isPlaying={player.isPlaying}

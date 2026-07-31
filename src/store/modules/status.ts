@@ -49,6 +49,8 @@ export const requestOptions = createAction(PLAYER_REQ_OPTIONS, (opts: PlaybackOp
 // Reducer
 // ------------------------------------
 interface StatusState {
+  audioTrack: 0 | 1
+  audioTrackCount: number
   cdgAlpha: number
   cdgSize: number
   errorMessage: string
@@ -69,6 +71,8 @@ interface StatusState {
 }
 
 const initialState: StatusState = {
+  audioTrack: 0,
+  audioTrackCount: 0,
   cdgAlpha: 0,
   cdgSize: 0.8,
   errorMessage: '',

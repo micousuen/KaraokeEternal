@@ -2,26 +2,29 @@ import React from 'react'
 import styles from './MP4Player.css'
 
 interface MP4PlayerProps {
+  audioTrack: 0 | 1
   isPlaying: boolean
   mediaId: number
   mediaKey: number
   mediaReplayKey?: number
   width: number
   height: number
-  onAudioElement(video: HTMLVideoElement): void
+  onAudioElement(audio: HTMLAudioElement): void
   // media events
   onEnd(): void
   onError(error: string): void
   onLoad(): void
   onPlay(): void
-  onStatus(status: { position: number }): void
+  onStatus(status: { position?: number, audioTrackCount?: number }): void
 }
 
 class MP4Player extends React.Component<MP4PlayerProps> {
   video = React.createRef<HTMLVideoElement>()
+  audio = React.createRef<HTMLAudioElement>()
+  pendingPosition = 0
 
   componentDidMount () {
-    this.props.onAudioElement(this.video.current)
+    this.props.onAudioElement(this.audio.current)
     this.updateSources()
   }
 
@@ -31,8 +34,13 @@ class MP4Player extends React.Component<MP4PlayerProps> {
       return
     }
 
+    if (prevProps.audioTrack !== this.props.audioTrack) {
+      this.updateAudioSource(this.audio.current?.currentTime || 0)
+      return
+    }
+
     if (prevProps.mediaReplayKey !== this.props.mediaReplayKey) {
-      this.video.current.currentTime = 0
+      this.setCurrentTime(0)
       return
     }
 
@@ -45,55 +53,102 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     const { width, height } = this.props
 
     return (
-      <video
-        className={styles.video}
-        preload='auto'
-        width={width}
-        height={height}
-        onCanPlayThrough={this.updateIsPlaying}
-        onEnded={this.props.onEnd}
-        onError={this.handleError}
-        onLoadStart={this.props.onLoad}
-        onPlay={this.handlePlay}
-        onTimeUpdate={this.handleTimeUpdate}
-        ref={this.video}
-      />
+      <>
+        <video
+          className={styles.video}
+          muted
+          preload='auto'
+          width={width}
+          height={height}
+          onError={this.handleVideoError}
+          ref={this.video}
+        />
+        <audio
+          preload='auto'
+          onCanPlayThrough={this.updateIsPlaying}
+          onEnded={this.props.onEnd}
+          onError={this.handleAudioError}
+          onLoadStart={this.props.onLoad}
+          onLoadedMetadata={this.handleAudioMetadata}
+          onPlay={this.handlePlay}
+          onTimeUpdate={this.handleTimeUpdate}
+          ref={this.audio}
+        />
+      </>
     )
   }
 
   updateSources = () => {
-    if (!this.video.current) return
+    if (!this.video.current || !this.audio.current) return
+
+    this.pendingPosition = 0
     this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video`
     this.video.current.load()
+    this.updateAudioSource()
+
+    fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await response.text())
+        return response.json()
+      })
+      .then(({ audioTrackCount }) => this.props.onStatus({ audioTrackCount }))
+      .catch(err => this.props.onError(err.message))
+  }
+
+  updateAudioSource = (position = 0) => {
+    if (!this.audio.current) return
+
+    this.video.current?.pause()
+    this.audio.current.pause()
+    this.pendingPosition = position
+    this.audio.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}`
+    this.audio.current.load()
   }
 
   updateIsPlaying = () => {
-    if (!this.video.current) return
+    if (!this.video.current || !this.audio.current) return
 
     if (this.props.isPlaying) {
-      this.video.current.play()
+      this.video.current.currentTime = this.audio.current.currentTime
+      Promise.all([this.video.current.play(), this.audio.current.play()])
         .catch(err => this.props.onError(err.message))
     } else {
       this.video.current.pause()
+      this.audio.current.pause()
     }
   }
 
-  /*
-  * <video> event handlers
-  */
-  handleError = () => {
+  setCurrentTime = (position: number) => {
+    if (this.video.current) this.video.current.currentTime = position
+    if (this.audio.current) this.audio.current.currentTime = position
+  }
+
+  handleAudioMetadata = () => {
+    if (!this.audio.current || this.pendingPosition <= 0) return
+    this.setCurrentTime(Math.min(this.pendingPosition, this.audio.current.duration))
+    this.pendingPosition = 0
+  }
+
+  handleVideoError = () => {
     const { message, code } = this.video.current.error
-    this.props.onError(`${message} (code ${code})`)
+    this.props.onError(`${message} (video code ${code})`)
+  }
+
+  handleAudioError = () => {
+    const { message, code } = this.audio.current.error
+    this.props.onError(`${message} (audio code ${code})`)
   }
 
   handlePlay = () => this.props.onPlay()
 
   handleTimeUpdate = () => {
-    if (!this.video.current) return
+    if (!this.video.current || !this.audio.current) return
 
-    this.props.onStatus({
-      position: this.video.current.currentTime,
-    })
+    const position = this.audio.current.currentTime
+    if (Math.abs(this.video.current.currentTime - position) > 0.2) {
+      this.video.current.currentTime = position
+    }
+    this.props.onStatus({ position })
   }
 }
 
