@@ -6,6 +6,7 @@ import {
   PLAYER_REQ_PLAY,
   PLAYER_REQ_PAUSE,
   PLAYER_REQ_REPLAY,
+  PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
   PLAYER_STATUS,
   PLAYER_LEAVE,
@@ -35,6 +36,16 @@ export const requestVolume = createAction(PLAYER_REQ_VOLUME, (vol: number) => ({
   },
 }))
 
+export const requestSeek = createAction(PLAYER_REQ_SEEK, (position: number) => ({
+  payload: position,
+  meta: {
+    throttle: {
+      wait: 100,
+      leading: false,
+    },
+  },
+}))
+
 export const requestOptions = createAction(PLAYER_REQ_OPTIONS, (opts: PlaybackOptions) => ({
   payload: opts,
   meta: {
@@ -53,6 +64,7 @@ interface StatusState {
   audioTrackCount: number
   cdgAlpha: number
   cdgSize: number
+  duration: number
   errorMessage: string
   historyJSON: string // queueIds in JSON array
   isAtQueueEnd: boolean
@@ -75,6 +87,7 @@ const initialState: StatusState = {
   audioTrackCount: 0,
   cdgAlpha: 0,
   cdgSize: 0.8,
+  duration: 0,
   errorMessage: '',
   historyJSON: '[]', // queueIds in JSON array
   isAtQueueEnd: false,

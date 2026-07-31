@@ -1,21 +1,30 @@
-.slider {
-  width: 100%;
-  margin: 0 34px 0 30px;
+.container {
+  position: relative;
+  flex: 0 0 auto;
 }
 
-.handle {
-  cursor: pointer;
+.button {
   color: var(--transport-btn-bg-color);
   filter: var(--transport-btn-filter);
+}
+
+.button svg {
+  height: var(--icon-size-xl);
+}
+
+.popover {
   position: absolute;
-  touch-action: pan-x;
-  outline: none;
+  z-index: 10;
+  right: 0;
+  top: calc(100% + var(--space-xs));
+  width: 12rem;
+  max-width: 70vw;
+  padding: var(--space-m);
+  background: var(--bg-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+}
 
-  &:focus-visible {
-    outline: var(--focus-outline);
-  }
-
-  svg {
-    height: var(--icon-size-xl);
-  }
+.slider {
+  width: 100%;
 }

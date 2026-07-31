@@ -1,0 +1,19 @@
+.container {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 8rem;
+}
+
+.slider {
+  flex: 1 1 auto;
+  min-width: 4rem;
+}
+
+.time {
+  color: var(--transport-btn-bg-color);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

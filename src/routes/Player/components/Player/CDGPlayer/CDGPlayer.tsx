@@ -14,6 +14,8 @@ interface CDGPlayerProps {
   mediaId: number
   mediaKey: number
   mediaReplayKey?: number
+  mediaSeekKey?: number
+  seekPosition: number
   width: number
   height: number
   onAudioElement(video: HTMLAudioElement): void
@@ -22,7 +24,7 @@ interface CDGPlayerProps {
   onError(error: string): void
   onLoad(): void
   onPlay(): void
-  onStatus(status: { position: number }): void
+  onStatus(status: { position?: number, duration?: number }): void
 }
 
 class CDGPlayer extends React.Component<CDGPlayerProps> {
@@ -53,6 +55,11 @@ class CDGPlayer extends React.Component<CDGPlayerProps> {
 
     if (prevProps.mediaReplayKey !== this.props.mediaReplayKey) {
       this.audio.current.currentTime = 0
+      return
+    }
+
+    if (prevProps.mediaSeekKey !== this.props.mediaSeekKey) {
+      this.audio.current.currentTime = this.props.seekPosition
       return
     }
 
@@ -117,6 +124,7 @@ class CDGPlayer extends React.Component<CDGPlayerProps> {
           onEnded={this.handleEnded}
           onError={this.handleError}
           onLoadStart={this.props.onLoad}
+          onLoadedMetadata={this.handleLoadedMetadata}
           onPlay={this.handlePlay}
           onTimeUpdate={this.handleTimeUpdate}
           ref={this.audio}
@@ -173,6 +181,11 @@ class CDGPlayer extends React.Component<CDGPlayerProps> {
   handlePlay = () => {
     this.props.onPlay()
     this.startCDG()
+  }
+
+  handleLoadedMetadata = () => {
+    if (!this.audio.current) return
+    this.props.onStatus({ duration: this.audio.current.duration })
   }
 
   handleTimeUpdate = () => {

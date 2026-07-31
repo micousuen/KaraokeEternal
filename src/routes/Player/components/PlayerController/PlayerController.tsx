@@ -46,6 +46,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     handleStatus({
       audioTrack: 0,
       audioTrackCount: 0,
+      duration: 0,
       historyJSON: JSON.stringify(history),
       isAtQueueEnd: false,
       isPlaying: true,
@@ -82,6 +83,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     handleStatus({
       audioTrack: 0,
       audioTrackCount: 0,
+      duration: 0,
       historyJSON: JSON.stringify(history),
       isAtQueueEnd: false,
       isPlaying: true,
@@ -164,8 +166,10 @@ const PlayerController = (props: PlayerControllerProps) => {
         mediaId={queueItem ? queueItem.mediaId : null}
         mediaKey={queueItem ? queueItem.queueId : null}
         mediaReplayKey={player._lastReplayTime}
+        mediaSeekKey={player._lastSeekTime}
         mediaType={queueItem ? queueItem.mediaType : null}
         mp4Alpha={player.mp4Alpha}
+        seekPosition={player._seekPosition}
         onEnd={handleLoadNext}
         onError={handleError}
         onLoad={handleLoad}

@@ -6,12 +6,14 @@ import {
   PLAYER_CMD_PAUSE,
   PLAYER_CMD_PLAY,
   PLAYER_CMD_REPLAY,
+  PLAYER_CMD_SEEK,
   PLAYER_CMD_VOLUME,
   PLAYER_REQ_NEXT,
   PLAYER_REQ_OPTIONS,
   PLAYER_REQ_PAUSE,
   PLAYER_REQ_PLAY,
   PLAYER_REQ_REPLAY,
+  PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
   PLAYER_EMIT_STATUS,
   PLAYER_EMIT_LEAVE,
@@ -52,6 +54,12 @@ const ACTION_HANDLERS = {
     // @todo: emit to players only
     sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
       type: PLAYER_CMD_REPLAY,
+      payload,
+    })
+  },
+  [PLAYER_REQ_SEEK]: (sock, { payload }) => {
+    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
+      type: PLAYER_CMD_SEEK,
       payload,
     })
   },

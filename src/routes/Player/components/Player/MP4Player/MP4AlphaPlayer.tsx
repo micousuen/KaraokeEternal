@@ -11,6 +11,8 @@ interface MP4AlphaPlayerProps {
   mediaId: number
   mediaKey: number
   mediaReplayKey?: number
+  mediaSeekKey?: number
+  seekPosition: number
   mp4Alpha: number
   width: number
   height: number
@@ -20,7 +22,7 @@ interface MP4AlphaPlayerProps {
   onError(error: string): void
   onLoad(): void
   onPlay(): void
-  onStatus(status: { position?: number, audioTrackCount?: number }): void
+  onStatus(status: { position?: number, duration?: number, audioTrackCount?: number }): void
 }
 
 class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
@@ -74,6 +76,11 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
     if (prevProps.mediaReplayKey !== this.props.mediaReplayKey) {
       this.setCurrentTime(0)
+      return
+    }
+
+    if (prevProps.mediaSeekKey !== this.props.mediaSeekKey) {
+      this.setCurrentTime(this.props.seekPosition)
       return
     }
 
@@ -224,6 +231,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   handleAudioMetadata = () => {
+    this.props.onStatus({ duration: this.audio.duration })
     if (this.pendingPosition <= 0) return
     this.setCurrentTime(Math.min(this.pendingPosition, this.audio.duration))
     this.pendingPosition = 0

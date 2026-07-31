@@ -3,9 +3,10 @@ import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { useLocation } from 'react-router'
 import clsx from 'clsx'
 import screenfull from 'screenfull'
-import { requestOptions, requestPause, requestPlay, requestPlayNext, requestVolume } from 'store/modules/status'
+import { requestOptions, requestPause, requestPlay, requestPlayNext, requestSeek, requestVolume } from 'store/modules/status'
 import Button from 'components/Button/Button'
 import VolumeSlider from './VolumeSlider/VolumeSlider'
+import PlaybackProgress from './PlaybackProgress/PlaybackProgress'
 import NoPlayer from './NoPlayer/NoPlayer'
 import DisplayCtrl from './DisplayCtrl/DisplayCtrl'
 import styles from './PlaybackCtrl.css'
@@ -32,6 +33,7 @@ const PlaybackCtrl = () => {
   const handlePause = () => dispatch(requestPause())
   const handlePlay = () => dispatch(requestPlay())
   const handlePlayNext = () => dispatch(requestPlayNext())
+  const handleSeek = (position: number) => dispatch(requestSeek(position))
   const handleVolume = (val: number) => dispatch(requestVolume(val))
   const handleAudioTrack = () => handleOptions({
     audioTrack: status.audioTrack === 0 ? 1 : 0,
@@ -63,10 +65,13 @@ const PlaybackCtrl = () => {
         aria-label='Play Next'
       />
 
-      <VolumeSlider
-        volume={status.volume}
-        onVolumeChange={handleVolume}
+      <PlaybackProgress
+        duration={status.duration}
+        position={status.position}
+        onSeek={handleSeek}
       />
+
+      <VolumeSlider volume={status.volume} onVolumeChange={handleVolume} />
 
       {status.mediaType === 'mp4' && status.audioTrackCount > 1 && (
         <Button

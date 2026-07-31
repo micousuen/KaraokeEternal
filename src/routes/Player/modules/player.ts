@@ -8,6 +8,7 @@ import {
   PLAYER_CMD_PAUSE,
   PLAYER_CMD_PLAY,
   PLAYER_CMD_REPLAY,
+  PLAYER_CMD_SEEK,
   PLAYER_CMD_VOLUME,
   PLAYER_EMIT_LEAVE,
   PLAYER_EMIT_STATUS,
@@ -31,11 +32,13 @@ export const playerCmdNext = createAction(PLAYER_CMD_NEXT)
 const playerCmdPause = createAction(PLAYER_CMD_PAUSE)
 const playerCmdPlay = createAction(PLAYER_CMD_PLAY)
 const playerCmdReplay = createAction<{ queueId: number }>(PLAYER_CMD_REPLAY)
+const playerCmdSeek = createAction<number>(PLAYER_CMD_SEEK)
 const playerCmdVolume = createAction<number>(PLAYER_CMD_VOLUME)
 const playerCmdOptions = createAction<{
   audioTrack?: 0 | 1
   cdgAlpha: number
   cdgSize: number
+  duration: number
   mp4Alpha: number
 }>(PLAYER_CMD_OPTIONS)
 
@@ -119,6 +122,8 @@ export interface PlayerState {
   _isPlayingNext: boolean
   _isReplayingQueueId: number | null
   _lastReplayTime: number
+  _lastSeekTime: number
+  _seekPosition: number
 }
 
 const initialState: PlayerState = {
@@ -126,6 +131,7 @@ const initialState: PlayerState = {
   audioTrackCount: 0,
   cdgAlpha: 0.5,
   cdgSize: 0.65,
+  duration: 0,
   errorMessage: '',
   historyJSON: '[]', // queueIds (JSON string is hack to pass selector equality check on clients)
   isAtQueueEnd: false,
@@ -146,6 +152,8 @@ const initialState: PlayerState = {
   _isPlayingNext: false,
   _isReplayingQueueId: null,
   _lastReplayTime: 0,
+  _lastSeekTime: 0,
+  _seekPosition: 0,
 }
 
 const playerReducer = createReducer(initialState, (builder) => {
@@ -169,6 +177,10 @@ const playerReducer = createReducer(initialState, (builder) => {
     .addCase(playerCmdReplay, (state, { payload }) => {
       state._isReplayingQueueId = payload.queueId
       state._lastReplayTime = Date.now()
+    })
+    .addCase(playerCmdSeek, (state, { payload }) => {
+      state._seekPosition = payload
+      state._lastSeekTime = Date.now()
     })
     .addCase(playerCmdVolume, (state, { payload }) => {
       state.volume = payload

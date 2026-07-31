@@ -19,8 +19,10 @@ interface PlayerProps {
   mediaId: number
   mediaKey: number
   mediaReplayKey?: number
+  mediaSeekKey?: number
   mediaType?: string
   mp4Alpha: number
+  seekPosition: number
   rgTrackGain?: number
   rgTrackPeak?: number
   visualizer: PlayerVisualizerState
