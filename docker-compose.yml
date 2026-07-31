@@ -1,0 +1,24 @@
+services:
+  karaoke-eternal:
+    image: radrootllc/karaoke-eternal:latest
+    restart: unless-stopped
+
+    environment:
+      # TrueNAS SCALE's default apps user/group. Change these if your
+      # datasets are owned by a different UID/GID.
+      PUID: "568"
+      PGID: "568"
+      TZ: "America/New_York"
+
+    ports:
+      # Change 8088 if that host port is already in use.
+      - "8088:8080"
+
+    volumes:
+      # Replace "tank" with your TrueNAS pool name. This path must be
+      # writable by PUID/PGID because it contains the SQLite database.
+      - /mnt/tank/apps/karaoke-eternal/config:/config
+
+      # Replace this with your media dataset. Read-only access is sufficient.
+      # Add /mnt/karaoke as a Media Folder inside Karaoke Eternal.
+      - /mnt/tank/media/karaoke:/mnt/karaoke:ro
