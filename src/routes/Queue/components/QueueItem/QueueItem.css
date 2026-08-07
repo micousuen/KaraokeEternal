@@ -20,6 +20,29 @@
   overflow: hidden;
 }
 
+.dragHandle {
+  flex: 0 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-gray-6);
+  cursor: grab;
+  touch-action: none;
+
+  svg {
+    width: 1.5rem;
+  }
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.container.dragging {
+  box-shadow: 0 0 1rem hsl(var(--hue-blue), 80%, 50%);
+  opacity: 0.9;
+}
+
 .greyed {
   opacity: .5;
 }

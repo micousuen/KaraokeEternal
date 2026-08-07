@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react'
+import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
 import clsx from 'clsx'
 import { useSwipeable } from 'react-swipeable'
 import { useLongPress } from 'use-long-press'
@@ -6,6 +7,7 @@ import { useAppDispatch } from 'store/hooks'
 import Button from 'components/Button/Button'
 import ButtonStar from 'components/ButtonStar/ButtonStar'
 import Buttons from 'components/Buttons/Buttons'
+import Icon from 'components/Icon/Icon'
 import UserImage from 'components/UserImage/UserImage'
 import { requestPlayNext, requestReplay } from 'store/modules/status'
 import { showSongInfo } from 'store/modules/songInfo'
@@ -18,8 +20,10 @@ const LONG_PRESS_THRESHOLD_MS = 700
 
 interface QueueItemProps {
   artist: string
+  dragHandleProps?: DraggableProvidedDragHandleProps | null
   errorMessage: string
   isCurrent: boolean
+  isDragging: boolean
   isErrored: boolean
   isInfoable: boolean
   isMovable: boolean
@@ -47,8 +51,10 @@ interface QueueItemProps {
 
 const QueueItem = ({
   artist,
+  dragHandleProps,
   errorMessage,
   isCurrent,
+  isDragging,
   isErrored,
   isInfoable,
   isMovable,
@@ -132,10 +138,16 @@ const QueueItem = ({
         styles.container,
         isCurrent && styles.current,
         isCurrent && !isPlaying && styles.paused,
+        isDragging && styles.dragging,
       )}
       style={{ '--progress': (isCurrent && pctPlayed < 2 ? 2 : pctPlayed) + '%' } as React.CSSProperties}
     >
       <div className={styles.content}>
+        {isMovable && (
+          <div {...dragHandleProps} className={styles.dragHandle} aria-label='Reorder queue item'>
+            <Icon icon='DRAG_INDICATOR' />
+          </div>
+        )}
         <div className={clsx(styles.imageContainer, isPlayed && styles.greyed)}>
           <UserImage userId={userId} dateUpdated={userDateUpdated} />
           <div className={styles.waitContainer}>

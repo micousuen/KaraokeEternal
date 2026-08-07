@@ -119,6 +119,14 @@ class Queue {
 
     if (prevQueueId === -1) prevQueueId = null
 
+    const source = db.get<{ roomId: number }>('SELECT roomId FROM queue WHERE queueId = ?', [queueId])
+    if (!source || source.roomId !== roomId) throw new Error('Queue item is not in this room')
+
+    if (prevQueueId !== null) {
+      const destination = db.get<{ roomId: number }>('SELECT roomId FROM queue WHERE queueId = ?', [prevQueueId])
+      if (!destination || destination.roomId !== roomId) throw new Error('Queue destination is not in this room')
+    }
+
     const query = sql`
       UPDATE queue
       SET prevQueueId = CASE

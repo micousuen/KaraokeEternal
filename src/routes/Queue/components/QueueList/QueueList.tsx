@@ -1,8 +1,8 @@
 import React from 'react'
+import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { ensureState } from 'redux-optimistic-ui'
 import QueueItem from '../QueueItem/QueueItem'
-import QueueListAnimator from '../QueueListAnimator/QueueListAnimator'
 import { formatSeconds } from 'lib/dateTime'
 import { moveItem, removeUpcomingItems } from '../../modules/queue'
 import getPlayerHistory from '../../selectors/getPlayerHistory'
@@ -42,44 +42,90 @@ const QueueList = () => {
     dispatch(removeUpcomingItems(userId))
   }
 
+  const handleDragEnd = (dnd: DropResult) => {
+    if (!dnd.destination || dnd.source.index === dnd.destination.index) return
+
+    const queueIdToMove = queue.result[dnd.source.index]
+    const item = queue.entities[queueIdToMove]
+    const isUpcoming = queueIdToMove !== queueId && !playerHistory.includes(queueIdToMove)
+    if (!isUpcoming || (!user.isAdmin && item.userId !== user.userId)) return
+
+    const reordered = queue.result.slice()
+    reordered.splice(dnd.source.index, 1)
+
+    // Played/current entries are locked. Clamp drops to the upcoming section.
+    const firstUpcoming = reordered.findIndex(id => id !== queueId && !playerHistory.includes(id))
+    const upcomingStart = firstUpcoming === -1 ? reordered.length : firstUpcoming
+    const destination = Math.max(dnd.destination.index, upcomingStart)
+    reordered.splice(destination, 0, queueIdToMove)
+
+    dispatch(moveItem({
+      queueId: queueIdToMove,
+      prevQueueId: destination > 0 ? reordered[destination - 1] : -1,
+    }))
+  }
+
   // build children array
-  const items = queue.result.map((qId) => {
+  const items = queue.result.map((qId, index) => {
     const item = queue.entities[qId]
     const duration = songs.entities[item.songId].duration
     const isCurrent = (qId === queueId) && !isAtQueueEnd
     const isUpcoming = qId !== queueId && !playerHistory.includes(qId)
     const isOwner = item.userId === user.userId
 
+    const isMovable = isUpcoming && (isOwner || user.isAdmin)
+
     return (
-      <QueueItem
-        {...item}
-        artist={artists.entities[songs.entities[item.songId].artistId].name}
-        errorMessage={isCurrent && errorMessage ? errorMessage : ''}
-        isCurrent={isCurrent}
-        key={qId}
-        isErrored={isCurrent && isErrored}
-        isInfoable={user.isAdmin}
-        isMovable={isUpcoming && (isOwner || user.isAdmin)}
-        isOwner={isOwner}
-        isPlayed={!isUpcoming && !isCurrent}
-        isPlaying={isCurrent && isPlaying}
-        isRemovable={isUpcoming && (isOwner || user.isAdmin)}
-        isReplayable={(!isUpcoming || isCurrent) && user.isAdmin}
-        isSkippable={isCurrent && (isOwner || user.isAdmin)}
-        isStarred={starredSongs.includes(item.songId)}
-        isUpcoming={isUpcoming}
-        pctPlayed={isCurrent ? position / duration * 100 : 0}
-        starCount={starCounts.songs[item.songId] || 0}
-        title={songs.entities[item.songId].title}
-        wait={formatSeconds(waits[qId], true)} // fuzzy
-        // actions
-        onMoveClick={handleMoveClick}
-        onRemoveUpcoming={handleRemoveUpcoming}
-      />
+      <Draggable draggableId={`queue-${qId}`} index={index} isDragDisabled={!isMovable} key={qId}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            style={provided.draggableProps.style}
+          >
+            <QueueItem
+              {...item}
+              artist={artists.entities[songs.entities[item.songId].artistId].name}
+              dragHandleProps={provided.dragHandleProps}
+              errorMessage={isCurrent && errorMessage ? errorMessage : ''}
+              isCurrent={isCurrent}
+              isDragging={snapshot.isDragging}
+              isErrored={isCurrent && isErrored}
+              isInfoable={user.isAdmin}
+              isMovable={isMovable}
+              isOwner={isOwner}
+              isPlayed={!isUpcoming && !isCurrent}
+              isPlaying={isCurrent && isPlaying}
+              isRemovable={isUpcoming && (isOwner || user.isAdmin)}
+              isReplayable={(!isUpcoming || isCurrent) && user.isAdmin}
+              isSkippable={isCurrent && (isOwner || user.isAdmin)}
+              isStarred={starredSongs.includes(item.songId)}
+              isUpcoming={isUpcoming}
+              pctPlayed={isCurrent ? position / duration * 100 : 0}
+              starCount={starCounts.songs[item.songId] || 0}
+              title={songs.entities[item.songId].title}
+              wait={formatSeconds(waits[qId], true)} // fuzzy
+              onMoveClick={handleMoveClick}
+              onRemoveUpcoming={handleRemoveUpcoming}
+            />
+          </div>
+        )}
+      </Draggable>
     )
   })
 
-  return <QueueListAnimator queueItems={items} />
+  return (
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <Droppable droppableId='queue'>
+        {provided => (
+          <div ref={provided.innerRef} {...provided.droppableProps}>
+            {items}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+    </DragDropContext>
+  )
 }
 
 export default QueueList
