@@ -18,6 +18,7 @@ services:
       KES_TRANSCODE_AUDIO_BITRATE: 192k
       KES_TRANSCODE_MAX_SIZE_GB: "8"
       KES_PRECACHE_COUNT: "5"
+      KES_PATH_DOWNLOADS: /downloads
 
     ports:
       - "8080:8080"
@@ -25,4 +26,5 @@ services:
     volumes:
       - ./test_folder/config:/config
       - ./test_folder/media:/media
+      - ./test_folder/downloads:/downloads
       - ./test_folder/transcode:/transcode
