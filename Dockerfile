@@ -1,8 +1,18 @@
-FROM node:24-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build-deps
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
+
+# Keep production dependencies in a source-independent stage. This replaces
+# `npm prune` after Webpack, which previously reran for every source change.
+FROM node:24-bookworm-slim AS production-deps
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+FROM build-deps AS build
 
 COPY assets ./assets
 COPY config ./config
@@ -13,8 +23,7 @@ COPY tsconfig.json ./
 COPY LICENSE ./
 COPY CHANGELOG.md ./
 COPY docs/assets/fonts ./docs/assets/fonts
-RUN npm run build \
-  && npm prune --omit=dev
+RUN npm run build
 
 FROM node:24-bookworm-slim
 
@@ -25,7 +34,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /app/assets ./assets
 COPY --from=build /app/build ./build
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./
 
 ENV NODE_ENV=production \
