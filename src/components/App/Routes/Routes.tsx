@@ -14,25 +14,25 @@ const AppRoutes = () => (
     <Route
       path='/library'
       element={(
-        <RequireAuth path='/library' redirectTo='/account'>
+        <RequireRoom path='/library' redirectTo='/account'>
           <LibraryView />
-        </RequireAuth>
+        </RequireRoom>
       )}
     />
     <Route
       path='/queue'
       element={(
-        <RequireAuth path='/queue' redirectTo='/account'>
+        <RequireRoom path='/queue' redirectTo='/account'>
           <QueueView />
-        </RequireAuth>
+        </RequireRoom>
       )}
     />
     <Route
       path='/player'
       element={(
-        <RequireAuth path='/player' redirectTo='/account'>
+        <RequireRoom path='/player' redirectTo='/account'>
           <PlayerView />
-        </RequireAuth>
+        </RequireRoom>
       )}
     />
     <Route
@@ -40,7 +40,7 @@ const AppRoutes = () => (
       element={(
         <Navigate
           to={{
-            pathname: '/library',
+            pathname: '/account',
             search: window.location.search, // pass through search params (e.g. roomId)
           }}
           replace
@@ -52,18 +52,18 @@ const AppRoutes = () => (
 
 export default AppRoutes
 
-interface RequireAuthProps {
+interface RequireRoomProps {
   children: React.ReactNode
   path: string
   redirectTo: string
 }
 
-const RequireAuth = ({
+const RequireRoom = ({
   children,
   path,
   redirectTo,
-}: RequireAuthProps) => {
-  const { isAdmin, userId } = useAppSelector(state => state.user)
+}: RequireRoomProps) => {
+  const { isAdmin, roomId, userId } = useAppSelector(state => state.user)
   const location = useLocation()
 
   if (path === '/player' && !isAdmin) {
@@ -76,6 +76,10 @@ const RequireAuth = ({
     params.set('redirect', path)
 
     return <Navigate to={redirectTo + '?' + params.toString()} replace />
+  }
+
+  if (typeof roomId !== 'number') {
+    return <Navigate to={redirectTo} replace />
   }
 
   return children

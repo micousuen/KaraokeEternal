@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react'
-import { useAppDispatch } from 'store/hooks'
+import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { createRoom, removeRoom, updateRoom, requestPrefsPush } from 'store/modules/rooms'
+import { joinRoomAsAdmin, leaveRoomAsAdmin } from 'store/modules/user'
 import { getFormData } from 'lib/util'
 import Button from 'components/Button/Button'
 import Modal from 'components/Modal/Modal'
@@ -16,10 +17,9 @@ interface EditRoomProps {
 
 const EditRoom = ({ onClose, room }: EditRoomProps) => {
   const formRef = useRef(null)
-  const [roomPassword, setRoomPassword] = useState(room && room.hasPassword ? '*'.repeat(32) : '')
   const [prefs, setPrefs] = useState<IRoomPrefs>(room?.prefs || {} as IRoomPrefs)
   const [prevRoom, setPrevRoom] = useState(room)
-  const [isPasswordDirty, setIsPasswordDirty] = useState(false)
+  const currentRoomId = useAppSelector(state => state.user.roomId)
   const dispatch = useAppDispatch()
 
   if (room !== prevRoom) {
@@ -34,19 +34,23 @@ const EditRoom = ({ onClose, room }: EditRoomProps) => {
     data.prefs = prefs
 
     if (room) {
-      if (!isPasswordDirty) delete data.password
       dispatch(updateRoom({ roomId: room.roomId, data }))
     } else {
-      if (!data.password) delete data.password
       dispatch(createRoom(data))
     }
   }
 
   const handleRemoveClick = () => {
-    if (room && confirm(`Remove room "${room.name}" and its queue?`)) {
+    if (room && currentRoomId !== room.roomId && confirm(`Remove room "${room.name}" and its queue?`)) {
       dispatch(removeRoom(room.roomId))
     }
   }
+
+  const handleJoinClick = () => {
+    if (room) dispatch(joinRoomAsAdmin(room.roomId))
+  }
+
+  const handleLeaveClick = () => dispatch(leaveRoomAsAdmin())
 
   const handlePrefsChange = (newPrefs: IRoomPrefs) => {
     setPrefs(newPrefs)
@@ -61,11 +65,6 @@ const EditRoom = ({ onClose, room }: EditRoomProps) => {
       dispatch(requestPrefsPush(room.roomId, room.prefs))
     }
     onClose()
-  }
-
-  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setIsPasswordDirty(true)
-    setRoomPassword(e.target.value)
   }
 
   return (
@@ -86,16 +85,6 @@ const EditRoom = ({ onClose, room }: EditRoomProps) => {
             ref={r => typeof room === 'undefined' ? r?.setAttribute('autofocus', 'true') : undefined}
           />
 
-          <input
-            type='password'
-            autoComplete='new-password'
-            value={roomPassword}
-            name='password'
-            onChange={handlePasswordChange}
-            onFocus={e => e.target.select()}
-            placeholder='room password (optional)'
-          />
-
           <select
             name='status'
             defaultValue={room?.status ?? 'open'}
@@ -107,15 +96,31 @@ const EditRoom = ({ onClose, room }: EditRoomProps) => {
 
         <div className={styles.prefsContainer}>
           <UserPrefs prefs={prefs} onChange={handlePrefsChange} />
-          <QRPrefs prefs={prefs} onChange={handlePrefsChange} roomPassword={roomPassword} roomPasswordDirty={isPasswordDirty} />
+          <QRPrefs prefs={prefs} onChange={handlePrefsChange} />
         </div>
 
         <div className={styles.btnContainer}>
           <Button type='submit' variant='primary' className={styles.btn}>
             {room ? 'Update Room' : 'Create Room'}
           </Button>
+          {room && currentRoomId !== room.roomId && (
+            <Button onClick={handleJoinClick} className={styles.btn} variant='primary'>
+              Join Room
+            </Button>
+          )}
+          {room && currentRoomId === room.roomId && (
+            <Button onClick={handleLeaveClick} className={styles.btn} variant='default'>
+              Leave Room
+            </Button>
+          )}
           {room && (
-            <Button onClick={handleRemoveClick} className={styles.btn} variant='danger'>
+            <Button
+              onClick={handleRemoveClick}
+              className={styles.btn}
+              variant='danger'
+              disabled={currentRoomId === room.roomId}
+              title={currentRoomId === room.roomId ? 'Leave this room before removing it' : undefined}
+            >
               Remove Room
             </Button>
           )}

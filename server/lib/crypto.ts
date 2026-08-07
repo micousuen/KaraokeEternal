@@ -111,8 +111,13 @@ function isLegacy (hashStr: string) {
   return typeof hashStr === 'string' && hashStr.startsWith('$2')
 }
 
+function randomToken (): string {
+  return crypto.randomBytes(32).toString('base64url')
+}
+
 export default {
   hash,
   compare,
   isLegacy,
+  randomToken,
 }

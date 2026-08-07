@@ -37,6 +37,7 @@ export interface OptimisticQueueItem {
 export interface IRoomPrefs {
   qr: {
     isEnabled: boolean
+    isServerManaged?: boolean
     opacity: number
     password: string
     size: number

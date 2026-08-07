@@ -5,7 +5,6 @@ import { ValidationError } from '../lib/Errors.js'
 
 const NAME_MIN_LENGTH = 1
 const NAME_MAX_LENGTH = 50
-const PASSWORD_MIN_LENGTH = 5
 
 export const STATUSES = ['open', 'closed']
 
@@ -75,15 +74,12 @@ class Rooms {
   }
 
   static async set (roomId, room) {
-    const { name, password, status, prefs } = room
+    const { name, status } = room
+    let prefs = room.prefs || {}
     let query
 
     if (!name || !name.trim() || name.length < NAME_MIN_LENGTH || name.length > NAME_MAX_LENGTH) {
       throw new ValidationError(`Room name must have ${NAME_MIN_LENGTH}-${NAME_MAX_LENGTH} characters`)
-    }
-
-    if (password && password.length < PASSWORD_MIN_LENGTH) {
-      throw new ValidationError(`Room password must have at least ${PASSWORD_MIN_LENGTH} characters`)
     }
 
     if (!status || !STATUSES.includes(status)) {
@@ -91,11 +87,22 @@ class Rooms {
     }
 
     if (typeof roomId === 'number') {
-      const passwordSql = typeof password === 'undefined'
-        // leave unchanged
+      const existing = Rooms.get(roomId, { status: [], includePassword: true }).entities[roomId]
+      if (!existing) throw new ValidationError('Room not found')
+      const existingSecret = existing.prefs?.qr?.password
+      const joinSecret = existingSecret || crypto.randomToken()
+      const passwordSql = existingSecret
         ? sql``
-        // empty string unsets password
-        : sql`password = ${password === '' ? null : await crypto.hash(password)},`
+        : sql`password = ${await crypto.hash(joinSecret)},`
+      prefs = {
+        ...prefs,
+        qr: {
+          ...prefs.qr,
+          isEnabled: true,
+          isServerManaged: true,
+          password: joinSecret,
+        },
+      }
 
       query = sql`
         UPDATE rooms
@@ -106,11 +113,16 @@ class Rooms {
         WHERE roomId = ${roomId}
       `
     } else {
+      const joinSecret = crypto.randomToken()
+      prefs = {
+        ...prefs,
+        qr: { ...prefs.qr, isEnabled: true, isServerManaged: true, password: joinSecret },
+      }
       query = sql`
         INSERT INTO rooms (name, password, status, dateCreated, data)
         VALUES (
           ${name},
-          ${typeof password === 'undefined' ? null : await crypto.hash(password)},
+          ${await crypto.hash(joinSecret)},
           ${status},
           ${Math.floor(Date.now() / 1000)},
           json_set('{}', '$.prefs', json(${JSON.stringify(prefs)}))

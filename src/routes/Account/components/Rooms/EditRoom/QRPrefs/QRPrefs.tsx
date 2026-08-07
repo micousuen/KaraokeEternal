@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback } from 'react'
 import clsx from 'clsx'
 import Accordion from 'components/Accordion/Accordion'
-import InputCheckbox from 'components/InputCheckbox/InputCheckbox'
 import Icon from 'components/Icon/Icon'
 import Slider from 'components/Slider/Slider'
 import type { IRoomPrefs } from 'shared/types'
@@ -10,22 +9,12 @@ import styles from './QRPrefs.css'
 interface QRPrefsProps {
   prefs: Partial<IRoomPrefs>
   onChange: (prefs: Partial<IRoomPrefs>) => void
-  roomPassword: string
-  roomPasswordDirty: boolean
 }
 
-const QRPrefs = ({ onChange, prefs = {}, roomPassword, roomPasswordDirty }: QRPrefsProps) => {
-  const [isQRPasswordEnabled, setIsQRPasswordEnabled] = useState(!!prefs?.qr?.password)
-
+const QRPrefs = ({ onChange, prefs = {} }: QRPrefsProps) => {
   const handleSetPref = useCallback((update: Partial<IRoomPrefs>) => {
     onChange({ ...prefs, ...update })
   }, [onChange, prefs])
-
-  useEffect(() => {
-    if (isQRPasswordEnabled && roomPasswordDirty && prefs?.qr?.password !== roomPassword) {
-      handleSetPref({ qr: { ...prefs.qr, password: roomPassword } })
-    }
-  }, [handleSetPref, isQRPasswordEnabled, prefs, roomPassword, roomPasswordDirty])
 
   return (
     <Accordion
@@ -37,38 +26,7 @@ const QRPrefs = ({ onChange, prefs = {}, roomPassword, roomPasswordDirty }: QRPr
       )}
     >
       <div className={styles.content}>
-        <div className={styles.field}>
-          <InputCheckbox
-            label='Show QR code'
-            checked={prefs?.qr?.isEnabled ?? false}
-            onChange={event => handleSetPref({ qr: { ...prefs.qr, isEnabled: event.currentTarget.checked } })}
-          />
-        </div>
-        {prefs?.qr?.isEnabled && roomPassword && (
-          <div className={styles.field}>
-            <InputCheckbox
-              label='Include room password'
-              checked={isQRPasswordEnabled}
-              onChange={(event) => {
-                const checked = event.currentTarget.checked
-                setIsQRPasswordEnabled(checked)
-                if (!checked) handleSetPref({ qr: { ...prefs.qr, password: '' } })
-              }}
-            />
-          </div>
-        )}
-        {(isQRPasswordEnabled && !roomPasswordDirty) && (
-          <div className={styles.field}>
-            <input
-              type='password'
-              autoComplete='new-password'
-              value={prefs?.qr?.password ?? ''}
-              onChange={e => handleSetPref({ qr: { ...prefs.qr, password: e.target.value } })}
-              onFocus={e => e.target.select()}
-              placeholder='re-enter room password'
-            />
-          </div>
-        )}
+        <p>Room access is protected by a server-generated secret embedded in the QR code.</p>
         <div className={clsx(styles.field)}>
           <label id='label-qr-size'>Size</label>
           <Slider

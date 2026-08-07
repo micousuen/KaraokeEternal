@@ -21,7 +21,7 @@ import {
 const api = new HttpApi('')
 const basename = new URL(document.baseURI).pathname
 
-const receiveAccount = createAction<object>(ACCOUNT_RECEIVE)
+export const receiveAccount = createAction<object>(ACCOUNT_RECEIVE)
 
 // ------------------------------------
 // Login
@@ -49,6 +49,8 @@ export const login = createAsyncThunk(
 
     if (redirect) {
       AppRouter.navigate(basename.replace(/\/$/, '') + redirect)
+    } else if (typeof user.roomId === 'number') {
+      AppRouter.navigate(basename.replace(/\/$/, '') + '/library')
     }
   },
 )
@@ -100,6 +102,8 @@ export const createAccount = createAsyncThunk<void, FormData, { state: RootState
 
     if (redirect) {
       AppRouter.navigate(basename.replace(/\/$/, '') + redirect)
+    } else if (typeof user.roomId === 'number') {
+      AppRouter.navigate(basename.replace(/\/$/, '') + '/library')
     }
   },
 )
@@ -133,6 +137,35 @@ export const fetchAccount = createAsyncThunk(
     } catch {
       // ignore errors
     }
+  },
+)
+
+// ------------------------------------
+// Admin room switching
+// ------------------------------------
+export const joinRoomAsAdmin = createAsyncThunk(
+  'user/JOIN_ROOM_AS_ADMIN',
+  async (roomId: number, thunkAPI) => {
+    const user = await api.post(`rooms/${roomId}/join`)
+
+    socket.close()
+    thunkAPI.dispatch(receiveAccount(user))
+    await thunkAPI.dispatch(connectSocket())
+    socket.open()
+    AppRouter.navigate(basename.replace(/\/$/, '') + '/library')
+  },
+)
+
+export const leaveRoomAsAdmin = createAsyncThunk(
+  'user/LEAVE_ROOM_AS_ADMIN',
+  async (_, thunkAPI) => {
+    const user = await api.post('rooms/leave')
+
+    socket.close()
+    thunkAPI.dispatch(receiveAccount(user))
+    await thunkAPI.dispatch(connectSocket())
+    socket.open()
+    AppRouter.navigate(basename.replace(/\/$/, '') + '/account')
   },
 )
 

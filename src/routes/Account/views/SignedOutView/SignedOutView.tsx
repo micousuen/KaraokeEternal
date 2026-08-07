@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import clsx from 'clsx'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { fetchRooms } from 'store/modules/rooms'
 import { createAccount, login } from 'store/modules/user'
 import Logo from 'components/Logo/Logo'
-import SelectRoom from './SelectRoom/SelectRoom'
 import InputRadio from 'components/InputRadio/InputRadio'
 import Create from './Create/Create'
 import SignIn from './SignIn/SignIn'
@@ -24,8 +22,6 @@ const SignedOutView = () => {
   const [password, setPassword] = useState('')
   const [roomId, setRoomId] = useState<number | null>(null)
   const [roomPassword, setRoomPassword] = useState('')
-  const [showRoomSection, setShowRoomSection] = useState(false)
-  const [showAllRooms, setShowAllRooms] = useState(true)
   const [prevRooms, setPrevRooms] = useState<typeof rooms | null>(null)
   const [focusRequest, setFocusRequest] = useState(0)
 
@@ -41,38 +37,20 @@ const SignedOutView = () => {
     const searchParams = new URLSearchParams(location.search)
     const roomIdParam = searchParams.get('roomId')
     const id = roomIdParam ? parseInt(roomIdParam, 10) : null
-    const password = searchParams.get('password')
+    const encodedSecret = searchParams.get('password')
 
-    if (id && rooms.entities[id]) {
-      setRoomId(id)
-      setShowAllRooms(false)
-
-      if (rooms.entities[id]?.hasPassword) {
-        if (password) {
-          setRoomPassword(atob(password))
-          setShowRoomSection(false)
-          setFocusRequest(r => r + 1)
-        } else {
-          setShowRoomSection(true)
-        }
-      } else {
+    if (id && rooms.entities[id] && encodedSecret) {
+      try {
+        setRoomPassword(atob(encodedSecret))
+        setRoomId(id)
         setFocusRequest(r => r + 1)
+      } catch {
+        setRoomId(null)
+        setRoomPassword('')
       }
-    } else if (rooms.result.length === 1) {
-      setRoomId(rooms.result[0])
-      setShowRoomSection(rooms.entities[rooms.result[0]]?.hasPassword)
     } else {
-      setShowRoomSection(rooms.result.length !== 0)
-    }
-  }
-
-  const handleRoomSelect = (id: number) => {
-    setRoomId(id)
-    setMode('returning')
-
-    if (!rooms.entities[id]?.hasPassword || !showRoomSection) {
-      setFocusRequest(r => r + 1)
-      userSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setRoomId(null)
+      setRoomPassword('')
     }
   }
 
@@ -120,6 +98,7 @@ const SignedOutView = () => {
   const allowNewGuest = getAllowed('guest')
   const allowNewStandard = getAllowed('standard')
   const allowNew = allowNewStandard || allowNewGuest
+  const hasRoomInvite = roomId !== null && roomPassword.length > 0
 
   useEffect(() => {
     firstFieldRef.current?.focus()
@@ -129,22 +108,15 @@ const SignedOutView = () => {
     <div className={styles.container} style={{ maxWidth: Math.max(340, ui.contentWidth * 0.66) }}>
       <Logo className={styles.logo} />
 
-      {showRoomSection && (
+      {!hasRoomInvite && (
         <>
-          <h1>Join room...</h1>
-          <SelectRoom
-            rooms={rooms}
-            roomId={roomId}
-            roomPassword={roomPassword}
-            showAllRooms={showAllRooms}
-            onRoomSelect={handleRoomSelect}
-            onRoomPasswordChange={setRoomPassword}
-          />
+          <h1>Admin sign in</h1>
+          <p>Room members and guests must use a room&apos;s QR invite.</p>
         </>
       )}
 
-      <div ref={userSectionRef} className={clsx(rooms.result.length > 1 && roomId === null && styles.hidden)}>
-        {allowNew
+      <div ref={userSectionRef}>
+        {hasRoomInvite && allowNew
           ? (
               <>
                 <h1>Join as...</h1>
@@ -155,7 +127,7 @@ const SignedOutView = () => {
                 </div>
               </>
             )
-          : <h1>Sign in</h1>}
+          : hasRoomInvite && <h1>Sign in</h1>}
 
         {(mode === 'returning' || !allowNew) && (
           <SignIn

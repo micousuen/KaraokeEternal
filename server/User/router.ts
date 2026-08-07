@@ -65,7 +65,7 @@ router.post('/login', async (ctx) => {
         validatePassword: true,
       })
     } else if (user.role !== 'admin') {
-      ctx.throw(401, 'Please select a room')
+      ctx.throw(401, 'An admin account is required outside a room invite')
     }
   } catch (err) {
     ctx.throw(401, err.message)
@@ -116,7 +116,21 @@ router.get('/user', (ctx) => {
     ctx.throw(404)
   }
 
-  ctx.body = createUserCtx(user, ctx.user.roomId)
+  let roomId = ctx.user.roomId
+  if (typeof roomId === 'number' && !Rooms.get(roomId, { status: [] }).entities[roomId]) {
+    if (!ctx.user.isAdmin) ctx.throw(401, 'Room no longer exists')
+    roomId = null
+  }
+
+  const userCtx = createUserCtx(user, roomId)
+  if (roomId !== ctx.user.roomId) {
+    ctx.cookies.set('keToken', jwtSign(userCtx, ctx.jwtKey), {
+      httpOnly: true,
+      sameSite: 'lax',
+    })
+  }
+
+  ctx.body = userCtx
 })
 
 // list all users (admin only)
@@ -437,24 +451,8 @@ router.post('/setup', async (ctx) => {
       throw new Error('User not found')
     }
 
-    // create default room
-    const fields = new Map()
-    fields.set('name', 'Room 1')
-    fields.set('status', 'open')
-    fields.set('dateCreated', Math.floor(Date.now() / 1000))
-
-    const roomQuery = sql`
-      INSERT INTO rooms ${sql.tuple(Array.from(fields.keys()).map(sql.column))}
-      VALUES ${sql.tuple(Array.from(fields.values()))}
-    `
-    const roomRes = db.run(String(roomQuery), roomQuery.parameters)
-
-    if (typeof roomRes.lastID !== 'number') {
-      ctx.throw(500, 'Invalid default room lastID')
-    }
-
     // create JWT
-    const userCtx = createUserCtx(user, roomRes.lastID)
+    const userCtx = createUserCtx(user, null)
     const token = jwtSign(userCtx, ctx.jwtKey)
 
     // set JWT as an httpOnly cookie

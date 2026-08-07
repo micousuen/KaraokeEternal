@@ -1,4 +1,5 @@
 import KoaRouter from '@koa/router'
+import jsonWebToken from 'jsonwebtoken'
 import sql from 'sqlate'
 import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
@@ -11,6 +12,27 @@ interface RequestWithBody {
 
 const log = getLogger('Rooms')
 const router = new KoaRouter({ prefix: '/api/rooms' })
+const { sign: jwtSign } = jsonWebToken
+
+const setAdminRoom = (ctx, roomId: number | null) => {
+  const userCtx = {
+    dateCreated: ctx.user.dateCreated,
+    dateUpdated: ctx.user.dateUpdated,
+    isAdmin: true,
+    isGuest: false,
+    name: ctx.user.name,
+    roomId,
+    userId: ctx.user.userId,
+    username: ctx.user.username,
+  }
+  const token = jwtSign(userCtx, ctx.jwtKey)
+
+  ctx.cookies.set('keToken', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+  })
+  ctx.body = userCtx
+}
 
 import { ROOM_PREFS_PUSH } from '../../shared/actionTypes.js'
 
@@ -49,6 +71,30 @@ router.post('/', async (ctx) => {
 
   // send updated room list
   ctx.body = Rooms.get(null, { status: STATUSES })
+})
+
+// switch an administrator's session into a room
+router.post('/:roomId/join', async (ctx) => {
+  if (!ctx.user.isAdmin || typeof ctx.user.userId !== 'number') {
+    ctx.throw(401)
+  }
+
+  const roomId = parseInt(ctx.params.roomId, 10)
+  const room = Rooms.get(roomId, { status: [] }).entities[roomId]
+
+  if (!room) ctx.throw(404, 'Room not found')
+  if (room.status !== 'open') ctx.throw(422, 'Room is closed')
+
+  setAdminRoom(ctx, roomId)
+})
+
+// return an administrator to room-independent account management
+router.post('/leave', (ctx) => {
+  if (!ctx.user.isAdmin || typeof ctx.user.userId !== 'number') {
+    ctx.throw(401)
+  }
+
+  setAdminRoom(ctx, null)
 })
 
 // update room

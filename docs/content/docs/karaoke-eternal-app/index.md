@@ -145,7 +145,9 @@ The account view lets users manage their account, while admins will see addition
 
 The Rooms panel allows admins to create, edit or remove rooms.
 
-Karaoke Eternal uses "rooms" to organize sessions by time and space (spacetime?) Users choose an open room when signing in, and each room has its own queue. **Don't re-use rooms** - create a new room before each session so that you start with an empty queue, then set the room to `closed` when finished.
+Karaoke Eternal uses "rooms" to organize sessions by time and space (spacetime?) Each room has its own library and queue context. Administrators sign in without joining a room, then use **Join Room** in the room editor when they want to manage or play within one. **Leave Room** returns the administrator to room-independent account management.
+
+Regular users and guests can only enter through the QR invite shown by that room's player. After opening the invite, returning users sign in with their normal account credentials while enabled new-user and guest options are also shown. **Don't re-use rooms** - create a new room before each session so that you start with an empty queue, then set the room to `closed` when finished.
 
 <div class="row">
   {{% img "app-account-room.png" "Room editor" /%}}
@@ -153,13 +155,12 @@ Karaoke Eternal uses "rooms" to organize sessions by time and space (spacetime?)
 
 Rooms have a number of options, including:
 
-- **Name**: The room name users will see when signing in (if more than one open room)
-- **Password**: An optional password users will be required to enter when signing in
+- **Name**: The room name
 - **Status**: Rooms can have one of the following statuses:
   - `open` Can be signed in to and have songs queued
   - `closed` Can no longer be signed in to or have more songs queued. When closing, current occupants are unaffected and can continue playing through the existing queue
 - **Users**: Only users with existing accounts can join a room by default. You can optionally allow users to join with new accounts and/or as guests
-- **QR Code**: Displays a QR code in the room's player that will link users to the app, automatically choosing the room and optionally including the room's password if one is set
+- **QR Code**: Displays the required room invite in the player. The server generates a strong random room secret and embeds it in this QR code; users never type or configure it manually
 
 <aside class="warn">
   {{% icon-warn %}}

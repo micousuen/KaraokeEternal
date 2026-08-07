@@ -76,10 +76,10 @@ const PlayerQR = ({ height, prefs, queueItem }: PlayerQRProps) => {
 
   const url = new URL(window.location.href)
   url.pathname = url.pathname.replace(/\/player$/, '')
-  url.searchParams.append('roomId', String(roomId))
+  url.searchParams.set('roomId', String(roomId))
 
   if (prefs.password) {
-    url.searchParams.append('password', btoa(prefs.password))
+    url.searchParams.set('password', btoa(prefs.password))
   }
 
   const size = Math.round(height * (0.05 + (prefs.size ?? 0.5) / 5)) // min: 5vh, max: 25vh
