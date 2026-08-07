@@ -84,7 +84,7 @@ interface UsersState {
 const initialState: UsersState = {
   result: [],
   entities: {},
-  filterOnline: true,
+  filterOnline: false,
   filterRoomId: null,
   isEditorOpen: false,
 }
