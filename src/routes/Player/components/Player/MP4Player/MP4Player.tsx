@@ -4,6 +4,7 @@ import styles from './MP4Player.css'
 
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
 const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
+const isWebOs = /Web0S|webOS|NetCast/i.test(navigator.userAgent)
 
 interface MP4PlayerProps {
   audioTrack: 0 | 1
@@ -30,7 +31,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   pendingPosition = 0
 
   componentDidMount () {
-    this.props.onAudioElement(this.audio.current)
+    this.props.onAudioElement(isWebOs ? this.video.current as HTMLAudioElement : this.audio.current)
     this.updateSources()
   }
 
@@ -41,7 +42,8 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     }
 
     if (prevProps.audioTrack !== this.props.audioTrack) {
-      this.updateAudioSource(this.audio.current?.currentTime || 0)
+      if (isWebOs) this.updateWebOsSource(this.video.current?.currentTime || 0)
+      else this.updateAudioSource(this.audio.current?.currentTime || 0)
       return
     }
 
@@ -67,11 +69,17 @@ class MP4Player extends React.Component<MP4PlayerProps> {
       <>
         <video
           className={styles.video}
-          muted
+          muted={!isWebOs}
           preload='auto'
           width={width}
           height={height}
           onError={this.handleVideoError}
+          onCanPlayThrough={isWebOs ? this.updateIsPlaying : undefined}
+          onEnded={isWebOs ? this.props.onEnd : undefined}
+          onLoadStart={isWebOs ? this.props.onLoad : undefined}
+          onLoadedMetadata={isWebOs ? this.handleVideoMetadata : undefined}
+          onPlay={isWebOs ? this.handlePlay : undefined}
+          onTimeUpdate={isWebOs ? this.handleVideoTimeUpdate : undefined}
           ref={this.video}
         />
         <audio
@@ -93,10 +101,20 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (!this.video.current || !this.audio.current) return
 
     this.pendingPosition = 0
+    if (isWebOs) {
+      this.updateWebOsSource()
+      this.fetchAudioTrackCount()
+      return
+    }
+
     this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
     this.video.current.load()
     this.updateAudioSource()
 
+    this.fetchAudioTrackCount()
+  }
+
+  fetchAudioTrackCount = () => {
     fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await response.text())
@@ -104,6 +122,14 @@ class MP4Player extends React.Component<MP4PlayerProps> {
       })
       .then(({ audioTrackCount }) => this.props.onStatus({ audioTrackCount }))
       .catch(err => this.props.onError(err.message))
+  }
+
+  updateWebOsSource = (position = 0) => {
+    if (!this.video.current) return
+    this.video.current.pause()
+    this.pendingPosition = position
+    this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoCombined&audioTrack=${this.props.audioTrack}${mediaVersion}`
+    this.video.current.load()
   }
 
   updateAudioSource = (position = 0) => {
@@ -118,6 +144,15 @@ class MP4Player extends React.Component<MP4PlayerProps> {
 
   updateIsPlaying = () => {
     if (!this.video.current || !this.audio.current) return
+
+    if (isWebOs) {
+      if (this.props.isPlaying) {
+        this.video.current.play().catch(err => this.props.onError(err.message))
+      } else {
+        this.video.current.pause()
+      }
+      return
+    }
 
     if (this.props.isPlaying) {
       this.video.current.currentTime = this.audio.current.currentTime
@@ -140,6 +175,18 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (this.pendingPosition <= 0) return
     this.setCurrentTime(Math.min(this.pendingPosition, this.audio.current.duration))
     this.pendingPosition = 0
+  }
+
+  handleVideoMetadata = () => {
+    if (!this.video.current) return
+    this.props.onStatus({ duration: this.video.current.duration })
+    if (this.pendingPosition <= 0) return
+    this.video.current.currentTime = Math.min(this.pendingPosition, this.video.current.duration)
+    this.pendingPosition = 0
+  }
+
+  handleVideoTimeUpdate = () => {
+    if (this.video.current) this.props.onStatus({ position: this.video.current.currentTime })
   }
 
   handleVideoError = () => {

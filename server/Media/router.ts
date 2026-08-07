@@ -107,7 +107,7 @@ router.get('/:mediaId', async (ctx) => {
     ctx.type = fileTypes[getExt(file)]?.mimeType
   }
 
-  if (['video', 'videoAudio', 'videoInfo'].includes(String(type))) {
+  if (['video', 'videoAudio', 'videoCombined', 'videoInfo'].includes(String(type))) {
     // Browser media is versioned on the client and cached on disk by the
     // server. Prevent browser/proxy caches from mixing old audio container
     // bytes with the current response MIME type.
@@ -120,7 +120,14 @@ router.get('/:mediaId', async (ctx) => {
       return
     }
 
-    if (type === 'videoAudio') {
+    if (type === 'videoCombined') {
+      const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
+      if (!Number.isInteger(audioTrack) || !bundle.combined[audioTrack]) {
+        ctx.throw(404, 'Combined audio track not found')
+      }
+      file = bundle.combined[audioTrack]
+      ctx.type = 'video/mp4'
+    } else if (type === 'videoAudio') {
       const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
       const audioFiles = ctx.query.audioFormat === 'aac' ? bundle.audioAac : bundle.audio
       if (!Number.isInteger(audioTrack) || !audioFiles[audioTrack]) {

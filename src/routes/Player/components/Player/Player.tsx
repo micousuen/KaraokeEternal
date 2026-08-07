@@ -130,7 +130,7 @@ class Player extends React.Component<PlayerProps> {
     if (this.props.mediaType === 'cdg') {
       player = <CDGPlayer {...playerProps} />
     } else if (this.props.mediaType === 'mp4') {
-      player = this.props.isVideoKeyingEnabled
+      player = this.props.isVideoKeyingEnabled && !/Web0S|webOS|NetCast/i.test(navigator.userAgent)
         ? <MP4AlphaPlayer {...playerProps} />
         : <MP4Player {...playerProps} />
     } else {

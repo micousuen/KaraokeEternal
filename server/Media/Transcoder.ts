@@ -11,12 +11,14 @@ interface BrowserMediaBundle {
   video: string
   audio: string[]
   audioAac: string[]
+  combined: string[]
 }
 
 interface BundleManifest {
   video: string
   audio: string[]
   audioAac: string[]
+  combined: string[]
 }
 
 const log = getLogger('Transcoder')
@@ -134,6 +136,7 @@ async function transcode (source: string, output: string, mediaId: number): Prom
     const videoName = 'video.mp4'
     const audioNames = Array.from({ length: audioCount }, (_, i) => `audio-${i + 1}.mp3`)
     const audioAacNames = Array.from({ length: audioCount }, (_, i) => `audio-${i + 1}.m4a`)
+    const combinedNames = Array.from({ length: audioCount }, (_, i) => `combined-${i + 1}.mp4`)
 
     await Promise.all([
       run(ffmpegPath, [
@@ -178,10 +181,28 @@ async function transcode (source: string, output: string, mediaId: number): Prom
       ])),
     ])
 
+    // webOS is substantially more reliable when audio and video share one
+    // MP4. Stream-copy the prepared tracks, avoiding another encode.
+    await Promise.all(combinedNames.map((name, i) => run(ffmpegPath, [
+      '-nostdin',
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-y',
+      '-i', path.join(partial, videoName),
+      '-i', path.join(partial, audioAacNames[i]),
+      '-map', '0:v:0',
+      '-map', '1:a:0',
+      '-c', 'copy',
+      '-movflags', '+faststart',
+      '-shortest',
+      path.join(partial, name),
+    ])))
+
     const manifest: BundleManifest = {
       video: videoName,
       audio: audioNames,
       audioAac: audioAacNames,
+      combined: combinedNames,
     }
     await fsPromises.writeFile(
       path.join(partial, 'manifest.json'),
@@ -223,6 +244,7 @@ function resolveBundle (directory: string, manifest: BundleManifest): BrowserMed
     video: path.join(directory, manifest.video),
     audio: manifest.audio.map(file => path.join(directory, file)),
     audioAac: manifest.audioAac.map(file => path.join(directory, file)),
+    combined: manifest.combined.map(file => path.join(directory, file)),
   }
 }
 
