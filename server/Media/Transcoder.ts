@@ -10,11 +10,13 @@ import { BROWSER_MEDIA_VERSION } from '../../shared/media.js'
 interface BrowserMediaBundle {
   video: string
   audio: string[]
+  audioAac: string[]
 }
 
 interface BundleManifest {
   video: string
   audio: string[]
+  audioAac: string[]
 }
 
 const log = getLogger('Transcoder')
@@ -35,8 +37,9 @@ const maxCacheBytes = Math.max(
 ) * 1024 ** 3
 
 /**
- * Return a browser-compatible bundle with silent H.264 video and one MP3 file
- * per source audio stream. Concurrent requests share one preparation job.
+ * Return a browser-compatible bundle with silent H.264 video plus MP3 and AAC
+ * alternatives for each source audio stream. Concurrent requests share one
+ * preparation job.
  */
 export async function getBrowserMedia (source: string, mediaId: number): Promise<BrowserMediaBundle> {
   const stats = await fsPromises.stat(source)
@@ -130,6 +133,7 @@ async function transcode (source: string, output: string, mediaId: number): Prom
 
     const videoName = 'video.mp4'
     const audioNames = Array.from({ length: audioCount }, (_, i) => `audio-${i + 1}.mp3`)
+    const audioAacNames = Array.from({ length: audioCount }, (_, i) => `audio-${i + 1}.m4a`)
 
     await Promise.all([
       run(ffmpegPath, [
@@ -159,11 +163,25 @@ async function transcode (source: string, output: string, mediaId: number): Prom
         '-b:a', process.env.KES_TRANSCODE_AUDIO_BITRATE || '192k',
         path.join(partial, name),
       ])),
+      ...audioAacNames.map((name, i) => run(ffmpegPath, [
+        '-nostdin',
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-y',
+        '-i', source,
+        '-map', `0:a:${i}`,
+        '-vn',
+        '-c:a', 'aac',
+        '-b:a', process.env.KES_TRANSCODE_AUDIO_BITRATE || '192k',
+        '-movflags', '+faststart',
+        path.join(partial, name),
+      ])),
     ])
 
     const manifest: BundleManifest = {
       video: videoName,
       audio: audioNames,
+      audioAac: audioAacNames,
     }
     await fsPromises.writeFile(
       path.join(partial, 'manifest.json'),
@@ -204,6 +222,7 @@ function resolveBundle (directory: string, manifest: BundleManifest): BrowserMed
   return {
     video: path.join(directory, manifest.video),
     audio: manifest.audio.map(file => path.join(directory, file)),
+    audioAac: manifest.audioAac.map(file => path.join(directory, file)),
   }
 }
 

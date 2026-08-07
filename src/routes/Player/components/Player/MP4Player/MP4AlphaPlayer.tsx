@@ -6,6 +6,7 @@ import styles from './MP4Player.css'
 const BACKDROP_PADDING = 10 // px at 1:1 scale
 const BORDER_RADIUS = parseInt(getComputedStyle(document.body).getPropertyValue('--border-radius'))
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
+const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
 
 interface MP4AlphaPlayerProps {
   audioTrack: 0 | 1
@@ -186,7 +187,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.video.pause()
     this.audio.pause()
     this.pendingPosition = position
-    this.audio.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}${mediaVersion}`
+    this.audio.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}${audioFormat}${mediaVersion}`
     this.audio.load()
   }
 

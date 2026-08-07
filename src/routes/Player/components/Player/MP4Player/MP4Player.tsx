@@ -3,6 +3,7 @@ import { BROWSER_MEDIA_VERSION } from 'shared/media'
 import styles from './MP4Player.css'
 
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
+const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
 
 interface MP4PlayerProps {
   audioTrack: 0 | 1
@@ -111,7 +112,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     this.video.current?.pause()
     this.audio.current.pause()
     this.pendingPosition = position
-    this.audio.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}${mediaVersion}`
+    this.audio.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}${audioFormat}${mediaVersion}`
     this.audio.current.load()
   }
 

@@ -122,10 +122,11 @@ router.get('/:mediaId', async (ctx) => {
 
     if (type === 'videoAudio') {
       const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
-      if (!Number.isInteger(audioTrack) || !bundle.audio[audioTrack]) {
+      const audioFiles = ctx.query.audioFormat === 'aac' ? bundle.audioAac : bundle.audio
+      if (!Number.isInteger(audioTrack) || !audioFiles[audioTrack]) {
         ctx.throw(404, 'Audio track not found')
       }
-      file = bundle.audio[audioTrack]
+      file = audioFiles[audioTrack]
       ctx.type = fileTypes[getExt(file)]?.mimeType || 'audio/mpeg'
     } else {
       file = bundle.video
