@@ -6,7 +6,6 @@ import {
   ROOMS_REQUEST,
   ROOM_EDITOR_OPEN,
   ROOM_EDITOR_CLOSE,
-  ROOM_FILTER_STATUS,
   ROOM_UPDATE,
   ROOM_CREATE,
   ROOM_REMOVE,
@@ -83,7 +82,6 @@ export const removeRoom = createAsyncThunk(
 
 export const openRoomEditor = createAction(ROOM_EDITOR_OPEN)
 export const closeRoomEditor = createAction(ROOM_EDITOR_CLOSE)
-export const filterByStatus = createAction<boolean | string>(ROOM_FILTER_STATUS)
 const roomPrefsPush = createAction<{ roomId: number, prefs: IRoomPrefs }>(ROOM_PREFS_PUSH)
 
 export function requestPrefsPush (roomId: number, prefs: IRoomPrefs): AppThunk {
@@ -110,14 +108,12 @@ export function requestPrefsPush (roomId: number, prefs: IRoomPrefs): AppThunk {
 interface RoomsState {
   result: number[]
   entities: Record<number, Room>
-  filterStatus: boolean | string
   isEditorOpen: boolean
 }
 
 const initialState: RoomsState = {
   result: [],
   entities: {},
-  filterStatus: 'open',
   isEditorOpen: false,
 }
 
@@ -137,9 +133,6 @@ const roomsReducer = createReducer(initialState, (builder) => {
     })
     .addCase(closeRoomEditor, (state) => {
       state.isEditorOpen = false
-    })
-    .addCase(filterByStatus, (state, { payload }) => {
-      state.filterStatus = payload
     })
     .addCase(roomPrefsPush, (state, { payload }) => {
       const roomId = payload.roomId

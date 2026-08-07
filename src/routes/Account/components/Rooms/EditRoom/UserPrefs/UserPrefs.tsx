@@ -9,9 +9,10 @@ import styles from './UserPrefs.css'
 interface UserPrefsProps {
   prefs: Partial<IRoomPrefs>
   onChange: (prefs: Partial<IRoomPrefs>) => void
+  allowNewByDefault?: boolean
 }
 
-const UserPrefs = ({ onChange, prefs = {} }: UserPrefsProps) => {
+const UserPrefs = ({ allowNewByDefault = false, onChange, prefs = {} }: UserPrefsProps) => {
   const roles = useAppSelector(state => state.prefs.roles)
 
   const getRoleId = (roleName: string) => {
@@ -35,8 +36,8 @@ const UserPrefs = ({ onChange, prefs = {} }: UserPrefsProps) => {
     })
   }
 
-  const allowNewGuest = prefs.roles?.[getRoleId('guest')]?.allowNew ?? false
-  const allowNewStandard = prefs.roles?.[getRoleId('standard')]?.allowNew ?? false
+  const allowNewGuest = prefs.roles?.[getRoleId('guest')]?.allowNew ?? allowNewByDefault
+  const allowNewStandard = prefs.roles?.[getRoleId('standard')]?.allowNew ?? allowNewByDefault
 
   return (
     <Accordion

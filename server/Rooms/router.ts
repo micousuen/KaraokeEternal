@@ -3,7 +3,7 @@ import jsonWebToken from 'jsonwebtoken'
 import sql from 'sqlate'
 import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
-import Rooms, { STATUSES } from '../Rooms/Rooms.js'
+import Rooms from '../Rooms/Rooms.js'
 import { ValidationError } from '../lib/Errors.js'
 
 interface RequestWithBody {
@@ -39,8 +39,7 @@ import { ROOM_PREFS_PUSH } from '../../shared/actionTypes.js'
 // list rooms
 router.get(['/', '/:roomId'], (ctx) => {
   const roomId = ctx.params.roomId ? parseInt(ctx.params.roomId, 10) : undefined
-  const status = ctx.user.isAdmin ? STATUSES : undefined
-  const res = Rooms.get(roomId, { status })
+  const res = Rooms.get(roomId)
 
   res.result.forEach((roomId) => {
     if (ctx.user.isAdmin) {
@@ -70,7 +69,7 @@ router.post('/', async (ctx) => {
   }
 
   // send updated room list
-  ctx.body = Rooms.get(null, { status: STATUSES })
+  ctx.body = Rooms.get(null, { status: [] })
 })
 
 // switch an administrator's session into a room
@@ -83,7 +82,6 @@ router.post('/:roomId/join', async (ctx) => {
   const room = Rooms.get(roomId, { status: [] }).entities[roomId]
 
   if (!room) ctx.throw(404, 'Room not found')
-  if (room.status !== 'open') ctx.throw(422, 'Room is closed')
 
   setAdminRoom(ctx, roomId)
 })
@@ -126,7 +124,7 @@ router.put('/:roomId', async (ctx) => {
   }
 
   // send updated room list
-  ctx.body = Rooms.get(null, { status: STATUSES })
+  ctx.body = Rooms.get(null, { status: [] })
 })
 
 // remove room
@@ -158,7 +156,7 @@ router.delete('/:roomId', (ctx) => {
   log.verbose('%s deleted roomId %s', ctx.user.name, roomId)
 
   // send updated room list
-  ctx.body = Rooms.get(null, { status: STATUSES })
+  ctx.body = Rooms.get(null, { status: [] })
 })
 
 export default router

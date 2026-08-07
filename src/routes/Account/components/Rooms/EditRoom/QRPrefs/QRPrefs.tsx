@@ -26,7 +26,7 @@ const QRPrefs = ({ onChange, prefs = {} }: QRPrefsProps) => {
       )}
     >
       <div className={styles.content}>
-        <p>Room access is protected by a server-generated secret embedded in the QR code.</p>
+        <p>QR access is always enabled and protected by a server-generated room secret.</p>
         <div className={clsx(styles.field)}>
           <label id='label-qr-size'>Size</label>
           <Slider

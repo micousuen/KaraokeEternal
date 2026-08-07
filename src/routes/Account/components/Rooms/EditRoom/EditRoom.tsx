@@ -85,17 +85,10 @@ const EditRoom = ({ onClose, room }: EditRoomProps) => {
             ref={r => typeof room === 'undefined' ? r?.setAttribute('autofocus', 'true') : undefined}
           />
 
-          <select
-            name='status'
-            defaultValue={room?.status ?? 'open'}
-          >
-            <option value='open'>Open</option>
-            <option value='closed'>Closed</option>
-          </select>
         </div>
 
         <div className={styles.prefsContainer}>
-          <UserPrefs prefs={prefs} onChange={handlePrefsChange} />
+          <UserPrefs prefs={prefs} onChange={handlePrefsChange} allowNewByDefault={!room} />
           <QRPrefs prefs={prefs} onChange={handlePrefsChange} />
         </div>
 

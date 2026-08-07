@@ -61,7 +61,6 @@ router.post('/login', async (ctx) => {
 
     if (roomId) {
       await Rooms.validate(roomId, req.body.roomPassword, {
-        isOpen: user.role !== 'admin', // admins can sign in to closed rooms
         validatePassword: true,
       })
     } else if (user.role !== 'admin') {

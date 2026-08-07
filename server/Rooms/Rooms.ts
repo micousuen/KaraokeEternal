@@ -6,8 +6,6 @@ import { ValidationError } from '../lib/Errors.js'
 const NAME_MIN_LENGTH = 1
 const NAME_MAX_LENGTH = 50
 
-export const STATUSES = ['open', 'closed']
-
 // Remember which users have been seen in each room
 const roomUsers: Map<number, Set<number>> = new Map()
 
@@ -17,7 +15,7 @@ class Rooms {
    */
   static get (
     roomId: number | null | undefined = undefined,
-    { status = ['open'], includePassword = false }: { status?: string[], includePassword?: boolean } = {},
+    { status = [], includePassword = false }: { status?: string[], includePassword?: boolean } = {},
   ): { result: number[], entities: Record<number, any> } {
     const result = []
     const entities = {}
@@ -74,16 +72,12 @@ class Rooms {
   }
 
   static async set (roomId, room) {
-    const { name, status } = room
+    const { name } = room
     let prefs = room.prefs || {}
     let query
 
     if (!name || !name.trim() || name.length < NAME_MIN_LENGTH || name.length > NAME_MAX_LENGTH) {
       throw new ValidationError(`Room name must have ${NAME_MIN_LENGTH}-${NAME_MAX_LENGTH} characters`)
-    }
-
-    if (!status || !STATUSES.includes(status)) {
-      throw new ValidationError('Invalid room status')
     }
 
     if (typeof roomId === 'number') {
@@ -108,14 +102,27 @@ class Rooms {
         UPDATE rooms
         SET name = ${name},
             ${passwordSql}
-            status = ${status},
+            status = 'open',
             data = json_set(data, '$.prefs', json(${JSON.stringify(prefs)}))
         WHERE roomId = ${roomId}
       `
     } else {
       const joinSecret = crypto.randomToken()
+      const defaultRoles = db.all<{ roleId: number }>(
+        "SELECT roleId FROM roles WHERE name IN ('standard', 'guest')",
+      )
+      const rolePrefs = { ...prefs.roles }
+
+      defaultRoles.forEach(({ roleId }) => {
+        rolePrefs[roleId] = {
+          allowNew: true,
+          ...rolePrefs[roleId],
+        }
+      })
+
       prefs = {
         ...prefs,
+        roles: rolePrefs,
         qr: { ...prefs.qr, isEnabled: true, isServerManaged: true, password: joinSecret },
       }
       query = sql`
@@ -123,7 +130,7 @@ class Rooms {
         VALUES (
           ${name},
           ${await crypto.hash(joinSecret)},
-          ${status},
+          'open',
           ${Math.floor(Date.now() / 1000)},
           json_set('{}', '$.prefs', json(${JSON.stringify(prefs)}))
         )
@@ -140,11 +147,9 @@ class Rooms {
     roomId: number,
     password: string | undefined,
     {
-      isOpen = true,
       validatePassword = true,
       role,
     }: {
-      isOpen?: boolean
       validatePassword?: boolean
       role?: any
     } = {},
@@ -154,10 +159,6 @@ class Rooms {
 
     if (!room) {
       throw new Error('Room not found')
-    }
-
-    if (isOpen && room.status !== 'open') {
-      throw new Error('Room is no longer open')
     }
 
     if (validatePassword && room.password) {

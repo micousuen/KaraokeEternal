@@ -147,7 +147,7 @@ The Rooms panel allows admins to create, edit or remove rooms.
 
 Karaoke Eternal uses "rooms" to organize sessions by time and space (spacetime?) Each room has its own library and queue context. Administrators sign in without joining a room, then use **Join Room** in the room editor when they want to manage or play within one. **Leave Room** returns the administrator to room-independent account management.
 
-Regular users and guests can only enter through the QR invite shown by that room's player. After opening the invite, returning users sign in with their normal account credentials while enabled new-user and guest options are also shown. **Don't re-use rooms** - create a new room before each session so that you start with an empty queue, then set the room to `closed` when finished.
+Regular users and guests can only enter through the QR invite shown by that room's player. After opening the invite, returning users sign in with their normal account credentials while enabled new-user and guest options are also shown. Create a new room before each session so that you start with an empty queue, then remove it when the session is no longer needed.
 
 All authenticated room members can control playback and manage the room queue. Completed songs move out of the active queue into the persistent **Played** view. Use the add button beside a played song to put a new copy at the end of the active queue.
 
@@ -158,9 +158,6 @@ All authenticated room members can control playback and manage the room queue. C
 Rooms have a number of options, including:
 
 - **Name**: The room name
-- **Status**: Rooms can have one of the following statuses:
-  - `open` Can be signed in to and have songs queued
-  - `closed` Can no longer be signed in to or have more songs queued. When closing, current occupants are unaffected and can continue playing through the existing queue
 - **Users**: Only users with existing accounts can join a room by default. You can optionally allow users to join with new accounts and/or as guests
 - **QR Code**: Displays the required room invite in the player. The server generates a strong random room secret and embeds it in this QR code; users never type or configure it manually
 

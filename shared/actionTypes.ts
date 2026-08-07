@@ -70,7 +70,6 @@ export const ROOM_CREATE = 'rooms/CREATE'
 export const ROOM_REMOVE = 'rooms/REMOVE'
 export const ROOM_EDITOR_OPEN = 'rooms/EDITOR_OPEN'
 export const ROOM_EDITOR_CLOSE = 'rooms/EDITOR_CLOSE'
-export const ROOM_FILTER_STATUS = 'rooms/TOGGLE_SHOW_ALL'
 export const ROOM_PREFS_PUSH = 'rooms/ROOM_PREFS_PUSH'
 export const ROOM_PREFS_PUSH_REQUEST = 'server/ROOM_PREFS_PUSH_REQUEST'
 

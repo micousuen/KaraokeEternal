@@ -218,7 +218,7 @@ const PlayerController = (props: PlayerControllerProps) => {
         width={props.width}
         height={props.height}
       />
-      {roomPrefs?.qr?.isEnabled && (
+      {roomPrefs?.qr?.password && (
         <PlayerQR
           height={props.height}
           prefs={roomPrefs.qr}
