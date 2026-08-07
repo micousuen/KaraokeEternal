@@ -28,7 +28,9 @@ RUN npm run build
 FROM node:24-bookworm-slim
 
 RUN apt-get update \
-  && apt-get install --yes --no-install-recommends ffmpeg \
+  && apt-get install --yes --no-install-recommends ffmpeg python3 python3-venv \
+  && python3 -m venv /opt/yt-dlp \
+  && /opt/yt-dlp/bin/pip install --no-cache-dir "yt-dlp[default]" bgutil-ytdlp-pot-provider==1.3.1 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -38,7 +40,9 @@ COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./
 
 ENV NODE_ENV=production \
+  PATH=/opt/yt-dlp/bin:$PATH \
   KES_PATH_DATA=/config \
+  KES_PATH_DOWNLOADS=/media/downloads \
   KES_PATH_TRANSCODE=/transcode \
   KES_PORT=8080
 

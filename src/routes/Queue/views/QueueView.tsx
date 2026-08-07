@@ -16,6 +16,7 @@ const QueueView = () => {
   const isLoading = useAppSelector(state => ensureState(state.queue).isLoading)
   const queue = useAppSelector(getRoundRobinQueue)
   const queueId = useAppSelector(state => state.status.queueId)
+  const hasYouTubeJobs = useAppSelector(state => state.youtubeJobs.result.length > 0)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // ensure current song is in view on first mount only
@@ -50,7 +51,7 @@ const QueueView = () => {
 
       {isLoading && <Spinner />}
 
-      {!isLoading && queue.result.length === 0 && (
+      {!isLoading && queue.result.length === 0 && !hasYouTubeJobs && (
         <TextOverlay>
           <h1>Queue Empty</h1>
           <p>

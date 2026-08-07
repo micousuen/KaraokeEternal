@@ -12,6 +12,19 @@ export interface Song {
   numMedia: number
 }
 
+export interface YouTubeJob {
+  jobId: string
+  userId: number
+  userDisplayName: string
+  userDateUpdated: number
+  roomId: number
+  title: string
+  status: 'queued' | 'downloading' | 'scanning' | 'complete' | 'error'
+  progress: number | null
+  message: string
+  file?: string
+}
+
 export interface QueueItem {
   queueId: number
   songId: number

@@ -10,6 +10,7 @@ import Rooms from './Rooms/Rooms.js'
 import RoomsSocket from './Rooms/socket.js'
 import Queue from './Queue/Queue.js'
 import QueueSocket from './Queue/socket.js'
+import { getRoomYouTubeJobs } from './YouTube/YouTube.js'
 
 import {
   LIBRARY_PUSH,
@@ -19,6 +20,7 @@ import {
   PLAYER_STATUS,
   PLAYER_LEAVE,
   PREFS_PUSH,
+  YOUTUBE_JOBS_PUSH,
   SOCKET_AUTH_ERROR,
   _ERROR,
 } from '../shared/actionTypes.js'
@@ -174,6 +176,10 @@ export default function (io, jwtKey) {
     io.to(sock.id).emit('action', {
       type: QUEUE_PUSH,
       payload: Queue.get(sock.user.roomId),
+    })
+    io.to(sock.id).emit('action', {
+      type: YOUTUBE_JOBS_PUSH,
+      payload: getRoomYouTubeJobs(sock.user.roomId),
     })
   })
 }

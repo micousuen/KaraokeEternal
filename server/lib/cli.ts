@@ -26,6 +26,7 @@ const env = {
     : undefined,
   KES_PATH_ASSETS: path.join(baseDir, 'assets'),
   KES_PATH_DATA: process.env.KES_PATH_DATA || getAppPath('Karaoke Eternal Server'),
+  KES_PATH_DOWNLOADS: process.env.KES_PATH_DOWNLOADS || '/media/downloads',
   KES_PATH_WEBROOT: path.join(baseDir, 'build', 'client'),
   KES_PORT: parseInt(process.env.KES_PORT, 10) || 0,
   KES_ROTATE_KEY: ['1', 'true'].includes(process.env.KES_ROTATE_KEY?.toLowerCase()),
@@ -37,6 +38,8 @@ const env = {
   KES_SERVER_CONSOLE_LEVEL: parseInt(process.env.KES_SERVER_CONSOLE_LEVEL, 10) || undefined,
   KES_SERVER_LOG_LEVEL: parseInt(process.env.KES_SERVER_LOG_LEVEL, 10) || undefined,
   KES_URL_PATH: process.env.KES_URL_PATH || '/',
+  KES_YOUTUBE_MAX_DURATION: Math.max(parseInt(process.env.KES_YOUTUBE_MAX_DURATION, 10) || 300, 1),
+  KES_YOUTUBE_POT_PROVIDER_URL: process.env.KES_YOUTUBE_POT_PROVIDER_URL?.trim() || undefined,
   // support PUID/PGID convention
   KES_PUID: parseInt(process.env.PUID, 10) || undefined,
   KES_PGID: parseInt(process.env.PGID, 10) || undefined,

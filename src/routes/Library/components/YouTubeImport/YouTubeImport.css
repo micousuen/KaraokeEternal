@@ -1,0 +1,22 @@
+.form {
+  width: min(34rem, 85vw);
+
+  input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+.buttons {
+  display: flex;
+  gap: var(--space-s);
+  margin-top: var(--space-m);
+}
+
+.error {
+  margin-top: var(--space-m);
+}
+
+.error {
+  color: var(--danger-color, #d33);
+}

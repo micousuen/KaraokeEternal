@@ -151,6 +151,14 @@ Regular users and guests can only enter through the QR invite shown by that room
 
 All authenticated room members can control playback and manage the room queue. Completed songs move out of the active queue into the persistent **Played** view. Use the add button beside a played song to put a new copy at the end of the active queue.
 
+### YouTube downloads
+
+Room members can use the YouTube button in the Library header to download a public YouTube video. Downloads run anonymously: no Google account, browser cookies or user credentials are requested. Private, members-only, age-gated, live and over-limit videos are rejected with an explanation.
+
+The download appears immediately as a temporary row at the end of the room queue, with its progress filling the row background for every connected user. The TrueNAS deployment stores the finished video in `/media/downloads`, inside the existing media folder, and automatically queues a library scan. After the scan indexes the file, the temporary row is replaced with the real, persistent queue entry. Proof-of-origin tokens are generated and refreshed automatically by the private `youtube-pot-provider` service; its port is not exposed outside the Compose application.
+
+Set `KES_YOUTUBE_MAX_DURATION` to the maximum accepted video duration in seconds (the provided Compose file defaults to 300, or 5 minutes). The existing media dataset must be writable by the configured `PUID` and `PGID` so the `downloads` subfolder can be created.
+
 <div class="row">
   {{% img "app-account-room.png" "Room editor" /%}}
 </div>

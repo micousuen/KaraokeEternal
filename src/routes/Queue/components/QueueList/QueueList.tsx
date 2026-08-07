@@ -3,6 +3,7 @@ import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { ensureState } from 'redux-optimistic-ui'
 import QueueItem from '../QueueItem/QueueItem'
+import YouTubeQueueItem from '../YouTubeQueueItem/YouTubeQueueItem'
 import Button from 'components/Button/Button'
 import { moveItem, removeUpcomingItems, shuffleItems } from '../../modules/queue'
 import { requestPriority } from 'store/modules/status'
@@ -22,6 +23,7 @@ const QueueList = () => {
   const starredSongs = useAppSelector(state => ensureState(state.userStars).starredSongs)
   const starCounts = useAppSelector(state => state.starCounts)
   const user = useAppSelector(state => state.user)
+  const youtubeJobs = useAppSelector(state => state.youtubeJobs)
   const isPlayed = (id: number) => queue.entities[id].isPlayed || playerHistory.includes(id)
   const activeIds = queue.result.filter(id => !isPlayed(id))
   const playedIds = queue.result.filter(isPlayed).reverse()
@@ -136,6 +138,9 @@ const QueueList = () => {
           {provided => (
             <div ref={provided.innerRef} {...provided.droppableProps}>
               {items}
+              {!showPlayed && youtubeJobs.result.map(jobId => (
+                <YouTubeQueueItem key={jobId} job={youtubeJobs.entities[jobId]} />
+              ))}
               {provided.placeholder}
             </div>
           )}
