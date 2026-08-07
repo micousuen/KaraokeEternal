@@ -1,14 +1,46 @@
 import Media from './Media.js'
-import { MEDIA_ADD, MEDIA_CLEANUP, MEDIA_REMOVE, MEDIA_UPDATE } from '../../shared/actionTypes.js'
+import Library from '../Library/Library.js'
+import { LIBRARY_SCAN_BATCH, MEDIA_ADD, MEDIA_CLEANUP, MEDIA_REMOVE, MEDIA_UPDATE } from '../../shared/actionTypes.js'
 
 /**
  * IPC action handlers
  */
-export default function (io) { // eslint-disable-line @typescript-eslint/no-unused-vars
+export default function (io) {
+  const pendingSongIds = new Set<number>()
+  let flushTimer: ReturnType<typeof setTimeout> | undefined
+
+  const queueLiveUpdate = (songId) => {
+    if (!Number.isInteger(songId)) return
+    pendingSongIds.add(songId)
+    Library.cache.version = null
+
+    if (!flushTimer) {
+      flushTimer = setTimeout(() => {
+        flushTimer = undefined
+        const songIds = [...pendingSongIds]
+        pendingSongIds.clear()
+
+        while (songIds.length) {
+          io.emit('action', {
+            type: LIBRARY_SCAN_BATCH,
+            payload: Library.getScanBatch(songIds.splice(0, 999)),
+          })
+        }
+      }, 1000)
+    }
+  }
+
   return {
-    [MEDIA_ADD]: ({ payload }) => Media.add(payload),
+    [MEDIA_ADD]: ({ payload }) => {
+      const mediaId = Media.add(payload)
+      queueLiveUpdate(payload.songId)
+      return mediaId
+    },
     [MEDIA_CLEANUP]: Media.cleanup,
     [MEDIA_REMOVE]: ({ payload }) => Media.remove(payload),
-    [MEDIA_UPDATE]: ({ payload }) => Media.update(payload),
+    [MEDIA_UPDATE]: ({ payload }) => {
+      Media.update(payload)
+      queueLiveUpdate(payload.songId)
+    },
   }
 }

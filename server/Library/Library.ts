@@ -123,6 +123,42 @@ class Library {
     }
   }
 
+  /** Build a small library payload for songs discovered during an active scan. */
+  static getScanBatch (songIds: number[]): {
+    artists: { result: number[], entities: Record<number, Artist> }
+    songs: { result: number[], entities: Record<number, Song> }
+  } {
+    const artists = { result: [], entities: {} }
+    const songs = { result: [], entities: {} }
+    if (!songIds.length) return { artists, songs }
+
+    const query = sql`
+      SELECT artists.artistId, artists.name, songs.songId, songs.title,
+        MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia
+      FROM songs
+        INNER JOIN artists USING (artistId)
+        INNER JOIN media USING (songId)
+      WHERE songs.songId IN ${sql.in(songIds.slice(0, 999))}
+      GROUP BY songs.songId
+      ORDER BY songs.titleNorm
+    `
+    const rows = db.all<Song & { name: string }>(String(query), query.parameters)
+
+    for (const row of rows) {
+      const { artistId, name, ...song } = row
+      songs.result.push(song.songId)
+      songs.entities[song.songId] = { artistId, ...song }
+
+      if (!artists.entities[artistId]) {
+        artists.result.push(artistId)
+        artists.entities[artistId] = { artistId, name, songIds: [] }
+      }
+      artists.entities[artistId].songIds.push(song.songId)
+    }
+
+    return { artists, songs }
+  }
+
   /**
   * Matches or creates artist and song
   */

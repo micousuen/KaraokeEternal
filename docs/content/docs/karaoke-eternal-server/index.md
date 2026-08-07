@@ -91,7 +91,12 @@ Karaoke Eternal Server expects your media files to be named in **"Artist - Title
 The customized source build can parse **"Singer - Song - Language"** filenames by setting
 `KES_FILENAME_FORMAT=artist-title-language`. The language suffix is used only to delimit the
 song title because the current database schema does not store language. Multiple singers remain
-a single combined artist value.
+a single combined artist value. Successfully parsed filenames use a zero-I/O fast path: embedded
+metadata and duration are not read during scanning. Media metadata is opened only as a fallback
+when filename parsing or a custom metadata template fails. Fast-path entries initially have an
+unknown duration (`0:00`), so queue wait estimates are unavailable for those entries. New songs
+and artists are published to connected browsers in one-second batches while scanning; a complete
+authoritative library update is still sent when the scan finishes.
 
 ## Metadata Parser
 

@@ -4,6 +4,7 @@ import {
   LIBRARY_FILTER_STRING_RESET,
   LIBRARY_FILTER_TOGGLE_STARRED,
   LIBRARY_PUSH,
+  LIBRARY_SCAN_BATCH,
   TOGGLE_ARTIST_EXPANDED,
   TOGGLE_ARTIST_RESULT_EXPANDED,
   SCROLL_ARTISTS,
@@ -16,6 +17,7 @@ export const scrollArtists = createAction<number>(SCROLL_ARTISTS)
 export const toggleArtistExpanded = createAction<number>(TOGGLE_ARTIST_EXPANDED)
 export const toggleArtistResultExpanded = createAction<number>(TOGGLE_ARTIST_RESULT_EXPANDED)
 const libraryPush = createAction<LibraryState>(LIBRARY_PUSH)
+const libraryScanBatch = createAction(LIBRARY_SCAN_BATCH)
 
 export const resetFilterStr = createAction(LIBRARY_FILTER_STRING_RESET)
 export const toggleFilterStarred = createAction<void>(LIBRARY_FILTER_TOGGLE_STARRED)
@@ -83,6 +85,9 @@ const libraryReducer = createReducer(initialState, (builder) => {
       isLoading: false,
       version: payload.version,
     }))
+    .addCase(libraryScanBatch, (state) => {
+      state.isLoading = false
+    })
 })
 
 export default libraryReducer

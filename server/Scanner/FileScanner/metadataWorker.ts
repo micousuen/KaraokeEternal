@@ -33,6 +33,31 @@ parentPort?.on('message', async ({ id, input }: { id: number, input: MetadataTas
 })
 
 async function extractMetadata ({ file, parserConfig }: MetadataTask): Promise<MetadataResult> {
+  const fileInfo = path.parse(file)
+  const filenameInput: Record<string, unknown> = {
+    dir: fileInfo.dir,
+    dirSep: path.sep,
+    name: fileInfo.name,
+  }
+  let filenameFields
+
+  // Filename parsing is the zero-I/O fast path. Most karaoke collections have
+  // authoritative names but incomplete embedded tags, so don't open the media
+  // merely to discover duration or ReplayGain data.
+  try {
+    filenameFields = parseFilename(fileInfo.name, workerData.filenameFormat)
+    const parsed = MetaParser(parserConfig)({ ...filenameInput, ...filenameFields })
+    return {
+      duration: 0,
+      parsed,
+      rgTrackGain: null,
+      rgTrackPeak: null,
+    }
+  } catch {
+    // Custom metadata templates and unparseable filenames fall back to the
+    // more expensive media read below.
+  }
+
   let mimeType = fileTypes[getExt(file)].mimeType
   let data
 
@@ -57,15 +82,11 @@ async function extractMetadata ({ file, parserConfig }: MetadataTask): Promise<M
 
   if (!data.format.duration) throw new Error('could not determine duration')
 
-  const fileInfo = path.parse(file)
   const parserInput: Record<string, unknown> = {
-    dir: fileInfo.dir,
-    dirSep: path.sep,
-    name: fileInfo.name,
+    ...filenameInput,
     meta: data.common,
+    ...filenameFields,
   }
-
-  Object.assign(parserInput, parseFilename(fileInfo.name, workerData.filenameFormat))
 
   const parsed = MetaParser(parserConfig)(parserInput)
 
