@@ -21,6 +21,7 @@ import {
   PLAYER_EMIT_LEAVE,
   PLAYER_STATUS,
   PLAYER_LEAVE,
+  QUEUE_PUSH,
 } from '../../shared/actionTypes.js'
 import Queue from '../Queue/Queue.js'
 
@@ -56,9 +57,6 @@ const ACTION_HANDLERS = {
   [PLAYER_REQ_PRIORITY]: (sock, { payload }) => {
     const { queueId } = payload
     if (!Queue.isInRoom(queueId, sock.user.roomId)) throw new Error('Queue item is not in this room')
-    if (!sock.user.isAdmin && !Queue.isOwner(sock.user.userId, queueId)) {
-      throw new Error('Cannot prioritize another user\'s song')
-    }
 
     sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
       type: PLAYER_CMD_PRIORITY,
@@ -66,6 +64,10 @@ const ACTION_HANDLERS = {
     })
   },
   [PLAYER_REQ_REPLAY]: (sock, { payload }) => {
+    if (!Queue.isInRoom(payload.queueId, sock.user.roomId)) {
+      throw new Error('Queue item is not in this room')
+    }
+
     // @todo: emit to players only
     sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
       type: PLAYER_CMD_REPLAY,
@@ -86,6 +88,21 @@ const ACTION_HANDLERS = {
     })
   },
   [PLAYER_EMIT_STATUS]: (sock, { payload }) => {
+    let history: number[] = []
+    try {
+      const parsed = JSON.parse(payload.historyJSON || '[]')
+      if (Array.isArray(parsed)) history = parsed
+    } catch {
+      // Ignore malformed client history; status can still be relayed.
+    }
+
+    if (Queue.markPlayed(sock.user.roomId, history)) {
+      sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
+        type: QUEUE_PUSH,
+        payload: Queue.get(sock.user.roomId),
+      })
+    }
+
     // so we can tell the room when players leave and
     // relay last known player status on client join
     sock._lastPlayerStatus = payload

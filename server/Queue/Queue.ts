@@ -44,7 +44,7 @@ class Queue {
     let curQueueId = null
 
     const query = sql`
-      SELECT queueId, songId, userId, prevQueueId,
+      SELECT queueId, songId, userId, prevQueueId, queue.isPlayed,
         media.mediaId, media.relPath, media.rgTrackGain, media.rgTrackPeak,
         users.name AS userDisplayName, users.dateUpdated AS userDateUpdated,
         paths.pathId, paths.data AS pathData,
@@ -71,6 +71,7 @@ class Queue {
       pathId: number
       pathData: string
       isPreferred: number
+      isPlayed: number
     }>(String(query), query.parameters)
 
     for (const row of rows) {
@@ -81,6 +82,7 @@ class Queue {
       const pathPrefs = pathData.get(row.pathId)?.prefs
 
       entities[row.queueId] = row
+      entities[row.queueId].isPlayed = !!row.isPlayed
       entities[row.queueId].mediaType = this.getType(row.relPath)
       entities[row.queueId].isVideoKeyingEnabled = !!pathPrefs?.isVideoKeyingEnabled
 
@@ -107,6 +109,21 @@ class Queue {
     }
 
     return { result, entities }
+  }
+
+  /** Persist newly completed queue entries for the room's Played view. */
+  static markPlayed (roomId: number, queueIds: number[]): boolean {
+    const ids = [...new Set(queueIds.filter(Number.isInteger))]
+    if (ids.length === 0) return false
+
+    const query = sql`
+      UPDATE queue
+      SET isPlayed = 1
+      WHERE roomId = ${roomId}
+        AND isPlayed = 0
+        AND queueId IN ${sql.tuple(ids)}
+    `
+    return db.run(String(query), query.parameters).changes > 0
   }
 
   /**

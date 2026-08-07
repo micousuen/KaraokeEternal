@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { ensureState } from 'redux-optimistic-ui'
@@ -14,6 +14,7 @@ import styles from './QueueList.css'
 import fairShuffle from '../../lib/fairShuffle'
 
 const QueueList = () => {
+  const [showPlayed, setShowPlayed] = useState(false)
   const artists = useAppSelector(state => state.artists)
   const { errorMessage, isAtQueueEnd, isErrored, isPlaying, position, queueId } = useAppSelector(state => state.status)
 
@@ -24,6 +25,10 @@ const QueueList = () => {
   const starCounts = useAppSelector(state => state.starCounts)
   const user = useAppSelector(state => state.user)
   const waits = useAppSelector(getWaits)
+  const isPlayed = (id: number) => queue.entities[id].isPlayed || playerHistory.includes(id)
+  const activeIds = queue.result.filter(id => !isPlayed(id))
+  const playedIds = queue.result.filter(isPlayed).reverse()
+  const visibleIds = showPlayed ? playedIds : activeIds
 
   // actions
   const dispatch = useAppDispatch()
@@ -52,8 +57,8 @@ const QueueList = () => {
   }
 
   const handleShuffle = () => {
-    const locked = queue.result.filter(id => id === queueId || playerHistory.includes(id))
-    const upcoming = queue.result.filter(id => id !== queueId && !playerHistory.includes(id))
+    const locked = queue.result.filter(id => id === queueId || isPlayed(id))
+    const upcoming = queue.result.filter(id => id !== queueId && !isPlayed(id))
     const shuffled = fairShuffle(upcoming, id => queue.entities[id].userId)
 
     dispatch(shuffleItems({ queueIds: [...locked, ...shuffled] }))
@@ -62,16 +67,15 @@ const QueueList = () => {
   const handleDragEnd = (dnd: DropResult) => {
     if (!dnd.destination || dnd.source.index === dnd.destination.index) return
 
-    const queueIdToMove = queue.result[dnd.source.index]
-    const item = queue.entities[queueIdToMove]
-    const isUpcoming = queueIdToMove !== queueId && !playerHistory.includes(queueIdToMove)
-    if (!isUpcoming || (!user.isAdmin && item.userId !== user.userId)) return
+    const queueIdToMove = visibleIds[dnd.source.index]
+    const isUpcoming = queueIdToMove !== queueId && !isPlayed(queueIdToMove)
+    if (!isUpcoming || showPlayed) return
 
-    const reordered = queue.result.slice()
+    const reordered = activeIds.slice()
     reordered.splice(dnd.source.index, 1)
 
     // Played/current entries are locked. Clamp drops to the upcoming section.
-    const firstUpcoming = reordered.findIndex(id => id !== queueId && !playerHistory.includes(id))
+    const firstUpcoming = reordered.findIndex(id => id !== queueId && !isPlayed(id))
     const upcomingStart = firstUpcoming === -1 ? reordered.length : firstUpcoming
     const destination = Math.max(dnd.destination.index, upcomingStart)
     reordered.splice(destination, 0, queueIdToMove)
@@ -83,14 +87,14 @@ const QueueList = () => {
   }
 
   // build children array
-  const items = queue.result.map((qId, index) => {
+  const items = visibleIds.map((qId, index) => {
     const item = queue.entities[qId]
     const duration = songs.entities[item.songId].duration
     const isCurrent = (qId === queueId) && !isAtQueueEnd
-    const isUpcoming = qId !== queueId && !playerHistory.includes(qId)
+    const isUpcoming = qId !== queueId && !isPlayed(qId)
     const isOwner = item.userId === user.userId
 
-    const isMovable = isUpcoming && (isOwner || user.isAdmin)
+    const isMovable = isUpcoming && !showPlayed
 
     return (
       <Draggable draggableId={`queue-${qId}`} index={index} isDragDisabled={!isMovable} key={qId}>
@@ -108,14 +112,14 @@ const QueueList = () => {
               isCurrent={isCurrent}
               isDragging={snapshot.isDragging}
               isErrored={isCurrent && isErrored}
-              isInfoable={user.isAdmin}
+              isInfoable
               isMovable={isMovable}
               isOwner={isOwner}
-              isPlayed={!isUpcoming && !isCurrent}
+              isPlayed={isPlayed(qId)}
               isPlaying={isCurrent && isPlaying}
-              isRemovable={isUpcoming && (isOwner || user.isAdmin)}
-              isReplayable={(!isUpcoming || isCurrent) && user.isAdmin}
-              isSkippable={isCurrent && (isOwner || user.isAdmin)}
+              isRemovable={isUpcoming && !showPlayed}
+              isReplayable={isCurrent}
+              isSkippable={isCurrent}
               isStarred={starredSongs.includes(item.songId)}
               isUpcoming={isUpcoming}
               pctPlayed={isCurrent ? position / duration * 100 : 0}
@@ -132,17 +136,23 @@ const QueueList = () => {
     )
   })
 
-  const numUpcoming = queue.result.filter(id => id !== queueId && !playerHistory.includes(id)).length
+  const numUpcoming = activeIds.filter(id => id !== queueId).length
 
   return (
     <>
-      {numUpcoming > 1 && (
-        <div className={styles.toolbar}>
+      <div className={styles.toolbar}>
+        <Button onClick={() => setShowPlayed(value => !value)} variant='default'>
+          {showPlayed ? 'Back to Queue' : `Played (${playedIds.length})`}
+        </Button>
+        {!showPlayed && numUpcoming > 1 && (
           <Button onClick={handleShuffle} variant='default'>Shuffle Queue</Button>
-        </div>
+        )}
+      </div>
+      {visibleIds.length === 0 && (showPlayed || playedIds.length > 0) && (
+        <div className={styles.empty}>{showPlayed ? 'No played songs' : 'Queue Empty'}</div>
       )}
       <DragDropContext onDragEnd={handleDragEnd}>
-        <Droppable droppableId='queue'>
+        <Droppable droppableId={showPlayed ? 'played' : 'queue'}>
           {provided => (
             <div ref={provided.innerRef} {...provided.droppableProps}>
               {items}

@@ -1,9 +1,17 @@
 .toolbar {
   display: flex;
+  gap: var(--space-s);
   justify-content: flex-end;
   padding: var(--space-s) 0;
 }
 
 .toolbar button {
   padding: var(--space-s) var(--space-m);
+}
+
+.empty {
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--color-gray-7);
+  font-size: var(--font-size-l);
 }

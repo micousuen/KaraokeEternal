@@ -205,9 +205,10 @@ const QueueItem = ({
           {isPlayed && (
             <Button
               className={clsx(styles.btnAdd, styles.active)}
-              data-hide
               icon='PLUS'
               onClick={handleRequeueClick}
+              title='Add back to queue'
+              aria-label='Add back to queue'
             />
           )}
           {isReplayable && (

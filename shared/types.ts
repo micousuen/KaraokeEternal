@@ -23,6 +23,7 @@ export interface QueueItem {
   userDateUpdated: number
   userDisplayName: string
   mediaType: 'cdg' | 'mp4'
+  isPlayed: boolean
   isOptimistic?: false
   isVideoKeyingEnabled: boolean
 }

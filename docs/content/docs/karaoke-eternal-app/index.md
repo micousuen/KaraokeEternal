@@ -149,6 +149,8 @@ Karaoke Eternal uses "rooms" to organize sessions by time and space (spacetime?)
 
 Regular users and guests can only enter through the QR invite shown by that room's player. After opening the invite, returning users sign in with their normal account credentials while enabled new-user and guest options are also shown. **Don't re-use rooms** - create a new room before each session so that you start with an empty queue, then set the room to `closed` when finished.
 
+All authenticated room members can control playback and manage the room queue. Completed songs move out of the active queue into the persistent **Played** view. Use the add button beside a played song to put a new copy at the end of the active queue.
+
 <div class="row">
   {{% img "app-account-room.png" "Room editor" /%}}
 </div>

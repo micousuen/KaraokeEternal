@@ -45,13 +45,6 @@ const ACTION_HANDLERS = {
       })
     }
 
-    if (!sock.user.isAdmin && !(Queue.isOwner(sock.user.userId, queueId))) {
-      return acknowledge({
-        type: QUEUE_MOVE + '_ERROR',
-        error: 'Cannot move another user\'s song',
-      })
-    }
-
     Queue.move({
       prevQueueId,
       queueId,
@@ -87,10 +80,10 @@ const ACTION_HANDLERS = {
     const { queueId } = payload
     const ids = Array.isArray(queueId) ? queueId : [queueId]
 
-    if (!sock.user.isAdmin && !(Queue.isOwner(sock.user.userId, ids))) {
+    if (ids.some(id => !Queue.isInRoom(id, sock.user.roomId))) {
       return acknowledge({
         type: QUEUE_REMOVE + '_ERROR',
-        error: 'Cannot remove another user\'s song',
+        error: 'Queue item is not in this room',
       })
     }
 
