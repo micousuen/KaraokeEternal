@@ -1,10 +1,11 @@
 services:
   karaoke-eternal:
-    # Build this customized image locally, or replace this with the registry
-    # image/tag you publish for TrueNAS.
-    build:
-      context: .
+    # Build this image on the TrueNAS host with:
+    #   ./scripts/build-truenas-image.sh
+    # TrueNAS "Install via YAML" has no access to this repository as a build
+    # context, so it must use the image already loaded into Docker's image store.
     image: karaoke-eternal:transcode
+    pull_policy: never
     restart: unless-stopped
 
     environment:
