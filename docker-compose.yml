@@ -8,6 +8,10 @@ services:
     pull_policy: never
     restart: unless-stopped
 
+    # Limit the container to the equivalent of four CPU cores. Docker may
+    # schedule that capacity across any of the host's available cores.
+    cpus: 4.0
+
     environment:
       # TrueNAS SCALE's default apps user/group. Change these if your
       # datasets are owned by a different UID/GID.
@@ -15,6 +19,8 @@ services:
       PGID: "568"
       TZ: "America/New_York"
       KES_PATH_TRANSCODE: /transcode
+      # Number of upcoming queue entries to prepare. Set to 0 to disable.
+      KES_PRECACHE_COUNT: "5"
       # FFmpeg tuning for the browser-compatible H.264 output.
       KES_TRANSCODE_PRESET: veryfast
       KES_TRANSCODE_CRF: "20"

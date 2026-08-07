@@ -13,12 +13,44 @@ import Prefs from '../Prefs/Prefs.js'
 import Queue from '../Queue/Queue.js'
 import Rooms from '../Rooms/Rooms.js'
 import fileTypes from './fileTypes.js'
-import { getBrowserMedia } from './Transcoder.js'
+import { getBrowserMedia, prefetchBrowserMedia } from './Transcoder.js'
 import { LIBRARY_PUSH_SONG, QUEUE_PUSH } from '../../shared/actionTypes.js'
 const log = getLogger('Media')
 const router = new KoaRouter({ prefix: '/api/media' })
 
 const audioExts = Object.keys(fileTypes).filter(ext => fileTypes[ext].mimeType.startsWith('audio/'))
+const configuredPrecacheCount = parseInt(process.env.KES_PRECACHE_COUNT || '5', 10)
+const precacheCount = Number.isInteger(configuredPrecacheCount)
+  ? Math.min(Math.max(configuredPrecacheCount, 0), 100)
+  : 5
+
+// Queue upcoming videos for background conversion. The player sends its real
+// round-robin playback order, which the server cannot infer from the raw queue.
+router.post('/precache', (ctx) => {
+  if (!ctx.user.isAdmin) ctx.throw(401)
+
+  const requested = (ctx.request.body as { mediaIds?: unknown })?.mediaIds
+  if (!Array.isArray(requested)) ctx.throw(422, 'mediaIds must be an array')
+
+  const mediaIds = [...new Set(requested
+    .filter((mediaId): mediaId is number => Number.isInteger(mediaId))
+    .slice(0, precacheCount))]
+  const items: { source: string, mediaId: number }[] = []
+  const { paths } = Prefs.get()
+
+  for (const mediaId of mediaIds) {
+    const res = Media.search({ mediaId })
+    if (!res.result.length) continue
+
+    const { pathId, relPath } = res.entities[mediaId]
+    const file = path.join(paths.entities[pathId].path, relPath)
+    if (!fileTypes[getExt(file)]?.mimeType.startsWith('video/')) continue
+    items.push({ source: file, mediaId })
+  }
+
+  prefetchBrowserMedia(items)
+  ctx.status = 202
+})
 
 // stream a media file
 router.get('/:mediaId', async (ctx) => {

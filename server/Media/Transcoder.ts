@@ -18,6 +18,9 @@ interface BundleManifest {
 
 const log = getLogger('Transcoder')
 const pending = new Map<string, Promise<BrowserMediaBundle>>()
+const prefetchQueue: { source: string, mediaId: number, key: string }[] = []
+const prefetchedOrQueued = new Set<string>()
+let isPrefetching = false
 let pruneQueue = Promise.resolve()
 const transcodeVersion = 3
 
@@ -58,6 +61,43 @@ export async function getBrowserMedia (source: string, mediaId: number): Promise
     .finally(() => pending.delete(output))
   pending.set(output, job)
   return job
+}
+
+/**
+ * Prepare media in the background, one item at a time. Keeping this queue
+ * serial avoids five speculative FFmpeg jobs competing with current playback.
+ */
+export function prefetchBrowserMedia (items: { source: string, mediaId: number }[]): void {
+  for (const { source, mediaId } of items) {
+    const key = `${mediaId}\0${source}`
+    if (prefetchedOrQueued.has(key)) continue
+
+    prefetchedOrQueued.add(key)
+    prefetchQueue.push({ source, mediaId, key })
+  }
+
+  if (!isPrefetching) void runPrefetchQueue()
+}
+
+async function runPrefetchQueue (): Promise<void> {
+  isPrefetching = true
+
+  try {
+    while (prefetchQueue.length) {
+      const item = prefetchQueue.shift()
+      if (!item) continue
+
+      try {
+        await getBrowserMedia(item.source, item.mediaId)
+      } catch (err) {
+        log.warn('Could not pre-cache mediaId=%s: %s', item.mediaId, err.message)
+      } finally {
+        prefetchedOrQueued.delete(item.key)
+      }
+    }
+  } finally {
+    isPrefetching = false
+  }
 }
 
 async function transcode (source: string, output: string, mediaId: number): Promise<BrowserMediaBundle> {

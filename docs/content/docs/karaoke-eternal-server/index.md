@@ -199,6 +199,7 @@ The customized source build also supports these video transcoding environment va
 | `KES_PATH_FFMPEG` | Path to the FFmpeg executable | `ffmpeg` |
 | `KES_PATH_FFPROBE` | Path to the FFprobe executable used to enumerate audio tracks | `ffprobe` |
 | `KES_PATH_TRANSCODE` | Browser-compatible video and audio bundle cache directory | System temporary directory |
+| `KES_PRECACHE_COUNT` | Number of upcoming queue entries to prepare in the background; `0` disables pre-caching (maximum `100`) | `5` |
 | `KES_TRANSCODE_PRESET` | FFmpeg x264 encoding preset | `veryfast` |
 | `KES_TRANSCODE_CRF` | FFmpeg x264 constant-rate-factor quality | `20` |
 | `KES_TRANSCODE_AUDIO_BITRATE` | AAC output bitrate | `192k` |

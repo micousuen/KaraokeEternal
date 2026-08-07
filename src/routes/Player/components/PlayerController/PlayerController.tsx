@@ -7,6 +7,9 @@ import getRoundRobinQueue from 'routes/Queue/selectors/getRoundRobinQueue'
 import { playerLeave, playerError, playerLoad, playerPlay, playerStatus, type PlayerState } from '../../modules/player'
 import getRoomPrefs from '../../selectors/getRoomPrefs'
 import type { QueueItem } from 'shared/types'
+import HttpApi from 'lib/HttpApi'
+
+const mediaApi = new HttpApi('media')
 
 interface PlayerControllerProps {
   width: number
@@ -151,6 +154,22 @@ const PlayerController = (props: PlayerControllerProps) => {
       handleStatus({ isErrored: false })
     }
   }, [handleStatus, player.isErrored, player.isPlaying])
+
+  // Once a song starts, send the remaining round-robin playback order. The
+  // server applies KES_PRECACHE_COUNT and ignores media needing no conversion.
+  useEffect(() => {
+    if (!player.isPlaying || !queueItem) return
+
+    const currentIndex = queue.result.indexOf(queueItem.queueId)
+    const mediaIds = queue.result
+      .slice(currentIndex + 1)
+      .map(queueId => queue.entities[queueId])
+      .map(item => item.mediaId)
+
+    if (mediaIds.length) {
+      void mediaApi.post('/precache', { body: { mediaIds } }).catch(() => undefined)
+    }
+  }, [player.isPlaying, queue, queueItem])
 
   return (
     <>
