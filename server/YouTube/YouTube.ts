@@ -10,6 +10,17 @@ import type { YouTubeJob } from '../../shared/types.js'
 
 const log = getLogger('YouTube')
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
+const MAX_DOWNLOAD_HEIGHT = 1080
+const DOWNLOAD_FORMAT = [
+  `bv*[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]+ba[ext=m4a]`,
+  `b[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]`,
+  `bv*[height<=${MAX_DOWNLOAD_HEIGHT}]+ba`,
+  `b[height<=${MAX_DOWNLOAD_HEIGHT}]`,
+].join('/')
+const HLS_DOWNLOAD_FORMAT = [
+  `bv*[height<=${MAX_DOWNLOAD_HEIGHT}][protocol^=m3u8]+ba[protocol^=m3u8]`,
+  `b[height<=${MAX_DOWNLOAD_HEIGHT}][protocol^=m3u8]`,
+].join('/')
 const ALLOWED_HOSTS = new Set([
   'youtube.com',
   'www.youtube.com',
@@ -118,7 +129,7 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
       '--max-filesize', '2G',
       '--merge-output-format', 'mp4/mkv',
       '--remux-video', 'mp4/mkv',
-      '--format', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b',
+      '--format', DOWNLOAD_FORMAT,
       '--output', path.join(options.downloadsPath, 'YouTube-%(title).150B-YouTube [%(id)s].%(ext)s'),
       '--progress-template', 'download:progress:%(progress._percent_str)s',
       '--print', 'before_dl:title:%(title)s',
@@ -135,16 +146,28 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
       job.file = await spawnYtDlp(args, job, options.pushJobs)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (!/HTTP Error 403|Forbidden/i.test(message)) throw error
+      if (!isRetryableFormatError(message)) throw error
 
       job.progress = 0
-      job.message = 'YouTube rejected the first format; retrying with HLS'
+      job.message = 'YouTube rejected the first format; trying an alternate client'
       options.pushJobs()
-      const fallbackArgs = argsWithoutProvider(args)
-      const formatIndex = fallbackArgs.indexOf('--format')
-      fallbackArgs[formatIndex + 1] = 'b[protocol^=m3u8]/bv*[protocol^=m3u8]+ba[protocol^=m3u8]'
-      fallbackArgs.splice(fallbackArgs.length - 1, 0, '--extractor-args', 'youtube:player-client=web_safari')
-      job.file = await spawnYtDlp(fallbackArgs, job, options.pushJobs)
+      const directArgs = argsWithoutProvider(args)
+
+      try {
+        job.file = await spawnYtDlp(directArgs, job, options.pushJobs)
+      } catch (directError) {
+        const directMessage = directError instanceof Error ? directError.message : String(directError)
+        if (!/HTTP Error 403|Forbidden/i.test(directMessage)) throw directError
+
+        job.progress = 0
+        job.message = 'YouTube rejected the alternate format; retrying with HLS'
+        options.pushJobs()
+        const hlsArgs = [...directArgs]
+        const formatIndex = hlsArgs.indexOf('--format')
+        hlsArgs[formatIndex + 1] = HLS_DOWNLOAD_FORMAT
+        hlsArgs.splice(hlsArgs.length - 1, 0, '--extractor-args', 'youtube:player-client=web_safari')
+        job.file = await spawnYtDlp(hlsArgs, job, options.pushJobs)
+      }
     }
     job.status = 'scanning'
     job.progress = 100
@@ -172,6 +195,10 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
     }, 10000).unref()
     log.warn('YouTube download failed: %s', message)
   }
+}
+
+function isRetryableFormatError (message: string): boolean {
+  return /HTTP Error 403|Forbidden|requested format|format.+(?:not available|unavailable|unsupported)/i.test(message)
 }
 
 function argsWithoutProvider (args: string[]): string[] {
