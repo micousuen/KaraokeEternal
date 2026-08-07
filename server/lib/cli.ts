@@ -30,6 +30,8 @@ const env = {
   KES_PORT: parseInt(process.env.KES_PORT, 10) || 0,
   KES_ROTATE_KEY: ['1', 'true'].includes(process.env.KES_ROTATE_KEY?.toLowerCase()),
   KES_SCAN: process.env.KES_SCAN?.trim(),
+  KES_SCAN_WORKERS: Math.min(Math.max(parseInt(process.env.KES_SCAN_WORKERS, 10) || 4, 1), 32),
+  KES_FILENAME_FORMAT: process.env.KES_FILENAME_FORMAT?.trim() || '',
   KES_SCANNER_CONSOLE_LEVEL: parseInt(process.env.KES_SCANNER_CONSOLE_LEVEL, 10) || undefined,
   KES_SCANNER_LOG_LEVEL: parseInt(process.env.KES_SCANNER_LOG_LEVEL, 10) || undefined,
   KES_SERVER_CONSOLE_LEVEL: parseInt(process.env.KES_SERVER_CONSOLE_LEVEL, 10) || undefined,

@@ -10,6 +10,8 @@ services:
       PUID: "1000"
       PGID: "1000"
       TZ: America/New_York
+      KES_FILENAME_FORMAT: artist-title-language
+      KES_SCAN_WORKERS: "4"
       KES_PATH_TRANSCODE: /transcode
       KES_TRANSCODE_PRESET: veryfast
       KES_TRANSCODE_CRF: "20"

@@ -14,6 +14,9 @@ services:
       PUID: "568"
       PGID: "568"
       TZ: "America/New_York"
+      # Parse filenames as singer-song-language and scan metadata in parallel.
+      KES_FILENAME_FORMAT: artist-title-language
+      KES_SCAN_WORKERS: "8"
       KES_PATH_TRANSCODE: /transcode
       # FFmpeg tuning for the browser-compatible H.264 output.
       KES_TRANSCODE_PRESET: veryfast

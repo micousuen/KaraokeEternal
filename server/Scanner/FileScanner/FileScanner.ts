@@ -1,30 +1,28 @@
 import path from 'path'
-import fsPromises from 'node:fs/promises'
-import { parseBuffer, parseFile } from 'music-metadata'
-import { unzip } from 'unzipit'
 import getLogger from '../../lib/Log.js'
 import { getExt } from '../../lib/util.js'
 import getFiles from './getFiles.js'
 import getConfig from './getConfig.js'
-import getCdgName from '../../lib/getCdgName.js'
 import Media from '../../Media/Media.js'
-import MetaParser from '../MetaParser/MetaParser.js'
 import Scanner from '../Scanner.js'
 import IPC from '../../lib/IPCBridge.js'
 import fileTypes from '../../Media/fileTypes.js'
+import MetadataWorkerPool, { MetadataResult } from './MetadataWorkerPool.js'
 import { LIBRARY_MATCH_SONG, MEDIA_ADD, MEDIA_REMOVE, MEDIA_UPDATE } from '../../../shared/actionTypes.js'
 const log = getLogger('FileScanner')
 
-const audioExts = Object.keys(fileTypes).filter(ext => fileTypes[ext].mimeType.startsWith('audio/'))
 const searchExts = Object.keys(fileTypes).filter(ext => fileTypes[ext].scan !== false)
 
 class FileScanner extends Scanner {
   paths: any
-  parser: any
+  workerCount: number
+  filenameFormat: string
 
-  constructor (prefs, qStats) {
+  constructor (prefs, qStats, workerCount = 4, filenameFormat = '') {
     super(qStats)
     this.paths = prefs.paths
+    this.workerCount = workerCount
+    this.filenameFormat = filenameFormat
   }
 
   async scan (pathId) {
@@ -32,7 +30,6 @@ class FileScanner extends Scanner {
     const validMediaIds = []
     const stats = { new: 0, removed: 0, existing: 0 }
     let files // { file, stats }[]
-    let prevDir
 
     if (!dir) {
       log.error('invalid pathId: %s', pathId)
@@ -54,36 +51,52 @@ class FileScanner extends Scanner {
       return stats
     }
 
-    for (let i = 0; i < files.length; i++) {
-      const curDir = path.dirname(files[i].file)
+    log.info('Starting metadata pool with %s workers', this.workerCount)
+    const pool = new MetadataWorkerPool(this.workerCount, this.filenameFormat)
+    const parserConfigs = new Map<string, Record<string, unknown> | undefined>()
+    const pending = new Map<number, Promise<{ result?: MetadataResult, error?: Error }>>()
+    const windowSize = this.workerCount * 4
+    const schedule = (index: number) => {
+      if (index >= files.length) return
+      const file = files[index].file
+      const curDir = path.dirname(file)
 
-      if (prevDir !== curDir) {
-        prevDir = curDir
+      if (!parserConfigs.has(curDir)) parserConfigs.set(curDir, getConfig(curDir, dir))
+      pending.set(index, pool.run({ file, parserConfig: parserConfigs.get(curDir) })
+        .then(result => ({ result }))
+        .catch(error => ({ error })))
+    }
 
-        // (re)init parser with this folder's config, if any
-        const cfg = getConfig(curDir, dir)
-        this.parser = MetaParser(cfg)
+    try {
+      for (let i = 0; i < Math.min(windowSize, files.length); i++) schedule(i)
+
+      for (let i = 0; i < files.length; i++) {
+        const extracted = await pending.get(i)
+        pending.delete(i)
+        schedule(i + windowSize)
+
+        log.info('[%s/%s] %s', i + 1, files.length, files[i].file)
+        this.emitStatus(`Scanning (${i + 1} of ${files.length}; ${this.workerCount} workers)`, (i + 1) / files.length)
+
+        try {
+          if (!extracted?.result) throw extracted?.error || new Error('metadata worker returned no result')
+          const res = await this.process(files[i].file, pathId, extracted.result)
+          validMediaIds.push(res.mediaId)
+
+          if (res.isNew) stats.new++
+          else stats.existing++
+        } catch (err) {
+          log.warn(`  => ${err.message}`)
+        }
+
+        if (this.isCanceling) {
+          this.emitStatus('Stopped', 100, false)
+          return stats
+        }
       }
-
-      log.info('[%s/%s] %s', i + 1, files.length, files[i].file)
-      this.emitStatus(`Scanning (${i + 1} of ${files.length})`, (i + 1) / files.length)
-
-      // process file
-      try {
-        const res = await this.process(files[i], pathId)
-        validMediaIds.push(res.mediaId)
-
-        if (res.isNew) stats.new++
-        else stats.existing++
-      } catch (err) {
-        log.warn(`  => ${err.message}`)
-      }
-
-      if (this.isCanceling) {
-        this.emitStatus('Stopped', 100, false)
-        return stats
-      }
-    } // end for
+    } finally {
+      await pool.close()
+    }
 
     log.info('Scanned %s valid media files', validMediaIds.length.toLocaleString())
     log.info('Searching for invalid media entries')
@@ -95,63 +108,23 @@ class FileScanner extends Scanner {
     return stats
   }
 
-  async process ({ file }, pathId) {
-    let mimeType = fileTypes[getExt(file)].mimeType
-    let data
-
-    if (getExt(file) === '.zip') {
-      const buffer = await fsPromises.readFile(file)
-      const { entries } = await unzip(new Uint8Array(buffer))
-
-      const audioName = Object.keys(entries).find(f => !f.includes('/') && audioExts.includes(getExt(f)))
-      if (!audioName) throw new Error(`no valid audio file ${JSON.stringify(audioExts)} found in archive`)
-
-      const cdgName = Object.keys(entries).find(f => !f.includes('/') && getExt(f) === '.cdg')
-      if (!cdgName) throw new Error('no .cdg sidecar found in archive')
-
-      const audioBuffer = Buffer.from(await entries[audioName].arrayBuffer())
-      mimeType = fileTypes[getExt(audioName)].mimeType
-      data = await parseBuffer(audioBuffer, mimeType, {
-        duration: true,
-        skipCovers: true,
-      })
-    } else {
-      if (fileTypes[getExt(file)].requiresCDG && !(getCdgName(file))) throw new Error('no .cdg sidecar found')
-      data = await parseFile(file, {
-        duration: true,
-        skipCovers: true,
-      })
-    }
-
-    if (!data.format.duration) {
-      throw new Error('could not determine duration')
-    }
-
+  async process (file, pathId, metadata: MetadataResult) {
     log.verbose('  => duration: %s:%s',
-      Math.floor(data.format.duration / 60),
-      Math.round(data.format.duration % 60).toString().padStart(2, '0'),
+      Math.floor(metadata.duration / 60),
+      Math.round(metadata.duration % 60).toString().padStart(2, '0'),
     )
 
-    // run MetaParser
-    const pathInfo = path.parse(file)
-    const parsed = this.parser({
-      dir: pathInfo.dir,
-      dirSep: path.sep,
-      name: pathInfo.name,
-      meta: data.common,
-    })
-
     // get artistId and songId
-    const match = await (IPC as any).req({ type: LIBRARY_MATCH_SONG, payload: parsed })
+    const match = await (IPC as any).req({ type: LIBRARY_MATCH_SONG, payload: metadata.parsed })
 
     const media = {
       songId: match.songId,
       pathId,
       // normalize relPath to forward slashes with no leading slash
       relPath: file.substring(this.paths.entities[pathId].path.length).replace(/\\/g, '/').replace(/^\//, ''),
-      duration: Math.round(data.format.duration),
-      rgTrackGain: data.common.replaygain_track_gain ? data.common.replaygain_track_gain.dB : null,
-      rgTrackPeak: data.common.replaygain_track_peak ? data.common.replaygain_track_peak.ratio : null,
+      duration: Math.round(metadata.duration),
+      rgTrackGain: metadata.rgTrackGain,
+      rgTrackPeak: metadata.rgTrackPeak,
     }
 
     // file already in database?

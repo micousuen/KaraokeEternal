@@ -43,7 +43,12 @@ let IPC
   })
 
   const { default: ScannerQueue } = await import('./Scanner/ScannerQueue.js')
-  const q = new ScannerQueue(onIteration, onDone)
+  const q = new ScannerQueue(
+    onIteration,
+    onDone,
+    env.KES_SCAN_WORKERS,
+    env.KES_FILENAME_FORMAT,
+  )
   const args = process.argv.slice(2)
   log.debug('received arguments: %s', args)
 

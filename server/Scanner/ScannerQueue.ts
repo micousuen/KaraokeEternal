@@ -8,12 +8,16 @@ class ScannerQueue {
   #instance
   #isCanceling = false
   #q = []
+  #workerCount
+  #filenameFormat
   onIteration: (stats: any) => any
   onDone: () => void
 
-  constructor (onIteration, onDone) {
+  constructor (onIteration, onDone, workerCount = 4, filenameFormat = '') {
     this.onIteration = onIteration
     this.onDone = onDone
+    this.#workerCount = workerCount
+    this.#filenameFormat = filenameFormat
   }
 
   queue (pathIds) {
@@ -53,7 +57,12 @@ class ScannerQueue {
 
     while (this.#q.length && !this.#isCanceling) {
       const prefs = Prefs.get()
-      this.#instance = new FileScanner(prefs, { length: this.#q.length })
+      this.#instance = new FileScanner(
+        prefs,
+        { length: this.#q.length },
+        this.#workerCount,
+        this.#filenameFormat,
+      )
 
       const stats = await this.#instance.scan(this.#q.shift())
       this.onIteration(stats)

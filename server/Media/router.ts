@@ -31,8 +31,9 @@ router.post('/precache', (ctx) => {
 
   const requested = (ctx.request.body as { mediaIds?: unknown })?.mediaIds
   if (!Array.isArray(requested)) ctx.throw(422, 'mediaIds must be an array')
+  const requestedIds = requested as unknown[]
 
-  const mediaIds = [...new Set(requested
+  const mediaIds = [...new Set(requestedIds
     .filter((mediaId): mediaId is number => Number.isInteger(mediaId))
     .slice(0, precacheCount))]
   const items: { source: string, mediaId: number }[] = []

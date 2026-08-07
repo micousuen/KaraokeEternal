@@ -167,7 +167,7 @@ const PlayerController = (props: PlayerControllerProps) => {
       .map(item => item.mediaId)
 
     if (mediaIds.length) {
-      void mediaApi.post('/precache', { body: { mediaIds } }).catch(() => undefined)
+      void mediaApi.post('/precache', { body: { mediaIds } }).catch((): void => {})
     }
   }, [player.isPlaying, queue, queueItem])
 

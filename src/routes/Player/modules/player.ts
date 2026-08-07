@@ -103,6 +103,7 @@ export interface PlayerState {
   audioTrackCount: number
   cdgAlpha: number
   cdgSize: number
+  duration: number
   errorMessage: string
   historyJSON: string
   isAtQueueEnd: boolean

@@ -88,6 +88,11 @@ The following file types are supported:
 
 Karaoke Eternal Server expects your media files to be named in **"Artist - Title"** format by default (you can [configure this](#metadata-parser)). Media with filenames that couldn't be parsed won't appear in the library, so check the [scanner log](#file-locations) or console output for these.
 
+The customized source build can parse **"Singer - Song - Language"** filenames by setting
+`KES_FILENAME_FORMAT=artist-title-language`. The language suffix is used only to delimit the
+song title because the current database schema does not store language. Multiple singers remain
+a single combined artist value.
+
 ## Metadata Parser
 
 You can customize the metadata parser by creating a file named `_kes.v2.json` in a media folder. It will apply to all media files in the folder, including subfolders. If any subfolders contain their own `_kes.v2.json` file, that will take precedence instead. These files can be in JSON or JSON5 format - JSON5 is used in the examples below since it's friendlier for humans.
@@ -200,6 +205,8 @@ The customized source build also supports these video transcoding environment va
 | `KES_PATH_FFPROBE` | Path to the FFprobe executable used to enumerate audio tracks | `ffprobe` |
 | `KES_PATH_TRANSCODE` | Browser-compatible video and audio bundle cache directory | System temporary directory |
 | `KES_PRECACHE_COUNT` | Number of upcoming queue entries to prepare in the background; `0` disables pre-caching (maximum `100`) | `5` |
+| `KES_FILENAME_FORMAT` | Set to `artist-title-language` to parse `Singer - Song - Language` filenames | Empty (standard parser) |
+| `KES_SCAN_WORKERS` | Parallel metadata worker threads used by the media scanner (1–32) | `4` |
 | `KES_TRANSCODE_PRESET` | FFmpeg x264 encoding preset | `veryfast` |
 | `KES_TRANSCODE_CRF` | FFmpeg x264 constant-rate-factor quality | `20` |
 | `KES_TRANSCODE_AUDIO_BITRATE` | AAC output bitrate | `192k` |
