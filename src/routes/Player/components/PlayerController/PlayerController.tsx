@@ -3,7 +3,7 @@ import { useAppDispatch, useAppSelector } from 'store/hooks'
 import Player from '../Player/Player'
 import PlayerTextOverlay from '../PlayerTextOverlay/PlayerTextOverlay'
 import PlayerQR from '../PlayerQR/PlayerQR'
-import getRoundRobinQueue from 'routes/Queue/selectors/getRoundRobinQueue'
+import getActiveQueue from 'routes/Queue/selectors/getActiveQueue'
 import { playerLeave, playerError, playerLoad, playerPlay, playerStatus, type PlayerState } from '../../modules/player'
 import getRoomPrefs from '../../selectors/getRoomPrefs'
 import type { QueueItem } from 'shared/types'
@@ -17,12 +17,12 @@ interface PlayerControllerProps {
 }
 
 const PlayerController = (props: PlayerControllerProps) => {
-  const queue = useAppSelector(getRoundRobinQueue)
+  const queue = useAppSelector(getActiveQueue)
   const player = useAppSelector(state => state.player)
   const playerVisualizer = useAppSelector(state => state.playerVisualizer)
   const prefs = useAppSelector(state => state.prefs)
   const roomPrefs = useAppSelector(getRoomPrefs)
-  const queueItem = queue.entities[player.queueId]
+  const queueItem = queue.result.includes(player.queueId) ? queue.entities[player.queueId] : undefined
   const regularNextQueueItem = queue.entities[queue.result[queue.result.indexOf(player.queueId) + 1]]
   const priorityQueueItem = queue.entities[player._priorityQueueId]
   const nextQueueItem = priorityQueueItem && priorityQueueItem.queueId !== player.queueId
@@ -134,10 +134,10 @@ const PlayerController = (props: PlayerControllerProps) => {
 
   // playing for first time or playing next?
   useEffect(() => {
-    if ((player.isPlaying && player.queueId === -1) || player._isPlayingNext) {
+    if ((player.isPlaying && !queue.result.includes(player.queueId)) || player._isPlayingNext) {
       handleLoadNext()
     }
-  }, [handleLoadNext, player.isPlaying, player.queueId, player._isPlayingNext])
+  }, [handleLoadNext, player.isPlaying, player.queueId, player._isPlayingNext, queue.result])
 
   // replaying?
   useEffect(() => {

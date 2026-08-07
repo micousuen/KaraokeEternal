@@ -152,10 +152,35 @@
   }
 }
 
-.btnAdd svg,
 .btnPlayNext svg {
   width: 60px !important;
   height: 60px !important;
+}
+
+.btnRequeue {
+  flex: 0 0 var(--queue-item-btn-size);
+  width: var(--queue-item-btn-size);
+  height: var(--queue-item-btn-size);
+  align-self: center;
+  margin-right: var(--space-s);
+  color: var(--song-item-btn-active-bg-color);
+  filter: var(--song-item-btn-active-filter);
+}
+
+.btnRequeue.success {
+  color: var(--queued-item-color);
+}
+
+.requeueFeedback {
+  position: absolute;
+  right: calc(var(--queue-item-btn-size) + var(--space-m));
+  top: var(--space-xs);
+  z-index: 2;
+  padding: var(--space-xs) var(--space-s);
+  border-radius: var(--border-radius);
+  background: hsl(var(--hue-blue), 50%, 15%);
+  color: var(--queued-item-color);
+  box-shadow: var(--box-shadow);
 }
 
 .btnPriority {
@@ -166,6 +191,10 @@
   margin-right: var(--space-s);
   color: var(--song-item-btn-active-bg-color);
   filter: var(--song-item-btn-active-filter);
+}
+
+.btnContainer .btnPriority svg {
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 /* Currently playing  */

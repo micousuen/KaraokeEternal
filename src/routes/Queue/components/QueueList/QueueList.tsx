@@ -32,21 +32,6 @@ const QueueList = () => {
 
   // actions
   const dispatch = useAppDispatch()
-  const handleMoveClick = (qId: number) => {
-    // reference user's last-played item as the new prevQueueId
-    const userId = queue.entities[qId].userId
-    let lastPlayed = queueId // default in case user has no played items
-
-    for (let i = queue.result.indexOf(queueId); i >= 0; i--) {
-      if (queue.entities[queue.result[i]].userId === userId) {
-        lastPlayed = queue.result[i]
-        break
-      }
-    }
-
-    dispatch(moveItem({ queueId: qId, prevQueueId: lastPlayed }))
-  }
-
   const handleRemoveUpcoming = (userId: number) => {
     dispatch(removeUpcomingItems(userId))
   }
@@ -117,7 +102,7 @@ const QueueList = () => {
               isOwner={isOwner}
               isPlayed={isPlayed(qId)}
               isPlaying={isCurrent && isPlaying}
-              isRemovable={isUpcoming && !showPlayed}
+              isRemovable={!isCurrent}
               isReplayable={isCurrent}
               isSkippable={isCurrent}
               isStarred={starredSongs.includes(item.songId)}
@@ -126,7 +111,6 @@ const QueueList = () => {
               starCount={starCounts.songs[item.songId] || 0}
               title={songs.entities[item.songId].title}
               wait={formatSeconds(waits[qId], true)} // fuzzy
-              onMoveClick={handleMoveClick}
               onPlayNextClick={handlePlayNextClick}
               onRemoveUpcoming={handleRemoveUpcoming}
             />

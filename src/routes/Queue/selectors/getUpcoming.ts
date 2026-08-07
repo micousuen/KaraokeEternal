@@ -18,7 +18,7 @@ const getUpcoming = createSelector(
   (result, entities, history, curId, userId) => {
     return result.filter((qId) => {
       const item = entities[qId]
-      return item.isOptimistic !== true && item.userId === userId && qId !== curId && !history.includes(qId)
+      return item.isOptimistic !== true && item.userId === userId && qId !== curId && !item.isPlayed && !history.includes(qId)
     })
   },
 )

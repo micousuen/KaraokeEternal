@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
 import clsx from 'clsx'
 import { useSwipeable } from 'react-swipeable'
@@ -45,7 +45,6 @@ interface QueueItemProps {
   userId: number
   wait?: string
   // actions
-  onMoveClick(queueId: number): void
   onPlayNextClick(queueId: number): void
   onRemoveUpcoming: (userId: number) => void
 }
@@ -67,7 +66,6 @@ const QueueItem = ({
   isSkippable,
   isStarred,
   isUpcoming,
-  onMoveClick,
   onPlayNextClick,
   onRemoveUpcoming,
   pctPlayed,
@@ -81,23 +79,24 @@ const QueueItem = ({
   wait,
 }: QueueItemProps) => {
   const [isExpanded, setExpanded] = useState(false)
+  const [isRequeued, setRequeued] = useState(false)
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressActiveRef = useRef(false)
   const dispatch = useAppDispatch()
 
   const handleErrorInfoClick = () => dispatch(showErrorMessage(errorMessage))
   const handleInfoClick = () => dispatch(showSongInfo(songId))
-  const handleMoveClick = () => {
-    onMoveClick(queueId)
-    setExpanded(false)
-  }
   const handlePlayNextClick = () => onPlayNextClick(queueId)
   const handleReplayClick = () => {
     dispatch(requestReplay(queueId))
     setExpanded(false)
   }
   const handleRequeueClick = () => {
+    if (isRequeued) return
+    setRequeued(true)
     dispatch(queueSong(songId))
     setExpanded(false)
+    feedbackTimerRef.current = setTimeout(() => setRequeued(false), 2000)
   }
   const handleSkipClick = () => {
     dispatch(requestPlayNext())
@@ -105,6 +104,10 @@ const QueueItem = ({
   }
   const handleRemoveClick = () => dispatch(removeItem({ queueId }))
   const handleStarClick = () => dispatch(toggleSongStarred(songId))
+
+  useEffect(() => () => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current)
+  }, [])
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
@@ -180,56 +183,32 @@ const QueueItem = ({
               onClick={handleErrorInfoClick}
             />
           )}
+          {isMovable && (
+            <Button
+              className={styles.btnPriority}
+              icon='PLAY_NEXT'
+              onClick={handlePlayNextClick}
+              title='Move to top and play next'
+              aria-label='Move to top and play next'
+            />
+          )}
           <ButtonStar
             className={styles.btnStar}
             isStarred={isStarred}
             onClick={handleStarClick}
             count={starCount}
           />
-          {isInfoable && (
-            <Button
-              className={styles.active}
-              data-hide
-              icon='INFO_OUTLINE'
-              onClick={handleInfoClick}
-            />
-          )}
-          {isMovable && (
-            <Button
-              className={clsx(styles.btnMove, styles.active)}
-              data-hide
-              icon='MOVE_TOP'
-              onClick={handleMoveClick}
-            />
-          )}
-          {isPlayed && (
-            <Button
-              className={clsx(styles.btnAdd, styles.active)}
-              icon='PLUS'
-              onClick={handleRequeueClick}
-              title='Add back to queue'
-              aria-label='Add back to queue'
-            />
-          )}
-          {isReplayable && (
-            <Button
-              className={clsx(styles.active, styles.danger)}
-              data-hide
-              icon='REPLAY'
-              onClick={handleReplayClick}
-            />
-          )}
           {isRemovable && (
             <Button
               className={clsx(styles.btnRemove, styles.danger)}
-              data-hide
               icon='DELETE'
+              title='Delete from queue'
+              aria-label='Delete from queue'
               onTouchEnd={(e: React.TouchEvent<HTMLButtonElement>) => {
                 if (longPressActiveRef.current) {
                   e.preventDefault()
                   e.stopPropagation()
                   longPressActiveRef.current = false
-                  return
                 }
               }}
               onClick={() => {
@@ -239,7 +218,23 @@ const QueueItem = ({
                 }
                 handleRemoveClick()
               }}
-              {...bindRemovePressHandlers()}
+              {...(isUpcoming ? bindRemovePressHandlers() : {})}
+            />
+          )}
+          {isInfoable && (
+            <Button
+              className={styles.active}
+              data-hide
+              icon='INFO_OUTLINE'
+              onClick={handleInfoClick}
+            />
+          )}
+          {isReplayable && (
+            <Button
+              className={clsx(styles.active, styles.danger)}
+              data-hide
+              icon='REPLAY'
+              onClick={handleReplayClick}
             />
           )}
           {isSkippable && (
@@ -266,13 +261,18 @@ const QueueItem = ({
             />
           )}
         </Buttons>
-        {isMovable && (
-          <Button
-            className={clsx(styles.btnPriority, styles.active)}
-            icon='PLAY_NEXT'
-            onClick={handlePlayNextClick}
-            title='Play next'
-          />
+        {isPlayed && (
+          <>
+            {isRequeued && <div className={styles.requeueFeedback} role='status'>Added to queue</div>}
+            <Button
+              className={clsx(styles.btnRequeue, isRequeued && styles.success)}
+              icon={isRequeued ? 'CHECK' : 'PLUS'}
+              disabled={isRequeued}
+              onClick={handleRequeueClick}
+              title={isRequeued ? 'Added to queue' : 'Add back to queue'}
+              aria-label={isRequeued ? 'Added to queue' : 'Add back to queue'}
+            />
+          </>
         )}
       </div>
     </div>

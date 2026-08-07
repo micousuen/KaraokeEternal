@@ -6,7 +6,7 @@ import { Routes, Route, useLocation } from 'react-router'
 import { createSelector } from '@reduxjs/toolkit'
 
 import { requestScanStop } from 'store/modules/prefs'
-import getRoundRobinQueue from 'routes/Queue/selectors/getRoundRobinQueue'
+import getActiveQueue from 'routes/Queue/selectors/getActiveQueue'
 import getWaits from 'routes/Queue/selectors/getWaits'
 import LibraryHeader from 'routes/Library/components/LibraryHeader/LibraryHeader'
 import PlaybackCtrl from './PlaybackCtrl/PlaybackCtrl'
@@ -20,7 +20,7 @@ const getQueueId = (state: RootState) => state.status.queueId
 const getUserId = (state: RootState) => state.user.userId
 
 const getUserWait = createSelector(
-  [getRoundRobinQueue, getQueueId, getUserId, getWaits],
+  [getActiveQueue, getQueueId, getUserId, getWaits],
   (queue, queueId, userId, waits) => {
     const curIdx = queue.result.indexOf(queueId)
 
@@ -33,7 +33,7 @@ const getUserWait = createSelector(
 )
 
 const getStatusProps = createSelector(
-  [getRoundRobinQueue, getQueueId, getIsAtQueueEnd, getUserId],
+  [getActiveQueue, getQueueId, getIsAtQueueEnd, getUserId],
   (queue, queueId, isAtQueueEnd, userId) => {
     const { result, entities } = queue
     const curIdx = result.indexOf(queueId)
