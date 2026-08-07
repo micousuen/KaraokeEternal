@@ -22,18 +22,18 @@ services:
       KES_TRANSCODE_MAX_SIZE_GB: "8"
 
     ports:
-      # Change 8088 if that host port is already in use.
-      - "8088:8080"
+      # Change 10188 if that host port is already in use.
+      - "10188:8080"
 
     volumes:
       # Replace "tank" with your TrueNAS pool name. This path must be
       # writable by PUID/PGID because it contains the SQLite database.
-      - /mnt/tank/apps/karaoke-eternal/config:/config
+      - /mnt/Pool/applications/karaokeeternal/config:/config
 
       # Replace this with your media dataset. Read-only access is sufficient.
       # Add /mnt/karaoke as a Media Folder inside Karaoke Eternal.
-      - /mnt/tank/media/karaoke:/mnt/karaoke:ro
+      - /mnt/Pool2/Media/KTV:/mnt/karaoke:ro
 
       # Disk-backed transcode cache. Replace this host path independently of
       # the config and media datasets. It must be writable by PUID/PGID.
-      - /mnt/tank/apps/karaoke-eternal/transcode:/transcode
+      - /mnt/Pool/applications/karaoke-eternal/transcode:/transcode
