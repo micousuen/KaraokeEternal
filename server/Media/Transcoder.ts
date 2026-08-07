@@ -23,7 +23,7 @@ const prefetchedOrQueued = new Set<string>()
 let isPrefetching = false
 let activePrefetchKey: string | undefined
 let pruneQueue = Promise.resolve()
-const transcodeVersion = 3
+const transcodeVersion = 4
 
 const cacheDir = process.env.KES_PATH_TRANSCODE
   || path.join(os.tmpdir(), 'karaoke-eternal-transcode')
@@ -35,7 +35,7 @@ const maxCacheBytes = Math.max(
 ) * 1024 ** 3
 
 /**
- * Return a browser-compatible bundle with silent H.264 video and one AAC file
+ * Return a browser-compatible bundle with silent H.264 video and one MP3 file
  * per source audio stream. Concurrent requests share one preparation job.
  */
 export async function getBrowserMedia (source: string, mediaId: number): Promise<BrowserMediaBundle> {
@@ -129,7 +129,7 @@ async function transcode (source: string, output: string, mediaId: number): Prom
     if (audioCount === 0) throw new Error('Video contains no audio tracks')
 
     const videoName = 'video.mp4'
-    const audioNames = Array.from({ length: audioCount }, (_, i) => `audio-${i + 1}.m4a`)
+    const audioNames = Array.from({ length: audioCount }, (_, i) => `audio-${i + 1}.mp3`)
 
     await Promise.all([
       run(ffmpegPath, [
@@ -155,9 +155,8 @@ async function transcode (source: string, output: string, mediaId: number): Prom
         '-i', source,
         '-map', `0:a:${i}`,
         '-vn',
-        '-c:a', 'aac',
+        '-c:a', 'libmp3lame',
         '-b:a', process.env.KES_TRANSCODE_AUDIO_BITRATE || '192k',
-        '-movflags', '+faststart',
         path.join(partial, name),
       ])),
     ])

@@ -27,7 +27,7 @@ const precacheCount = Number.isInteger(configuredPrecacheCount)
 // Queue upcoming videos for background conversion. The player sends its real
 // round-robin playback order, which the server cannot infer from the raw queue.
 router.post('/precache', (ctx) => {
-  if (!ctx.user.isAdmin) ctx.throw(401)
+  requireRoomMember(ctx)
 
   const requested = (ctx.request.body as { mediaIds?: unknown })?.mediaIds
   if (!Array.isArray(requested)) ctx.throw(422, 'mediaIds must be an array')
@@ -57,9 +57,7 @@ router.post('/precache', (ctx) => {
 router.get('/:mediaId', async (ctx) => {
   const { type } = ctx.query
 
-  if (!ctx.user.isAdmin) {
-    ctx.throw(401)
-  }
+  requireRoomMember(ctx)
 
   const mediaId = parseInt(ctx.params.mediaId, 10)
 
@@ -124,7 +122,7 @@ router.get('/:mediaId', async (ctx) => {
         ctx.throw(404, 'Audio track not found')
       }
       file = bundle.audio[audioTrack]
-      ctx.type = 'audio/mp4'
+      ctx.type = fileTypes[getExt(file)]?.mimeType || 'audio/mpeg'
     } else {
       file = bundle.video
       ctx.type = 'video/mp4'
@@ -212,4 +210,10 @@ function streamMedia (ctx, file: string, buffer: Buffer | undefined, length: num
   ctx.body = buffer
     ? Readable.from(buffer.subarray(start, end + 1))
     : fs.createReadStream(file, { start, end })
+}
+
+function requireRoomMember (ctx): void {
+  if (typeof ctx.user?.userId !== 'number' || typeof ctx.user?.roomId !== 'number') {
+    ctx.throw(401, 'Join a room before accessing media')
+  }
 }
