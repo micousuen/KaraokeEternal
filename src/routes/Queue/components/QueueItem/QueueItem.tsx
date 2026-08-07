@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
 import clsx from 'clsx'
 import { useSwipeable } from 'react-swipeable'
 import { useLongPress } from 'use-long-press'
-import { useAppDispatch } from 'store/hooks'
+import { useAppDispatch, useAppSelector } from 'store/hooks'
 import Button from 'components/Button/Button'
 import ButtonStar from 'components/ButtonStar/ButtonStar'
 import Buttons from 'components/Buttons/Buttons'
@@ -17,6 +17,43 @@ import { queueSong, removeItem } from '../../modules/queue'
 import styles from './QueueItem.css'
 
 const LONG_PRESS_THRESHOLD_MS = 700
+const MARQUEE_PX_PER_SECOND = 30
+
+const OverflowMarquee = ({ className, text }: { className: string, text: string }) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLSpanElement>(null)
+  const [distance, setDistance] = useState(0)
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (!containerRef.current || !textRef.current) return
+      setDistance(Math.max(0, textRef.current.scrollWidth - containerRef.current.clientWidth))
+    }
+    const observer = new ResizeObserver(measure)
+    if (containerRef.current) observer.observe(containerRef.current)
+    if (textRef.current) observer.observe(textRef.current)
+    measure()
+    return () => observer.disconnect()
+  }, [text])
+
+  const movingFraction = 0.6
+  const duration = distance > 0 ? distance / MARQUEE_PX_PER_SECOND / movingFraction : 0
+
+  return (
+    <div ref={containerRef} className={clsx(className, styles.marquee)}>
+      <span
+        ref={textRef}
+        className={clsx(distance > 0 && styles.marqueeOverflow)}
+        style={{
+          '--marquee-distance': `${distance}px`,
+          '--marquee-duration': `${duration}s`,
+        } as React.CSSProperties}
+      >
+        {text}
+      </span>
+    </div>
+  )
+}
 
 interface QueueItemProps {
   artist: string
@@ -82,6 +119,7 @@ const QueueItem = ({
   const [isRequeued, setRequeued] = useState(false)
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressActiveRef = useRef(false)
+  const buttonWidth = useAppSelector(state => state.ui.innerWidth <= 600 ? 44 : 56)
   const dispatch = useAppDispatch()
 
   const handleErrorInfoClick = () => dispatch(showErrorMessage(errorMessage))
@@ -167,15 +205,15 @@ const QueueItem = ({
 
         <div className={clsx(styles.primary, isPlayed && styles.greyed)} translate='no'>
           <div className={styles.innerPrimary}>
-            <div className={styles.title}>{title}</div>
-            <div className={styles.artist}>{artist}</div>
+            <OverflowMarquee className={styles.title} text={title} />
+            <OverflowMarquee className={styles.artist} text={artist} />
           </div>
           <div className={clsx(styles.user, isOwner && styles.isOwner)}>
             {userDisplayName}
           </div>
         </div>
 
-        <Buttons btnWidth={56} isExpanded={isExpanded} className={styles.btnContainer}>
+        <Buttons btnWidth={buttonWidth} isExpanded={isExpanded} className={styles.btnContainer}>
           {isErrored && (
             <Button
               className={styles.danger}
