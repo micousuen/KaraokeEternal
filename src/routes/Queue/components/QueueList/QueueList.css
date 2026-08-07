@@ -1,0 +1,9 @@
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-s) 0;
+}
+
+.toolbar button {
+  padding: var(--space-s) var(--space-m);
+}

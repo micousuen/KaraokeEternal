@@ -3,12 +3,15 @@ import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { ensureState } from 'redux-optimistic-ui'
 import QueueItem from '../QueueItem/QueueItem'
+import Button from 'components/Button/Button'
 import { formatSeconds } from 'lib/dateTime'
-import { moveItem, removeUpcomingItems } from '../../modules/queue'
+import { moveItem, removeUpcomingItems, shuffleItems } from '../../modules/queue'
 import { requestPriority } from 'store/modules/status'
 import getPlayerHistory from '../../selectors/getPlayerHistory'
 import getRoundRobinQueue from '../../selectors/getRoundRobinQueue'
 import getWaits from '../../selectors/getWaits'
+import styles from './QueueList.css'
+import fairShuffle from '../../lib/fairShuffle'
 
 const QueueList = () => {
   const artists = useAppSelector(state => state.artists)
@@ -46,6 +49,14 @@ const QueueList = () => {
   const handlePlayNextClick = (qId: number) => {
     dispatch(moveItem({ queueId: qId, prevQueueId: queueId >= 0 ? queueId : -1 }))
     dispatch(requestPriority(qId))
+  }
+
+  const handleShuffle = () => {
+    const locked = queue.result.filter(id => id === queueId || playerHistory.includes(id))
+    const upcoming = queue.result.filter(id => id !== queueId && !playerHistory.includes(id))
+    const shuffled = fairShuffle(upcoming, id => queue.entities[id].userId)
+
+    dispatch(shuffleItems({ queueIds: [...locked, ...shuffled] }))
   }
 
   const handleDragEnd = (dnd: DropResult) => {
@@ -121,17 +132,26 @@ const QueueList = () => {
     )
   })
 
+  const numUpcoming = queue.result.filter(id => id !== queueId && !playerHistory.includes(id)).length
+
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
-      <Droppable droppableId='queue'>
-        {provided => (
-          <div ref={provided.innerRef} {...provided.droppableProps}>
-            {items}
-            {provided.placeholder}
-          </div>
-        )}
-      </Droppable>
-    </DragDropContext>
+    <>
+      {numUpcoming > 1 && (
+        <div className={styles.toolbar}>
+          <Button onClick={handleShuffle} variant='default'>Shuffle Queue</Button>
+        </div>
+      )}
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <Droppable droppableId='queue'>
+          {provided => (
+            <div ref={provided.innerRef} {...provided.droppableProps}>
+              {items}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </DragDropContext>
+    </>
   )
 }
 

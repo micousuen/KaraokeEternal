@@ -18,6 +18,7 @@ export const LIBRARY_SCAN_BATCH = 'library/SCAN_BATCH'
 // Queue
 export const QUEUE_ADD = 'server/QUEUE_ADD'
 export const QUEUE_MOVE = 'server/QUEUE_MOVE'
+export const QUEUE_SHUFFLE = 'server/QUEUE_SHUFFLE'
 export const QUEUE_PUSH = 'queue/PUSH'
 export const QUEUE_REMOVE = 'server/QUEUE_REMOVE'
 

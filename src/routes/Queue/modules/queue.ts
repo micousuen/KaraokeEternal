@@ -4,6 +4,7 @@ import getUpcoming from '../selectors/getUpcoming'
 import {
   QUEUE_ADD,
   QUEUE_MOVE,
+  QUEUE_SHUFFLE,
   QUEUE_PUSH,
   QUEUE_REMOVE,
   LOGOUT,
@@ -15,6 +16,7 @@ import type { QueueItem, OptimisticQueueItem } from 'shared/types'
 // ------------------------------------
 const logout = createAction(LOGOUT)
 export const moveItem = createAction<{ queueId: number, prevQueueId: number }>(QUEUE_MOVE)
+export const shuffleItems = createAction<{ queueIds: number[] }>(QUEUE_SHUFFLE)
 export const removeItem = createAction<{ queueId: number | number[] }>(QUEUE_REMOVE)
 export const queuePush = createAction<QueueState>(QUEUE_PUSH)
 

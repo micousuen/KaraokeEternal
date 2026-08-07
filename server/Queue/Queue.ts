@@ -159,6 +159,38 @@ class Queue {
     db.run(String(query), query.parameters)
   }
 
+  /** Replace the complete linked-list order for one room atomically. */
+  static setOrder (roomId: number, queueIds: number[]): void {
+    if (!Array.isArray(queueIds) || queueIds.some(id => !Number.isInteger(id))) {
+      throw new Error('Invalid queue order')
+    }
+
+    const current = db.all<{ queueId: number }>('SELECT queueId FROM queue WHERE roomId = ?', [roomId])
+      .map(row => row.queueId)
+      .sort((a, b) => a - b)
+    const requested = [...new Set(queueIds)].sort((a, b) => a - b)
+
+    if (requested.length !== queueIds.length
+      || requested.length !== current.length
+      || requested.some((id, index) => id !== current[index])) {
+      throw new Error('Queue order must contain every item in this room exactly once')
+    }
+
+    db.exec('BEGIN IMMEDIATE')
+    db.exec('PRAGMA defer_foreign_keys = ON')
+
+    try {
+      db.run('UPDATE queue SET prevQueueId = NULL WHERE roomId = ?', [roomId])
+      for (let i = 1; i < queueIds.length; i++) {
+        db.run('UPDATE queue SET prevQueueId = ? WHERE queueId = ? AND roomId = ?', [queueIds[i - 1], queueIds[i], roomId])
+      }
+      db.exec('COMMIT')
+    } catch (err) {
+      db.exec('ROLLBACK')
+      throw err
+    }
+  }
+
   /**
    * Delete a queue item
    */

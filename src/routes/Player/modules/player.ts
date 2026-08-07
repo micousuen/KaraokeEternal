@@ -32,7 +32,7 @@ export const playerCmdNext = createAction(PLAYER_CMD_NEXT)
 // triggered by clients
 const playerCmdPause = createAction(PLAYER_CMD_PAUSE)
 const playerCmdPlay = createAction(PLAYER_CMD_PLAY)
-const playerCmdPriority = createAction<{ queueId: number }>(PLAYER_CMD_PRIORITY)
+const playerCmdPriority = createAction<{ queueId: number | null }>(PLAYER_CMD_PRIORITY)
 const playerCmdReplay = createAction<{ queueId: number }>(PLAYER_CMD_REPLAY)
 const playerCmdSeek = createAction<number>(PLAYER_CMD_SEEK)
 const playerCmdVolume = createAction<number>(PLAYER_CMD_VOLUME)

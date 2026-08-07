@@ -1,6 +1,6 @@
 import Queue from './Queue.js'
 import Rooms from '../Rooms/Rooms.js'
-import { QUEUE_ADD, QUEUE_MOVE, QUEUE_REMOVE, QUEUE_PUSH } from '../../shared/actionTypes.js'
+import { PLAYER_CMD_PRIORITY, QUEUE_ADD, QUEUE_MOVE, QUEUE_REMOVE, QUEUE_SHUFFLE, QUEUE_PUSH } from '../../shared/actionTypes.js'
 
 // ------------------------------------
 // Action Handlers
@@ -63,6 +63,22 @@ const ACTION_HANDLERS = {
 
     // tell room
     sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
+      type: QUEUE_PUSH,
+      payload: Queue.get(sock.user.roomId),
+    })
+  },
+  [QUEUE_SHUFFLE]: async (sock, { payload }, acknowledge) => {
+    await Rooms.validate(sock.user.roomId, null, { validatePassword: false })
+    Queue.setOrder(sock.user.roomId, payload.queueIds)
+
+    acknowledge({ type: QUEUE_SHUFFLE + '_SUCCESS' })
+
+    const room = Rooms.prefix(sock.user.roomId)
+    sock.server.to(room).emit('action', {
+      type: PLAYER_CMD_PRIORITY,
+      payload: { queueId: null },
+    })
+    sock.server.to(room).emit('action', {
       type: QUEUE_PUSH,
       payload: Queue.get(sock.user.roomId),
     })
