@@ -61,18 +61,20 @@
   }
 }
 
-.waitContainer {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  background-color: rgba(0, 0, 0, 0.6);
-  border-top-left-radius: var(--border-radius);
-}
-
-.wait {
+.countdown {
+  flex: 0 0 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--color-gray-7);
   font-size: var(--font-size-s);
-  padding: var(--space-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.countdownNow {
+  color: var(--queued-item-color);
+  text-shadow: var(--text-shadow-glow);
 }
 
 .primary {
@@ -322,12 +324,12 @@
   }
 
   .user,
-  .wait {
+  .countdown {
     font-size: 0.7rem;
   }
 
-  .wait {
-    padding: 2px;
+  .countdown {
+    flex-basis: 2.5rem;
   }
 
   .btnContainer button,

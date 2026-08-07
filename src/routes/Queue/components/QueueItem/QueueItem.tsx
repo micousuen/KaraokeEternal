@@ -192,15 +192,13 @@ const QueueItem = ({
             <Icon icon='DRAG_INDICATOR' />
           </div>
         )}
+        {!isPlayed && (
+          <div className={clsx(styles.countdown, isCurrent && styles.countdownNow)}>
+            {isCurrent ? 'Now' : wait}
+          </div>
+        )}
         <div className={clsx(styles.imageContainer, isPlayed && styles.greyed)}>
           <UserImage userId={userId} dateUpdated={userDateUpdated} />
-          <div className={styles.waitContainer}>
-            {isUpcoming && (
-              <div className={clsx(styles.wait, isOwner && styles.isOwner)}>
-                {wait}
-              </div>
-            )}
-          </div>
         </div>
 
         <div className={clsx(styles.primary, isPlayed && styles.greyed)} translate='no'>

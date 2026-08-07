@@ -34,6 +34,7 @@ export function formatDuration (sec: number) {
 }
 
 export function formatSeconds (sec: number, fuzzy = false) {
+  sec = Number.isFinite(sec) ? Math.max(0, Math.round(sec)) : 0
   if (sec >= 60 && fuzzy) return Math.round(sec / 60) + 'm'
 
   const m = Math.floor(sec / 60)

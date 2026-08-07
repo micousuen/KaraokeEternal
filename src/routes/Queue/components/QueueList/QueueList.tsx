@@ -110,7 +110,7 @@ const QueueList = () => {
               pctPlayed={isCurrent ? position / duration * 100 : 0}
               starCount={starCounts.songs[item.songId] || 0}
               title={songs.entities[item.songId].title}
-              wait={formatSeconds(waits[qId], true)} // fuzzy
+              wait={formatSeconds(waits[qId])}
               onPlayNextClick={handlePlayNextClick}
               onRemoveUpcoming={handleRemoveUpcoming}
             />
