@@ -5,6 +5,7 @@ import { ensureState } from 'redux-optimistic-ui'
 import QueueItem from '../QueueItem/QueueItem'
 import { formatSeconds } from 'lib/dateTime'
 import { moveItem, removeUpcomingItems } from '../../modules/queue'
+import { requestPriority } from 'store/modules/status'
 import getPlayerHistory from '../../selectors/getPlayerHistory'
 import getRoundRobinQueue from '../../selectors/getRoundRobinQueue'
 import getWaits from '../../selectors/getWaits'
@@ -40,6 +41,11 @@ const QueueList = () => {
 
   const handleRemoveUpcoming = (userId: number) => {
     dispatch(removeUpcomingItems(userId))
+  }
+
+  const handlePlayNextClick = (qId: number) => {
+    dispatch(moveItem({ queueId: qId, prevQueueId: queueId >= 0 ? queueId : -1 }))
+    dispatch(requestPriority(qId))
   }
 
   const handleDragEnd = (dnd: DropResult) => {
@@ -106,6 +112,7 @@ const QueueList = () => {
               title={songs.entities[item.songId].title}
               wait={formatSeconds(waits[qId], true)} // fuzzy
               onMoveClick={handleMoveClick}
+              onPlayNextClick={handlePlayNextClick}
               onRemoveUpcoming={handleRemoveUpcoming}
             />
           </div>

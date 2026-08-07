@@ -23,7 +23,11 @@ const PlayerController = (props: PlayerControllerProps) => {
   const prefs = useAppSelector(state => state.prefs)
   const roomPrefs = useAppSelector(getRoomPrefs)
   const queueItem = queue.entities[player.queueId]
-  const nextQueueItem = queue.entities[queue.result[queue.result.indexOf(player.queueId) + 1]]
+  const regularNextQueueItem = queue.entities[queue.result[queue.result.indexOf(player.queueId) + 1]]
+  const priorityQueueItem = queue.entities[player._priorityQueueId]
+  const nextQueueItem = priorityQueueItem && priorityQueueItem.queueId !== player.queueId
+    ? priorityQueueItem
+    : regularNextQueueItem
 
   const dispatch = useAppDispatch()
   const handleStatus = useCallback((status?: Partial<PlayerState>) => dispatch(playerStatus(status)), [dispatch])
@@ -96,6 +100,7 @@ const PlayerController = (props: PlayerControllerProps) => {
       queueId: nextQueueItem.queueId,
       nextUserId: null,
       _isPlayingNext: false,
+      _priorityQueueId: null,
     })
   }, [handleStatus, nextQueueItem, player.historyJSON, queueItem])
 
@@ -161,15 +166,18 @@ const PlayerController = (props: PlayerControllerProps) => {
     if (!player.isPlaying || !queueItem) return
 
     const currentIndex = queue.result.indexOf(queueItem.queueId)
-    const mediaIds = queue.result
+    const upcoming = queue.result
       .slice(currentIndex + 1)
       .map(queueId => queue.entities[queueId])
-      .map(item => item.mediaId)
+    const ordered = priorityQueueItem && priorityQueueItem.queueId !== queueItem.queueId
+      ? [priorityQueueItem, ...upcoming.filter(item => item.queueId !== priorityQueueItem.queueId)]
+      : upcoming
+    const mediaIds = ordered.map(item => item.mediaId)
 
     if (mediaIds.length) {
       void mediaApi.post('/precache', { body: { mediaIds } }).catch((): void => {})
     }
-  }, [player.isPlaying, queue, queueItem])
+  }, [player.isPlaying, player._priorityQueueId, priorityQueueItem, queue, queueItem])
 
   return (
     <>

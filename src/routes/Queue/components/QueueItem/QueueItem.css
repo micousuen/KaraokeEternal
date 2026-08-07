@@ -158,6 +158,16 @@
   height: 60px !important;
 }
 
+.btnPriority {
+  flex: 0 0 var(--queue-item-btn-size);
+  width: var(--queue-item-btn-size);
+  height: var(--queue-item-btn-size);
+  align-self: center;
+  margin-right: var(--space-s);
+  color: var(--song-item-btn-active-bg-color);
+  filter: var(--song-item-btn-active-filter);
+}
+
 /* Currently playing  */
 .container.current {
   /* Added 1% tail fade (99% -> 100%) */

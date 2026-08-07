@@ -5,6 +5,7 @@ import {
   PLAYER_CMD_OPTIONS,
   PLAYER_CMD_PAUSE,
   PLAYER_CMD_PLAY,
+  PLAYER_CMD_PRIORITY,
   PLAYER_CMD_REPLAY,
   PLAYER_CMD_SEEK,
   PLAYER_CMD_VOLUME,
@@ -12,6 +13,7 @@ import {
   PLAYER_REQ_OPTIONS,
   PLAYER_REQ_PAUSE,
   PLAYER_REQ_PLAY,
+  PLAYER_REQ_PRIORITY,
   PLAYER_REQ_REPLAY,
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
@@ -20,6 +22,7 @@ import {
   PLAYER_STATUS,
   PLAYER_LEAVE,
 } from '../../shared/actionTypes.js'
+import Queue from '../Queue/Queue.js'
 
 // ------------------------------------
 // Action Handlers
@@ -48,6 +51,18 @@ const ACTION_HANDLERS = {
     // @todo: emit to players only
     sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
       type: PLAYER_CMD_PLAY,
+    })
+  },
+  [PLAYER_REQ_PRIORITY]: (sock, { payload }) => {
+    const { queueId } = payload
+    if (!Queue.isInRoom(queueId, sock.user.roomId)) throw new Error('Queue item is not in this room')
+    if (!sock.user.isAdmin && !Queue.isOwner(sock.user.userId, queueId)) {
+      throw new Error('Cannot prioritize another user\'s song')
+    }
+
+    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
+      type: PLAYER_CMD_PRIORITY,
+      payload: { queueId },
     })
   },
   [PLAYER_REQ_REPLAY]: (sock, { payload }) => {

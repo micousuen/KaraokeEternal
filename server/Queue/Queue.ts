@@ -208,6 +208,14 @@ class Queue {
     return res.count === ids.length
   }
 
+  static isInRoom (queueId: number, roomId: number): boolean {
+    const row = db.get<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM queue WHERE queueId = ? AND roomId = ?',
+      [queueId, roomId],
+    )
+    return row.count === 1
+  }
+
   /**
    * Get media type from file extension
    */

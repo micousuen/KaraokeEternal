@@ -7,6 +7,7 @@ import {
   PLAYER_CMD_OPTIONS,
   PLAYER_CMD_PAUSE,
   PLAYER_CMD_PLAY,
+  PLAYER_CMD_PRIORITY,
   PLAYER_CMD_REPLAY,
   PLAYER_CMD_SEEK,
   PLAYER_CMD_VOLUME,
@@ -31,6 +32,7 @@ export const playerCmdNext = createAction(PLAYER_CMD_NEXT)
 // triggered by clients
 const playerCmdPause = createAction(PLAYER_CMD_PAUSE)
 const playerCmdPlay = createAction(PLAYER_CMD_PLAY)
+const playerCmdPriority = createAction<{ queueId: number }>(PLAYER_CMD_PRIORITY)
 const playerCmdReplay = createAction<{ queueId: number }>(PLAYER_CMD_REPLAY)
 const playerCmdSeek = createAction<number>(PLAYER_CMD_SEEK)
 const playerCmdVolume = createAction<number>(PLAYER_CMD_VOLUME)
@@ -121,6 +123,7 @@ export interface PlayerState {
   volume: number
   _isFetching: boolean
   _isPlayingNext: boolean
+  _priorityQueueId: number | null
   _isReplayingQueueId: number | null
   _lastReplayTime: number
   _lastSeekTime: number
@@ -151,6 +154,7 @@ const initialState: PlayerState = {
   // "private" internal state that shouldn't be emitted
   _isFetching: false,
   _isPlayingNext: false,
+  _priorityQueueId: null,
   _isReplayingQueueId: null,
   _lastReplayTime: 0,
   _lastSeekTime: 0,
@@ -174,6 +178,9 @@ const playerReducer = createReducer(initialState, (builder) => {
     })
     .addCase(playerCmdPlay, (state) => {
       state.isPlaying = true
+    })
+    .addCase(playerCmdPriority, (state, { payload }) => {
+      state._priorityQueueId = payload.queueId
     })
     .addCase(playerCmdReplay, (state, { payload }) => {
       state._isReplayingQueueId = payload.queueId

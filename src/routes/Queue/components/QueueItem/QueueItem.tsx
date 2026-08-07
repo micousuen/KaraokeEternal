@@ -46,6 +46,7 @@ interface QueueItemProps {
   wait?: string
   // actions
   onMoveClick(queueId: number): void
+  onPlayNextClick(queueId: number): void
   onRemoveUpcoming: (userId: number) => void
 }
 
@@ -67,6 +68,7 @@ const QueueItem = ({
   isStarred,
   isUpcoming,
   onMoveClick,
+  onPlayNextClick,
   onRemoveUpcoming,
   pctPlayed,
   queueId,
@@ -88,6 +90,7 @@ const QueueItem = ({
     onMoveClick(queueId)
     setExpanded(false)
   }
+  const handlePlayNextClick = () => onPlayNextClick(queueId)
   const handleReplayClick = () => {
     dispatch(requestReplay(queueId))
     setExpanded(false)
@@ -262,6 +265,14 @@ const QueueItem = ({
             />
           )}
         </Buttons>
+        {isMovable && (
+          <Button
+            className={clsx(styles.btnPriority, styles.active)}
+            icon='PLAY_NEXT'
+            onClick={handlePlayNextClick}
+            title='Play next'
+          />
+        )}
       </div>
     </div>
   )

@@ -21,6 +21,7 @@ const pending = new Map<string, Promise<BrowserMediaBundle>>()
 const prefetchQueue: { source: string, mediaId: number, key: string }[] = []
 const prefetchedOrQueued = new Set<string>()
 let isPrefetching = false
+let activePrefetchKey: string | undefined
 let pruneQueue = Promise.resolve()
 const transcodeVersion = 3
 
@@ -68,9 +69,15 @@ export async function getBrowserMedia (source: string, mediaId: number): Promise
  * serial avoids five speculative FFmpeg jobs competing with current playback.
  */
 export function prefetchBrowserMedia (items: { source: string, mediaId: number }[]): void {
+  // Each request represents the latest playback order. Replace speculative
+  // queued work so a newly prioritized song runs immediately after the active
+  // FFmpeg job (active transcodes are intentionally not interrupted).
+  for (const queued of prefetchQueue) prefetchedOrQueued.delete(queued.key)
+  prefetchQueue.length = 0
+
   for (const { source, mediaId } of items) {
     const key = `${mediaId}\0${source}`
-    if (prefetchedOrQueued.has(key)) continue
+    if (key === activePrefetchKey || prefetchedOrQueued.has(key)) continue
 
     prefetchedOrQueued.add(key)
     prefetchQueue.push({ source, mediaId, key })
@@ -86,6 +93,7 @@ async function runPrefetchQueue (): Promise<void> {
     while (prefetchQueue.length) {
       const item = prefetchQueue.shift()
       if (!item) continue
+      activePrefetchKey = item.key
 
       try {
         await getBrowserMedia(item.source, item.mediaId)
@@ -93,6 +101,7 @@ async function runPrefetchQueue (): Promise<void> {
         log.warn('Could not pre-cache mediaId=%s: %s', item.mediaId, err.message)
       } finally {
         prefetchedOrQueued.delete(item.key)
+        activePrefetchKey = undefined
       }
     }
   } finally {
