@@ -80,7 +80,6 @@ interface QueueItemProps {
   userDateUpdated: number
   userDisplayName: string
   userId: number
-  wait?: string
   // actions
   onPlayNextClick(queueId: number): void
   onRemoveUpcoming: (userId: number) => void
@@ -113,7 +112,6 @@ const QueueItem = ({
   userDateUpdated,
   userDisplayName,
   userId,
-  wait,
 }: QueueItemProps) => {
   const [isExpanded, setExpanded] = useState(false)
   const [isRequeued, setRequeued] = useState(false)
@@ -190,11 +188,6 @@ const QueueItem = ({
         {isMovable && (
           <div {...dragHandleProps} className={styles.dragHandle} aria-label='Reorder queue item'>
             <Icon icon='DRAG_INDICATOR' />
-          </div>
-        )}
-        {!isPlayed && (
-          <div className={clsx(styles.countdown, isCurrent && styles.countdownNow)}>
-            {isCurrent ? 'Now' : wait}
           </div>
         )}
         <div className={clsx(styles.imageContainer, isPlayed && styles.greyed)}>

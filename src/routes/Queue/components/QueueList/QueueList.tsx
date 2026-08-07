@@ -4,12 +4,10 @@ import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { ensureState } from 'redux-optimistic-ui'
 import QueueItem from '../QueueItem/QueueItem'
 import Button from 'components/Button/Button'
-import { formatSeconds } from 'lib/dateTime'
 import { moveItem, removeUpcomingItems, shuffleItems } from '../../modules/queue'
 import { requestPriority } from 'store/modules/status'
 import getPlayerHistory from '../../selectors/getPlayerHistory'
 import getRoundRobinQueue from '../../selectors/getRoundRobinQueue'
-import getWaits from '../../selectors/getWaits'
 import styles from './QueueList.css'
 import fairShuffle from '../../lib/fairShuffle'
 
@@ -24,7 +22,6 @@ const QueueList = () => {
   const starredSongs = useAppSelector(state => ensureState(state.userStars).starredSongs)
   const starCounts = useAppSelector(state => state.starCounts)
   const user = useAppSelector(state => state.user)
-  const waits = useAppSelector(getWaits)
   const isPlayed = (id: number) => queue.entities[id].isPlayed || playerHistory.includes(id)
   const activeIds = queue.result.filter(id => !isPlayed(id))
   const playedIds = queue.result.filter(isPlayed).reverse()
@@ -110,7 +107,6 @@ const QueueList = () => {
               pctPlayed={isCurrent ? position / duration * 100 : 0}
               starCount={starCounts.songs[item.songId] || 0}
               title={songs.entities[item.songId].title}
-              wait={formatSeconds(waits[qId])}
               onPlayNextClick={handlePlayNextClick}
               onRemoveUpcoming={handleRemoveUpcoming}
             />

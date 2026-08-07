@@ -61,22 +61,6 @@
   }
 }
 
-.countdown {
-  flex: 0 0 3.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-gray-7);
-  font-size: var(--font-size-s);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-.countdownNow {
-  color: var(--queued-item-color);
-  text-shadow: var(--text-shadow-glow);
-}
-
 .primary {
   flex: 1;
   display: flex;
@@ -133,7 +117,7 @@
 }
 
 .marqueeOverflow {
-  animation: queueItemMarquee var(--marquee-duration) linear infinite alternate;
+  animation: queueItemMarquee var(--marquee-duration) linear infinite;
   will-change: transform;
 }
 
@@ -323,13 +307,8 @@
     font-size: 0.825rem;
   }
 
-  .user,
-  .countdown {
+  .user {
     font-size: 0.7rem;
-  }
-
-  .countdown {
-    flex-basis: 2.5rem;
   }
 
   .btnContainer button,
