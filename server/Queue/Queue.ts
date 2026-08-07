@@ -2,6 +2,9 @@ import path from 'path'
 import { db } from '../lib/Database.js'
 import sql from 'sqlate'
 import { QueueItem } from '../../shared/types.js'
+import getLogger from '../lib/Log.js'
+
+const log = getLogger('Queue')
 
 class Queue {
   /**
@@ -37,11 +40,9 @@ class Queue {
    * Get queued items for a given room
    */
   static get (roomId: number): { result: number[], entities: Record<number, QueueItem> } {
-    const result: number[] = []
-    const entities: Record<number, any> = {}
-    const map = new Map()
+    const entities: Record<number, QueueItem> = {}
     const pathData = new Map()
-    let curQueueId = null
+    const storedOrder = this.getStoredOrder(roomId, true)
 
     const query = sql`
       SELECT queueId, songId, userId, prevQueueId, queue.isPlayed,
@@ -61,7 +62,7 @@ class Queue {
       queueId: number
       songId: number
       userId: number
-      prevQueueId: number
+      prevQueueId: number | null
       mediaId: number
       relPath: string
       rgTrackGain: number
@@ -81,34 +82,81 @@ class Queue {
 
       const pathPrefs = pathData.get(row.pathId)?.prefs
 
-      entities[row.queueId] = row
-      entities[row.queueId].isPlayed = !!row.isPlayed
-      entities[row.queueId].mediaType = this.getType(row.relPath)
-      entities[row.queueId].isVideoKeyingEnabled = !!pathPrefs?.isVideoKeyingEnabled
-
-      // don't send over the wire
-      delete entities[row.queueId].relPath
-      delete entities[row.queueId].isPreferred
-      delete entities[row.queueId].pathData
-
-      if (row.prevQueueId === null) {
-        // found the first item
-        result.push(row.queueId)
-        curQueueId = row.queueId
-      } else {
-        // map indexed by prevQueueId
-        map.set(row.prevQueueId, row.queueId)
+      entities[row.queueId] = {
+        queueId: row.queueId,
+        songId: row.songId,
+        userId: row.userId,
+        prevQueueId: row.prevQueueId,
+        mediaId: row.mediaId,
+        rgTrackGain: row.rgTrackGain,
+        rgTrackPeak: row.rgTrackPeak,
+        userDateUpdated: row.userDateUpdated,
+        userDisplayName: row.userDisplayName,
+        isPlayed: !!row.isPlayed,
+        mediaType: this.getType(row.relPath),
+        isVideoKeyingEnabled: !!pathPrefs?.isVideoKeyingEnabled,
       }
     }
 
-    while (result.length < rows.length) {
-      // get the item whose prevQueueId references the current one
-      const nextQueueId = entities[map.get(curQueueId)].queueId
-      result.push(nextQueueId)
-      curQueueId = nextQueueId
-    }
+    // A queue entry can temporarily lack usable media while the library is
+    // being rescanned. Keep its database link but omit it from the wire payload.
+    const result = storedOrder.filter(queueId => entities[queueId])
 
     return { result, entities }
+  }
+
+  /** Read a room's linked list, repairing duplicate/orphan/cyclic links. */
+  private static getStoredOrder (roomId: number, repair: boolean): number[] {
+    const rows = db.all<{ queueId: number, prevQueueId: number | null }>(
+      'SELECT queueId, prevQueueId FROM queue WHERE roomId = ? ORDER BY queueId',
+      [roomId],
+    )
+    if (rows.length === 0) return []
+
+    const ids = new Set(rows.map(row => row.queueId))
+    const children = new Map<number, number[]>()
+    const roots: number[] = []
+    let isValid = true
+
+    for (const row of rows) {
+      if (row.prevQueueId === null || !ids.has(row.prevQueueId)) {
+        roots.push(row.queueId)
+        if (row.prevQueueId !== null) isValid = false
+      } else {
+        const siblings = children.get(row.prevQueueId) || []
+        siblings.push(row.queueId)
+        children.set(row.prevQueueId, siblings)
+        if (siblings.length > 1) isValid = false
+      }
+    }
+    if (roots.length !== 1) isValid = false
+
+    const order: number[] = []
+    const visited = new Set<number>()
+    const visit = (queueId: number) => {
+      if (visited.has(queueId)) {
+        isValid = false
+        return
+      }
+      visited.add(queueId)
+      order.push(queueId)
+      for (const child of (children.get(queueId) || []).sort((a, b) => a - b)) visit(child)
+    }
+
+    for (const root of roots.sort((a, b) => a - b)) visit(root)
+    for (const row of rows) {
+      if (!visited.has(row.queueId)) {
+        isValid = false
+        visit(row.queueId)
+      }
+    }
+
+    if ((!isValid || order.length !== rows.length) && repair) {
+      log.warn('Repairing malformed queue links in room %s', roomId)
+      this.setOrder(roomId, order)
+    }
+
+    return order
   }
 
   /** Persist newly completed queue entries for the room's Played view. */
@@ -136,44 +184,18 @@ class Queue {
 
     if (prevQueueId === -1) prevQueueId = null
 
-    const source = db.get<{ roomId: number }>('SELECT roomId FROM queue WHERE queueId = ?', [queueId])
-    if (!source || source.roomId !== roomId) throw new Error('Queue item is not in this room')
+    const order = this.getStoredOrder(roomId, true)
+    const sourceIndex = order.indexOf(queueId)
+    if (sourceIndex === -1) throw new Error('Queue item is not in this room')
 
-    if (prevQueueId !== null) {
-      const destination = db.get<{ roomId: number }>('SELECT roomId FROM queue WHERE queueId = ?', [prevQueueId])
-      if (!destination || destination.roomId !== roomId) throw new Error('Queue destination is not in this room')
+    order.splice(sourceIndex, 1)
+    const destinationIndex = prevQueueId === null ? -1 : order.indexOf(prevQueueId)
+    if (prevQueueId !== null && destinationIndex === -1) {
+      throw new Error('Queue destination is not in this room')
     }
 
-    const query = sql`
-      UPDATE queue
-      SET prevQueueId = CASE
-        WHEN queueId = newChild THEN ${queueId}
-        WHEN queueId = curChild AND curParent IS NOT NULL AND newChild IS NOT NULL THEN curParent
-        WHEN queueId = ${queueId} THEN ${prevQueueId}
-        ELSE queue.prevQueueId
-      END
-      FROM (SELECT
-        (
-          SELECT prevQueueId
-          FROM queue
-          WHERE queueId = ${queueId}
-        ) AS curParent,
-        (
-          SELECT queueId
-          FROM queue
-          WHERE prevQueueId = ${queueId}
-        ) AS curChild,
-        (
-          SELECT queueId
-          FROM queue
-          WHERE queueId != ${queueId}
-            AND prevQueueId ${prevQueueId === null ? sql`IS NULL` : sql`= ${prevQueueId}`}
-            AND roomId = ${roomId}
-        ) AS newChild
-      )
-      WHERE roomId = ${roomId}
-    `
-    db.run(String(query), query.parameters)
+    order.splice(destinationIndex + 1, 0, queueId)
+    this.setOrder(roomId, order)
   }
 
   /** Replace the complete linked-list order for one room atomically. */
@@ -212,6 +234,10 @@ class Queue {
    * Delete a queue item
    */
   static remove (queueId: number): void {
+    const row = db.get<{ roomId: number }>('SELECT roomId FROM queue WHERE queueId = ?', [queueId])
+    if (!row) throw new Error(`Could not remove queueId: ${queueId}`)
+    this.getStoredOrder(row.roomId, true)
+
     db.exec('BEGIN IMMEDIATE')
     db.exec('PRAGMA defer_foreign_keys = ON') // v0.9 betas didn't have prevQueueId DEFERRABLE
 
@@ -268,7 +294,7 @@ class Queue {
   /**
    * Get media type from file extension
    */
-  static getType (file: string): string {
+  static getType (file: string): 'cdg' | 'mp4' {
     return ['.mkv', '.mp4'].includes(path.extname(file).toLowerCase()) ? 'mp4' : 'cdg'
   }
 }

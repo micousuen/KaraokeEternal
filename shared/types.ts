@@ -16,7 +16,7 @@ export interface QueueItem {
   queueId: number
   songId: number
   userId: number
-  prevQueueId: number
+  prevQueueId: number | null
   mediaId: number
   rgTrackGain: number
   rgTrackPeak: number
