@@ -15,6 +15,7 @@ services:
       KES_TRANSCODE_CRF: "20"
       KES_TRANSCODE_AUDIO_BITRATE: 192k
       KES_TRANSCODE_MAX_SIZE_GB: "8"
+      KES_PRECACHE_COUNT: "5"
 
     ports:
       - "8080:8080"
