@@ -11,7 +11,9 @@ import {
   PLAYER_CMD_REPLAY,
   PLAYER_CMD_SEEK,
   PLAYER_CMD_VOLUME,
+  PLAYER_CMD_TAKEOVER,
   PLAYER_EMIT_LEAVE,
+  PLAYER_EMIT_CLAIM,
   PLAYER_EMIT_STATUS,
   PLAYER_ERROR,
   PLAYER_LOAD,
@@ -43,6 +45,7 @@ const playerCmdOptions = createAction<{
   duration: number
   mp4Alpha: number
 }>(PLAYER_CMD_OPTIONS)
+const playerCmdTakeover = createAction(PLAYER_CMD_TAKEOVER)
 
 // ------------------------------------
 // Actions for emitting to room
@@ -97,6 +100,15 @@ export function playerLeave (): AppThunk {
   }
 }
 
+export function playerClaim (): AppThunk {
+  return (dispatch) => {
+    // Clear a takeover from a previous visit before claiming this player
+    // session again on the existing socket connection.
+    dispatch(playerUpdate({ _isSuperseded: false }))
+    dispatch({ type: PLAYER_EMIT_CLAIM })
+  }
+}
+
 // ------------------------------------
 // Reducer
 // ------------------------------------
@@ -128,6 +140,7 @@ export interface PlayerState {
   _lastReplayTime: number
   _lastSeekTime: number
   _seekPosition: number
+  _isSuperseded: boolean
 }
 
 const initialState: PlayerState = {
@@ -159,10 +172,15 @@ const initialState: PlayerState = {
   _lastReplayTime: 0,
   _lastSeekTime: 0,
   _seekPosition: 0,
+  _isSuperseded: false,
 }
 
 const playerReducer = createReducer(initialState, (builder) => {
   builder
+    .addCase(playerCmdTakeover, (state) => {
+      state.isPlaying = false
+      state._isSuperseded = true
+    })
     .addCase(playerCmdNext, (state) => {
       state._isPlayingNext = true
     })

@@ -2,7 +2,8 @@ import React, { useEffect } from 'react'
 import screenfull from 'screenfull'
 import combinedReducer from 'store/reducers'
 import { useAppSelector, useAppDispatch } from 'store/hooks'
-import playerReducer, { sliceInjectNoOp } from '../modules/player'
+import Button from 'components/Button/Button'
+import playerReducer, { playerClaim, sliceInjectNoOp } from '../modules/player'
 import playerVisualizerReducer from '../modules/playerVisualizer'
 import PlayerController from '../components/PlayerController/PlayerController'
 import { fetchCurrentRoom } from 'store/modules/rooms'
@@ -19,6 +20,8 @@ const PlayerView = () => {
     combinedReducer.inject({ reducerPath: 'playerVisualizer', reducer: playerVisualizerReducer })
     dispatch(sliceInjectNoOp()) // update store with new slices
   }
+
+  const isSuperseded = useAppSelector(state => state.player?._isSuperseded)
 
   // once per mount
   useEffect(() => {
@@ -42,10 +45,22 @@ const PlayerView = () => {
           overflow: 'hidden',
         }}
       >
-        <PlayerController
-          width={innerWidth}
-          height={screenfull.isFullscreen ? innerHeight : viewportHeight}
-        />
+        {isSuperseded
+          ? (
+              <div className={styles.takeover}>
+                <h1>Player taken over</h1>
+                <p>Another screen is now playing for this room.</p>
+                <Button variant='primary' onClick={() => dispatch(playerClaim())}>
+                  Take Over Again
+                </Button>
+              </div>
+            )
+          : (
+              <PlayerController
+                width={innerWidth}
+                height={screenfull.isFullscreen ? innerHeight : viewportHeight}
+              />
+            )}
       </div>
     </div>
   )

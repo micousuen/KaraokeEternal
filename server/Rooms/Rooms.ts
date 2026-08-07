@@ -1,5 +1,6 @@
 import crypto from '../lib/crypto.js'
 import sql from 'sqlate'
+import type { Server } from 'socket.io'
 import { db } from '../lib/Database.js'
 import { ValidationError } from '../lib/Errors.js'
 
@@ -230,6 +231,26 @@ class Rooms {
     }
 
     return false
+  }
+
+  /**
+   * Count distinct authenticated users in a room. A user may have several
+   * tabs or devices connected, but should only appear once in the room count.
+   */
+  static countActiveUsers (io: Server, roomId: number): number {
+    const userIds = new Set<number>()
+
+    for (const socket of io.of('/').sockets.values()) {
+      const sock = socket as typeof socket & {
+        user?: { roomId?: number, userId?: number }
+      }
+
+      if (sock.user?.roomId === roomId && typeof sock.user.userId === 'number') {
+        userIds.add(sock.user.userId)
+      }
+    }
+
+    return userIds.size
   }
 
   /**

@@ -5,6 +5,7 @@ import Panel from 'components/Panel/Panel'
 import Button from 'components/Button/Button'
 import EditRoom from './EditRoom/EditRoom'
 import { closeRoomEditor, fetchRooms, openRoomEditor } from 'store/modules/rooms'
+import { joinRoomAsAdmin } from 'store/modules/user'
 import { filterByRoom } from '../../modules/users'
 import getRoomList from '../../selectors/getRoomList'
 import styles from './Rooms.css'
@@ -22,8 +23,10 @@ const Rooms = () => {
     setEditorRoom(rooms.entities[parseInt(e.currentTarget.dataset.roomId || '0')])
     dispatch(openRoomEditor())
   }
+  const handleJoin = (roomId: number, destination: 'library' | 'player') => {
+    dispatch(joinRoomAsAdmin({ roomId, destination }))
+  }
 
-  // once per mount
   useEffect(() => {
     dispatch(fetchRooms())
   }, [dispatch])
@@ -32,7 +35,23 @@ const Rooms = () => {
     const room = rooms.entities[roomId]
     return (
       <tr key={String(roomId)}>
-        <td translate='no'><a data-room-id={roomId} onClick={handleOpen}>{room.name}</a></td>
+        <td translate='no'>
+          <div className={styles.roomCell}>
+            <a className={styles.roomName} data-room-id={roomId} onClick={handleOpen}>{room.name}</a>
+            <div className={styles.roomActions}>
+              <Button className={styles.roomButton} variant='primary' onClick={() => handleJoin(roomId, 'library')}>
+                Join Room
+              </Button>
+              <Button
+                className={styles.roomButton}
+                variant='primary'
+                onClick={() => handleJoin(roomId, 'player')}
+              >
+                Join as Player
+              </Button>
+            </div>
+          </div>
+        </td>
         <td>
           {room.numUsers > 0 && (
             <a data-room-id={roomId} onClick={handleFilterUsers}>{room.numUsers}</a>

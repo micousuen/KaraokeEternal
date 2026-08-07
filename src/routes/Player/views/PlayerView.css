@@ -4,3 +4,13 @@
   align-items: center;
   justify-content: center;
 }
+
+.takeover {
+  max-width: 32rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.takeover h1 {
+  margin-top: 0;
+}

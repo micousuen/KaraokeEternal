@@ -4,7 +4,7 @@ import Player from '../Player/Player'
 import PlayerTextOverlay from '../PlayerTextOverlay/PlayerTextOverlay'
 import PlayerQR from '../PlayerQR/PlayerQR'
 import getActiveQueue from 'routes/Queue/selectors/getActiveQueue'
-import { playerLeave, playerError, playerLoad, playerPlay, playerStatus, type PlayerState } from '../../modules/player'
+import { playerClaim, playerLeave, playerError, playerLoad, playerPlay, playerStatus, type PlayerState } from '../../modules/player'
 import getRoomPrefs from '../../selectors/getRoomPrefs'
 import type { QueueItem } from 'shared/types'
 import HttpApi from 'lib/HttpApi'
@@ -65,6 +65,12 @@ const PlayerController = (props: PlayerControllerProps) => {
       _isReplayingQueueId: null,
     })
   }, [handleStatus, player.historyJSON, player.queueId, queue.entities])
+
+  // Claim ownership once when this player screen opens. Playback status
+  // updates (including Play Next) do not affect ownership.
+  useEffect(() => {
+    dispatch(playerClaim())
+  }, [dispatch])
 
   const handleLoadNext = useCallback(() => {
     const history = JSON.parse(player.historyJSON)

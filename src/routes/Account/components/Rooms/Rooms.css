@@ -34,3 +34,28 @@
   text-overflow: ellipsis;
   max-width: 0;
 }
+
+.roomCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
+  min-width: 0;
+}
+
+.roomName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roomActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-xs);
+}
+
+.roomButton {
+  width: auto;
+  padding: var(--space-xs) var(--space-s);
+}

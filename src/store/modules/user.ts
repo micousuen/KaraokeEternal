@@ -145,14 +145,16 @@ export const fetchAccount = createAsyncThunk(
 // ------------------------------------
 export const joinRoomAsAdmin = createAsyncThunk(
   'user/JOIN_ROOM_AS_ADMIN',
-  async (roomId: number, thunkAPI) => {
+  async (input: number | { roomId: number, destination: 'library' | 'player' }, thunkAPI) => {
+    const roomId = typeof input === 'number' ? input : input.roomId
+    const destination = typeof input === 'number' ? 'library' : input.destination
     const user = await api.post(`rooms/${roomId}/join`)
 
     socket.close()
     thunkAPI.dispatch(receiveAccount(user))
     await thunkAPI.dispatch(connectSocket())
     socket.open()
-    AppRouter.navigate(basename.replace(/\/$/, '') + '/library')
+    AppRouter.navigate(basename.replace(/\/$/, '') + `/${destination}`)
   },
 )
 

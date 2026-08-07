@@ -108,6 +108,10 @@ router.get('/:mediaId', async (ctx) => {
   }
 
   if (['video', 'videoAudio', 'videoInfo'].includes(String(type))) {
+    // Browser media is versioned on the client and cached on disk by the
+    // server. Prevent browser/proxy caches from mixing old audio container
+    // bytes with the current response MIME type.
+    ctx.set('Cache-Control', 'no-store')
     const bundle = await getBrowserMedia(file, mediaId)
 
     if (type === 'videoInfo') {

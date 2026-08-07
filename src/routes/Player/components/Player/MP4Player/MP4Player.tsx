@@ -1,5 +1,8 @@
 import React from 'react'
+import { BROWSER_MEDIA_VERSION } from 'shared/media'
 import styles from './MP4Player.css'
+
+const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
 
 interface MP4PlayerProps {
   audioTrack: 0 | 1
@@ -89,11 +92,11 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (!this.video.current || !this.audio.current) return
 
     this.pendingPosition = 0
-    this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video`
+    this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
     this.video.current.load()
     this.updateAudioSource()
 
-    fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo`)
+    fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
       .then(async (response) => {
         if (!response.ok) throw new Error(await response.text())
         return response.json()
@@ -108,7 +111,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     this.video.current?.pause()
     this.audio.current.pause()
     this.pendingPosition = position
-    this.audio.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}`
+    this.audio.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}${mediaVersion}`
     this.audio.current.load()
   }
 

@@ -43,8 +43,7 @@ router.get(['/', '/:roomId'], (ctx) => {
 
   res.result.forEach((roomId) => {
     if (ctx.user.isAdmin) {
-      const room = ctx.io.sockets.adapter.rooms.get(Rooms.prefix(roomId))
-      res.entities[roomId].numUsers = room ? room.size : 0
+      res.entities[roomId].numUsers = Rooms.countActiveUsers(ctx.io, roomId)
     } else {
       // only pass the 'roles' prefs key
       res.entities[roomId].prefs = res.entities[roomId].prefs?.roles ? { roles: res.entities[roomId].prefs.roles } : {}

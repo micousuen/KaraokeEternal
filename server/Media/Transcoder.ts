@@ -5,6 +5,7 @@ import fsPromises from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import getLogger from '../lib/Log.js'
+import { BROWSER_MEDIA_VERSION } from '../../shared/media.js'
 
 interface BrowserMediaBundle {
   video: string
@@ -23,7 +24,6 @@ const prefetchedOrQueued = new Set<string>()
 let isPrefetching = false
 let activePrefetchKey: string | undefined
 let pruneQueue = Promise.resolve()
-const transcodeVersion = 4
 
 const cacheDir = process.env.KES_PATH_TRANSCODE
   || path.join(os.tmpdir(), 'karaoke-eternal-transcode')
@@ -42,7 +42,7 @@ export async function getBrowserMedia (source: string, mediaId: number): Promise
   const stats = await fsPromises.stat(source)
   const fingerprint = crypto
     .createHash('sha256')
-    .update(`${transcodeVersion}\0${source}\0${stats.size}\0${stats.mtimeMs}`)
+    .update(`${BROWSER_MEDIA_VERSION}\0${source}\0${stats.size}\0${stats.mtimeMs}`)
     .digest('hex')
     .slice(0, 16)
   const output = path.join(cacheDir, `${mediaId}-${fingerprint}`)

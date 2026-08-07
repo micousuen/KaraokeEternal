@@ -9,6 +9,7 @@ import {
   PLAYER_CMD_REPLAY,
   PLAYER_CMD_SEEK,
   PLAYER_CMD_VOLUME,
+  PLAYER_CMD_TAKEOVER,
   PLAYER_REQ_NEXT,
   PLAYER_REQ_OPTIONS,
   PLAYER_REQ_PAUSE,
@@ -18,6 +19,7 @@ import {
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
   PLAYER_EMIT_STATUS,
+  PLAYER_EMIT_CLAIM,
   PLAYER_EMIT_LEAVE,
   PLAYER_STATUS,
   PLAYER_LEAVE,
@@ -29,6 +31,24 @@ import Queue from '../Queue/Queue.js'
 // Action Handlers
 // ------------------------------------
 const ACTION_HANDLERS = {
+  [PLAYER_EMIT_CLAIM]: (sock) => {
+    // Taking over is explicit and only happens when a player screen opens.
+    // Routine playback/status updates must never transfer ownership.
+    sock._isSuperseded = false
+
+    for (const existing of sock.server.of('/').sockets.values()) {
+      if (
+        existing.id !== sock.id
+        && existing.user?.roomId === sock.user.roomId
+        && existing._lastPlayerStatus
+        && !existing._isSuperseded
+      ) {
+        existing._isSuperseded = true
+        existing._lastPlayerStatus = null
+        existing.emit('action', { type: PLAYER_CMD_TAKEOVER })
+      }
+    }
+  },
   [PLAYER_REQ_OPTIONS]: (sock, { payload }) => {
     // @todo: emit to players only
     sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
@@ -88,6 +108,8 @@ const ACTION_HANDLERS = {
     })
   },
   [PLAYER_EMIT_STATUS]: (sock, { payload }) => {
+    if (sock._isSuperseded) return
+
     let history: number[] = []
     try {
       const parsed = JSON.parse(payload.historyJSON || '[]')
