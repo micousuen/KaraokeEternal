@@ -21,6 +21,8 @@ export interface VocalSeparationState {
     processingSeconds: number | null
     error: string | null
   }>
+  queued: Array<{ mediaId: number, song: string }>
+  completedThisRun: VocalSeparationState['recent']
 }
 
 const statusReceived = createAction<VocalSeparationState>(VOCAL_SEPARATION_STATUS)
@@ -35,6 +37,8 @@ const initialState: VocalSeparationState = {
   averageSpeed: null,
   lastError: null,
   recent: [],
+  queued: [],
+  completedThisRun: [],
 }
 
 export default createReducer(initialState, (builder) => {

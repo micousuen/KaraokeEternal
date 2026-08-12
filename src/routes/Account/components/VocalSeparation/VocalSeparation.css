@@ -9,11 +9,25 @@
 }
 
 .grid > div,
+.grid > button,
 .current {
   min-width: 0;
   padding: var(--space-m);
   border-radius: 8px;
   background: rgba(255, 255, 255, .05);
+}
+
+.summaryButton {
+  color: inherit;
+  border: 1px solid transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.summaryButton:hover,
+.summaryButton:focus-visible {
+  border-color: hsl(var(--hue-blue), 60%, 55%);
+  outline: none;
 }
 
 .grid span,
@@ -72,51 +86,23 @@
   color: #aaa;
 }
 
-.history {
-  margin-top: var(--space-l);
+.listModal {
+  width: min(700px, 90vw);
+  height: min(700px, 85vh);
 }
 
-.history h2 {
-  margin-bottom: var(--space-s);
-  font-size: var(--font-size-m);
-}
-
-.historyItem {
-  padding: var(--space-s) 0;
-  border-top: 1px solid rgba(255, 255, 255, .1);
-}
-
-.historySong {
-  overflow: hidden;
-  font-weight: var(--font-weight-bold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.historyMeta {
+.songList > div {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-s);
-  margin-top: var(--space-xs);
+  justify-content: space-between;
+  gap: var(--space-m);
+  padding: var(--space-s) 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .1);
+  overflow-wrap: anywhere;
+}
+
+.songList small {
+  flex: none;
   color: #aaa;
-  font-size: 80%;
-}
-
-.historyMeta .succeeded {
-  color: #83d99b;
-}
-
-.historyMeta .failed {
-  color: #ff9b9b;
-}
-
-.historyMeta .processing {
-  color: #8fc7ff;
-}
-
-.historyItem > .error {
-  display: block;
-  margin-top: var(--space-xs);
 }
 
 @media (max-width: 600px) {

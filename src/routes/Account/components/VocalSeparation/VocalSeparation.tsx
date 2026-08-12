@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import Button from 'components/Button/Button'
+import Modal from 'components/Modal/Modal'
 import Panel from 'components/Panel/Panel'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { requestScanAll } from 'store/modules/prefs'
@@ -12,6 +13,7 @@ const VocalSeparation = () => {
   const isScanning = useAppSelector(state => state.prefs.isScanning)
   const dispatch = useAppDispatch()
   const [now, setNow] = useState(0)
+  const [openList, setOpenList] = useState<'queued' | 'completed' | null>(null)
 
   useEffect(() => {
     if (status.currentStartedAt === null) return
@@ -33,14 +35,14 @@ const VocalSeparation = () => {
     <Panel title='Instrumental generation' contentClassName={styles.content}>
       <div>
         <div className={styles.grid}>
-          <div>
+          <button className={styles.summaryButton} type='button' onClick={() => setOpenList('queued')}>
             <span>Queued</span>
             <strong>{status.queuedSongs}</strong>
-          </div>
-          <div>
+          </button>
+          <button className={styles.summaryButton} type='button' onClick={() => setOpenList('completed')}>
             <span>Completed this run</span>
             <strong>{status.completedSongs}</strong>
-          </div>
+          </button>
           <div>
             <span>Average speed</span>
             <strong>{formatSpeed(status.averageSpeed)}</strong>
@@ -94,41 +96,31 @@ const VocalSeparation = () => {
             Scans all media folders and queues only videos that contain one audio track.
           </small>
         </div>
-        <div className={styles.history}>
-          <h2>
-            Processing history
-            {status.recent.length > 0 && ` (${status.recent.length})`}
-          </h2>
-          {status.recent.length === 0 && <p>No processing history recorded yet.</p>}
-          {status.recent.map((item) => {
-            const speed = item.audioSeconds && item.processingSeconds
-              ? `${(item.audioSeconds / item.processingSeconds).toFixed(2)}×`
-              : null
-            const when = item.completedAt || item.startedAt
-            return (
-              <div className={styles.historyItem} key={item.mediaId}>
-                <div className={styles.historySong} title={item.song}>{item.song}</div>
-                <div className={styles.historyMeta}>
-                  <span className={styles[item.status]}>{item.status}</span>
-                  {speed && (
-                    <span>
-                      {speed}
-                      {' '}
-                      realtime
-                    </span>
-                  )}
-                  <span>
-                    {item.attempts}
-                    {' '}
-                    {item.attempts === 1 ? 'attempt' : 'attempts'}
-                  </span>
-                  {when && <span>{new Date(when * 1000).toLocaleString()}</span>}
+        {openList === 'queued' && (
+          <Modal title={`Queued songs (${status.queued.length})`} onClose={() => setOpenList(null)} scrollable className={styles.listModal}>
+            <div className={styles.songList}>
+              {status.queued.length === 0 && <p>No songs are queued.</p>}
+              {status.queued.map(item => <div key={item.mediaId} title={item.song}>{item.song}</div>)}
+            </div>
+          </Modal>
+        )}
+        {openList === 'completed' && (
+          <Modal title={`Processing results (${status.recent.length})`} onClose={() => setOpenList(null)} scrollable className={styles.listModal}>
+            <div className={styles.songList}>
+              {status.recent.length === 0 && <p>No processing results recorded yet.</p>}
+              {status.recent.map(item => (
+                <div key={item.mediaId} title={item.song}>
+                  <span>{item.song}</span>
+                  <small>
+                    {item.status}
+                    {item.processingSeconds ? ` · ${Math.round(item.processingSeconds)}s` : ''}
+                    {item.attempts > 1 ? ` · ${item.attempts} attempts` : ''}
+                  </small>
                 </div>
-                {item.error && <small className={styles.error}>{item.error}</small>}
-              </div>
-            )
-          })}
-        </div>
+              ))}
+            </div>
+          </Modal>
+        )}
       </div>
     </Panel>
   )

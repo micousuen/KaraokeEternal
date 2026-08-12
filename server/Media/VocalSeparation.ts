@@ -45,6 +45,8 @@ export interface VocalSeparationStatus {
   averageSpeed: number | null
   lastError: string | null
   recent: SeparationHistoryItem[]
+  queued: Array<{ mediaId: number, song: string }>
+  completedThisRun: SeparationHistoryItem[]
 }
 
 export interface SeparationHistoryItem {
@@ -67,6 +69,7 @@ let currentJob: Job | undefined
 let currentStartedAt: number | undefined
 let currentProgress: number | undefined
 let completedSongs = 0
+const completedThisRun = new Set<number>()
 let processedAudioSeconds = 0
 let processingSeconds = 0
 let lastError: string | null = null
@@ -88,6 +91,7 @@ export function scheduleVocalSeparation (job: Job, prioritize = false): void {
 }
 
 export function getVocalSeparationStatus (): VocalSeparationStatus {
+  const history = getHistory()
   return {
     enabled: config.enabled,
     queuedSongs: queue.length,
@@ -97,7 +101,12 @@ export function getVocalSeparationStatus (): VocalSeparationStatus {
     completedSongs,
     averageSpeed: processingSeconds > 0 ? processedAudioSeconds / processingSeconds : null,
     lastError,
-    recent: getRecentHistory(),
+    recent: history,
+    queued: queue.map(job => ({
+      mediaId: job.mediaId,
+      song: path.basename(job.source, path.extname(job.source)),
+    })),
+    completedThisRun: history.filter(item => completedThisRun.has(item.mediaId)),
   }
 }
 
@@ -125,6 +134,7 @@ async function drain (): Promise<void> {
         const audioSeconds = await separate(job)
         const elapsedSeconds = (Date.now() - currentStartedAt) / 1000
         completedSongs++
+        completedThisRun.add(job.mediaId)
         processedAudioSeconds += audioSeconds
         processingSeconds += elapsedSeconds
         markFinished(job, 'succeeded', audioSeconds, elapsedSeconds, null)
@@ -179,7 +189,7 @@ function markFinished (
   `, [status, Math.round(Date.now() / 1000), audioSeconds, elapsedSeconds, error, job.mediaId])
 }
 
-function getRecentHistory (): SeparationHistoryItem[] {
+function getHistory (): SeparationHistoryItem[] {
   return db.all<{
     mediaId: number
     source: string
