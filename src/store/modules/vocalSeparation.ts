@@ -1,8 +1,14 @@
 import { createAction, createReducer } from '@reduxjs/toolkit'
-import { VOCAL_SEPARATION_STATUS } from 'shared/actionTypes'
+import {
+  VOCAL_SEPARATION_MODELS_MOUNT,
+  VOCAL_SEPARATION_MODELS_UNMOUNT,
+  VOCAL_SEPARATION_STATUS,
+} from 'shared/actionTypes'
 
 export interface VocalSeparationState {
   enabled: boolean
+  modelsMounted: boolean
+  modelsLoading: boolean
   queuedSongs: number
   currentSong: string | null
   currentStartedAt: number | null
@@ -35,9 +41,13 @@ interface ProcessingTask {
 }
 
 const statusReceived = createAction<VocalSeparationState>(VOCAL_SEPARATION_STATUS)
+export const mountWhisperXModels = createAction(VOCAL_SEPARATION_MODELS_MOUNT)
+export const unmountWhisperXModels = createAction(VOCAL_SEPARATION_MODELS_UNMOUNT)
 
 const initialState: VocalSeparationState = {
   enabled: false,
+  modelsMounted: false,
+  modelsLoading: false,
   queuedSongs: 0,
   currentSong: null,
   currentStartedAt: null,

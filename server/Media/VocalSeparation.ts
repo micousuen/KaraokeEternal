@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { parse } from 'yaml'
 import getLogger from '../lib/Log.js'
 import { db } from '../lib/Database.js'
+import whisperxWorker, { type WhisperXSettings } from './WhisperXWorker.js'
 
 const execFileAsync = promisify(childProcess.execFile)
 const log = getLogger('VocalSeparation')
@@ -17,7 +18,6 @@ const numbaCacheRoot = path.join(modelRoot, '.numba-cache')
 const separatorPath = process.env.KES_PATH_AUDIO_SEPARATOR || 'audio-separator'
 const ffmpegPath = process.env.KES_PATH_FFMPEG || 'ffmpeg'
 const ffprobePath = process.env.KES_PATH_FFPROBE || 'ffprobe'
-const whisperxPath = process.env.KES_PATH_WHISPERX || 'whisperx'
 
 interface SeparationConfig {
   enabled: boolean
@@ -50,6 +50,8 @@ interface Job {
 
 export interface VocalSeparationStatus {
   enabled: boolean
+  modelsMounted: boolean
+  modelsLoading: boolean
   queuedSongs: number
   currentSong: string | null
   currentStartedAt: number | null
@@ -121,10 +123,27 @@ export function scheduleVocalSeparation (job: Job, prioritize = false): void {
   void drain()
 }
 
+export async function mountWhisperXModels (): Promise<void> {
+  const mounting = whisperxWorker.mount(whisperXSettings())
+  emitStatus()
+  try {
+    await mounting
+  } finally {
+    emitStatus()
+  }
+}
+
+export async function unmountWhisperXModels (): Promise<void> {
+  await whisperxWorker.unmount()
+  emitStatus()
+}
+
 export function getVocalSeparationStatus (): VocalSeparationStatus {
   const history = getHistory()
   return {
     enabled: config.enabled,
+    modelsMounted: whisperxWorker.mounted,
+    modelsLoading: whisperxWorker.loading,
     queuedSongs: queue.length,
     currentSong: currentJob ? path.basename(currentJob.source, path.extname(currentJob.source)) : null,
     currentStartedAt: currentStartedAt || null,
@@ -340,10 +359,8 @@ async function separate (job: Job): Promise<number> {
         '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
         '-i', vocal, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
       ])
-      await runWhisperX(scriptingInput, workDir)
-      const generated = (await fsPromises.readdir(workDir)).find(file => path.extname(file).toLowerCase() === '.srt')
-      if (!generated) throw new Error('WhisperX produced no SRT file')
-      await fsPromises.copyFile(path.join(workDir, generated), `${scriptPath(job.source)}.partial`)
+      const { srt } = await runWhisperX(scriptingInput, workDir)
+      await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
       await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
       db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = ?', [job.mediaId])
       emitStatus()
@@ -396,29 +413,25 @@ function scriptPath (source: string): string {
   return path.join(path.dirname(source), `${path.basename(source, path.extname(source))}.srt`)
 }
 
-async function runWhisperX (vocal: string, outputDir: string): Promise<void> {
-  const args = [vocal, '--model', config.scripting.model, '--device', 'cpu', '--compute_type', 'int8',
-    '--batch_size', '1', '--vad_method', 'silero', '--vad_onset', String(config.scripting.vadOnset ?? 0.35),
-    '--beam_size', String(config.scripting.beamSize ?? 8), '--print_progress',
-    '--output_format', 'srt', '--output_dir', outputDir]
-  if (config.scripting.language) args.push('--language', config.scripting.language)
-  if (config.scripting.initialPrompt) args.push('--initial_prompt', config.scripting.initialPrompt)
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      await runProcess(whisperxPath, args, {
-        ...process.env,
-        HOME: modelRoot,
-        HF_HOME: modelRoot,
-        TORCH_HOME: modelRoot,
-        CUDA_VISIBLE_DEVICES: '',
-        PYTHONUNBUFFERED: '1',
-      }, 'WhisperX', updateWhisperXProgress)
-      setProgress(100)
-      return
-    } catch (err) {
-      if (attempt === 2 || !isNoChildProcessError(err)) throw err
-      log.warn('WhisperX process wait failed with ECHILD; retrying once')
-    }
+async function runWhisperX (vocal: string, outputDir: string): Promise<{ language: string, srt: string }> {
+  // The worker mounts itself on demand and stays alive for subsequent songs,
+  // avoiding repeated ASR/VAD model startup.
+  const result = await whisperxWorker.transcribe(vocal, outputDir, whisperXSettings(), (progress) => {
+    setProgress(Math.min(99, Math.round(progress)))
+  }, () => {
+    emitStatus()
+  })
+  setProgress(100)
+  return result
+}
+
+function whisperXSettings (): WhisperXSettings {
+  return {
+    model: config.scripting.model,
+    language: config.scripting.language,
+    vadOnset: config.scripting.vadOnset ?? 0.35,
+    beamSize: config.scripting.beamSize ?? 8,
+    initialPrompt: config.scripting.initialPrompt,
   }
 }
 
@@ -476,46 +489,6 @@ async function runSeparatorOnce (args: string[]): Promise<void> {
       else finish(new Error(`audio-separator exited with code ${code}`))
     })
   })
-}
-
-function runProcess (
-  command: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-  label: string,
-  onOutput?: (output: string) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = childProcess.spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], env })
-    let output = ''
-    let settled = false
-    const finish = (err?: Error) => {
-      if (settled) return
-      settled = true
-      if (err) reject(Object.assign(err, { stderr: output }))
-      else resolve()
-    }
-    const collect = (chunk: Buffer) => {
-      const text = chunk.toString()
-      output = (output + text).slice(-10 * 1024 * 1024)
-      onOutput?.(text)
-    }
-    child.stdout.on('data', collect)
-    child.stderr.on('data', collect)
-    child.on('error', finish)
-    child.on('close', (code, signal) => {
-      if (code === 0) finish()
-      else finish(new Error(`${label} exited with ${code === null ? `signal ${signal}` : `code ${code}`}`))
-    })
-  })
-}
-
-function updateWhisperXProgress (output: string): void {
-  for (const match of output.matchAll(/Progress:\s*(\d{1,3}(?:\.\d+)?)%/g)) {
-    // WhisperX reports transcription chunks but not its final alignment pass.
-    // Reserve the last few percent until the process exits successfully.
-    setProgress(Math.min(95, Math.round(Number(match[1]) * 0.95)))
-  }
 }
 
 function isNoChildProcessError (err: unknown): boolean {

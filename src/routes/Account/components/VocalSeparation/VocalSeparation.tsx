@@ -4,6 +4,7 @@ import Modal from 'components/Modal/Modal'
 import Panel from 'components/Panel/Panel'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { requestScanAll } from 'store/modules/prefs'
+import { mountWhisperXModels, unmountWhisperXModels } from 'store/modules/vocalSeparation'
 import styles from './VocalSeparation.css'
 
 const formatSpeed = (speed: number | null) => speed === null ? 'Waiting for first result' : `${speed.toFixed(2)}× realtime`
@@ -94,6 +95,18 @@ const VocalSeparation = () => {
           </Button>
           <small>
             Scans media folders, adds an instrumental track when needed, and creates missing SRT scripts.
+          </small>
+        </div>
+        <div className={styles.actions}>
+          <Button
+            variant='default'
+            disabled={status.modelsLoading}
+            onClick={() => dispatch(status.modelsMounted ? unmountWhisperXModels() : mountWhisperXModels())}
+          >
+            {status.modelsLoading ? 'Mounting WhisperX models…' : status.modelsMounted ? 'Unmount WhisperX models' : 'Mount WhisperX models'}
+          </Button>
+          <small>
+            Keeps WhisperX and voice-activity detection models ready for faster script generation.
           </small>
         </div>
         {openList === 'queued' && (

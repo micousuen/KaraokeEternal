@@ -10,6 +10,7 @@ import Rooms from './Rooms/Rooms.js'
 import RoomsSocket from './Rooms/socket.js'
 import Queue from './Queue/Queue.js'
 import QueueSocket from './Queue/socket.js'
+import MediaSocket from './Media/socket.js'
 import { getRoomYouTubeJobs } from './YouTube/YouTube.js'
 import { getVocalSeparationStatus } from './Media/VocalSeparation.js'
 
@@ -31,6 +32,7 @@ const log = getLogger('server')
 const handlers = {
   ...LibrarySocket,
   ...QueueSocket,
+  ...MediaSocket,
   ...PlayerSocket,
   ...PrefsSocket,
   ...RoomsSocket,
