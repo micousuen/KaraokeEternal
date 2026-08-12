@@ -5,6 +5,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { parse } from 'yaml'
 import getLogger from '../lib/Log.js'
+import { db } from '../lib/Database.js'
 
 const execFile = promisify(childProcess.execFile)
 const log = getLogger('VocalSeparation')
@@ -30,7 +31,8 @@ interface Job {
   mediaId: number
   pathId: number
   source: string
-  onComplete: (pathId: number) => void
+  onComplete: () => void
+  onSourceReplacing: (pathId: number) => void
 }
 
 export interface VocalSeparationStatus {
@@ -42,6 +44,19 @@ export interface VocalSeparationStatus {
   completedSongs: number
   averageSpeed: number | null
   lastError: string | null
+  recent: SeparationHistoryItem[]
+}
+
+export interface SeparationHistoryItem {
+  mediaId: number
+  song: string
+  status: 'processing' | 'succeeded' | 'failed'
+  attempts: number
+  startedAt: number | null
+  completedAt: number | null
+  audioSeconds: number | null
+  processingSeconds: number | null
+  error: string | null
 }
 
 const config = loadConfig()
@@ -82,6 +97,7 @@ export function getVocalSeparationStatus (): VocalSeparationStatus {
     completedSongs,
     averageSpeed: processingSeconds > 0 ? processedAudioSeconds / processingSeconds : null,
     lastError,
+    recent: getRecentHistory(),
   }
 }
 
@@ -103,6 +119,7 @@ async function drain (): Promise<void> {
       currentStartedAt = Date.now()
       currentProgress = 0
       lastError = null
+      markStarted(job)
       emitStatus()
       try {
         const audioSeconds = await separate(job)
@@ -110,9 +127,12 @@ async function drain (): Promise<void> {
         completedSongs++
         processedAudioSeconds += audioSeconds
         processingSeconds += elapsedSeconds
-        job.onComplete(job.pathId)
+        markFinished(job, 'succeeded', audioSeconds, elapsedSeconds, null)
+        job.onComplete()
       } catch (err) {
         lastError = errorMessage(err)
+        const elapsedSeconds = currentStartedAt ? (Date.now() - currentStartedAt) / 1000 : 0
+        markFinished(job, 'failed', null, elapsedSeconds, lastError)
         log.warn('Could not generate instrumental for mediaId=%s: %s', job.mediaId, lastError)
       } finally {
         scheduled.delete(job.mediaId)
@@ -125,6 +145,60 @@ async function drain (): Promise<void> {
   } finally {
     active = false
   }
+}
+
+function markStarted (job: Job): void {
+  db.run(`
+    INSERT INTO vocalSeparationHistory
+      (mediaId, source, model, status, attempts, startedAt, completedAt, audioSeconds, processingSeconds, error)
+    VALUES (?, ?, ?, 'processing', 1, ?, NULL, NULL, NULL, NULL)
+    ON CONFLICT(mediaId) DO UPDATE SET
+      source = excluded.source,
+      model = excluded.model,
+      status = 'processing',
+      attempts = vocalSeparationHistory.attempts + 1,
+      startedAt = excluded.startedAt,
+      completedAt = NULL,
+      audioSeconds = NULL,
+      processingSeconds = NULL,
+      error = NULL
+  `, [job.mediaId, job.source, config.model, Math.round(Date.now() / 1000)])
+}
+
+function markFinished (
+  job: Job,
+  status: 'succeeded' | 'failed',
+  audioSeconds: number | null,
+  elapsedSeconds: number,
+  error: string | null,
+): void {
+  db.run(`
+    UPDATE vocalSeparationHistory
+    SET status = ?, completedAt = ?, audioSeconds = ?, processingSeconds = ?, error = ?
+    WHERE mediaId = ?
+  `, [status, Math.round(Date.now() / 1000), audioSeconds, elapsedSeconds, error, job.mediaId])
+}
+
+function getRecentHistory (): SeparationHistoryItem[] {
+  return db.all<{
+    mediaId: number
+    source: string
+    status: 'processing' | 'succeeded' | 'failed'
+    attempts: number
+    startedAt: number | null
+    completedAt: number | null
+    audioSeconds: number | null
+    processingSeconds: number | null
+    error: string | null
+  }>(`
+    SELECT mediaId, source, status, attempts, startedAt, completedAt,
+      audioSeconds, processingSeconds, error
+    FROM vocalSeparationHistory
+    ORDER BY COALESCE(completedAt, startedAt) DESC
+  `).map(row => ({
+    ...row,
+    song: path.basename(row.source, path.extname(row.source)),
+  }))
 }
 
 async function separate (job: Job): Promise<number> {
@@ -193,6 +267,7 @@ async function separate (job: Job): Promise<number> {
     }
     await fsPromises.copyFile(remuxed, replacement)
     await fsPromises.chmod(replacement, initialStats.mode)
+    job.onSourceReplacing(job.pathId)
     await fsPromises.rename(replacement, job.source)
     setProgress(100)
     log.info('Added generated instrumental as A2 for mediaId=%s', job.mediaId)

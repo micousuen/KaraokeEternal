@@ -6,7 +6,7 @@ import { LIBRARY_SCAN_BATCH, MEDIA_ADD, MEDIA_ANALYZE_AUDIO_TRACKS, MEDIA_CLEANU
 /**
  * IPC action handlers
  */
-export default function (io, startScanner) {
+export default function (io, suppressWatcher) {
   const pendingSongIds = new Set<number>()
   let flushTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -33,15 +33,17 @@ export default function (io, startScanner) {
 
   return {
     [MEDIA_ANALYZE_AUDIO_TRACKS]: ({ payload }) => {
-      scheduleAudioTrackAnalysis(payload.mediaId, payload.source, {
+      const schedule = (mediaId, source) => scheduleAudioTrackAnalysis(mediaId, source, {
         pathId: payload.pathId,
         isManagedDownload: !!payload.isManagedDownload,
-        onSeparationComplete: startScanner,
-        onAnalysisComplete: (mediaId) => {
-          const media = Media.search({ mediaId })
-          queueLiveUpdate(media.entities[mediaId]?.songId)
+        onSeparationComplete: schedule,
+        onSourceReplacing: suppressWatcher,
+        onAnalysisComplete: (analyzedMediaId) => {
+          const media = Media.search({ mediaId: analyzedMediaId })
+          queueLiveUpdate(media.entities[analyzedMediaId]?.songId)
         },
       })
+      schedule(payload.mediaId, payload.source)
     },
     [MEDIA_ADD]: ({ payload }) => {
       const mediaId = Media.add(payload)

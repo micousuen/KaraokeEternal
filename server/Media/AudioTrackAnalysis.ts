@@ -20,7 +20,8 @@ interface Job {
   source: string
   pathId?: number
   isManagedDownload?: boolean
-  onSeparationComplete?: (pathId: number) => void
+  onSeparationComplete?: (mediaId: number, source: string) => void
+  onSourceReplacing?: (pathId: number) => void
   onAnalysisComplete?: (mediaId: number) => void
   resolve?: (record: AudioTrackAnalysisRecord) => void
   reject?: (err: Error) => void
@@ -37,7 +38,8 @@ export function scheduleAudioTrackAnalysis (
   options?: {
     pathId: number
     isManagedDownload: boolean
-    onSeparationComplete: (pathId: number) => void
+    onSeparationComplete: (mediaId: number, source: string) => void
+    onSourceReplacing: (pathId: number) => void
     onAnalysisComplete: (mediaId: number) => void
   },
 ): void {
@@ -95,7 +97,8 @@ async function drain (): Promise<void> {
             mediaId: job.mediaId,
             pathId: job.pathId,
             source: job.source,
-            onComplete: job.onSeparationComplete,
+            onComplete: () => job.onSeparationComplete?.(job.mediaId, job.source),
+            onSourceReplacing: job.onSourceReplacing,
           }, job.isManagedDownload)
         }
         job.resolve?.(record)

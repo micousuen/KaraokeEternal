@@ -94,6 +94,41 @@ const VocalSeparation = () => {
             Scans all media folders and queues only videos that contain one audio track.
           </small>
         </div>
+        <div className={styles.history}>
+          <h2>
+            Processing history
+            {status.recent.length > 0 && ` (${status.recent.length})`}
+          </h2>
+          {status.recent.length === 0 && <p>No processing history recorded yet.</p>}
+          {status.recent.map((item) => {
+            const speed = item.audioSeconds && item.processingSeconds
+              ? `${(item.audioSeconds / item.processingSeconds).toFixed(2)}×`
+              : null
+            const when = item.completedAt || item.startedAt
+            return (
+              <div className={styles.historyItem} key={item.mediaId}>
+                <div className={styles.historySong} title={item.song}>{item.song}</div>
+                <div className={styles.historyMeta}>
+                  <span className={styles[item.status]}>{item.status}</span>
+                  {speed && (
+                    <span>
+                      {speed}
+                      {' '}
+                      realtime
+                    </span>
+                  )}
+                  <span>
+                    {item.attempts}
+                    {' '}
+                    {item.attempts === 1 ? 'attempt' : 'attempts'}
+                  </span>
+                  {when && <span>{new Date(when * 1000).toLocaleString()}</span>}
+                </div>
+                {item.error && <small className={styles.error}>{item.error}</small>}
+              </div>
+            )
+          })}
+        </div>
       </div>
     </Panel>
   )

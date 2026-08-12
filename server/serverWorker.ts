@@ -28,7 +28,13 @@ import IPC from './lib/IPCBridge.js'
 import IPCLibraryActions from './Library/ipc.js'
 import IPCMediaActions from './Media/ipc.js'
 import { setVocalSeparationStatusPublisher } from './Media/VocalSeparation.js'
-import { SCANNER_WORKER_EXITED, SERVER_WORKER_STATUS, SERVER_WORKER_ERROR, VOCAL_SEPARATION_STATUS } from '../shared/actionTypes.js'
+import {
+  SCANNER_WORKER_EXITED,
+  SERVER_WORKER_STATUS,
+  SERVER_WORKER_ERROR,
+  VOCAL_SEPARATION_STATUS,
+  WATCHER_WORKER_SUPPRESS_PATH,
+} from '../shared/actionTypes.js'
 
 const log = getLogger('server')
 const { verify: jwtVerify } = jsonWebToken
@@ -73,7 +79,9 @@ async function serverWorker ({ env, startScanner, stopScanner, shutdownHandlers 
 
     // attach IPC action handlers
     IPC.use(IPCLibraryActions(io))
-    IPC.use(IPCMediaActions(io, startScanner))
+    IPC.use(IPCMediaActions(io, (pathId) => {
+      IPC.send({ type: WATCHER_WORKER_SUPPRESS_PATH, payload: { pathId } })
+    }))
 
     // success callback in 3rd arg
     server.listen(env.KES_PORT, () => {

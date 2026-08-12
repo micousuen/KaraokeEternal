@@ -10,6 +10,7 @@ import {
   REQUEST_SCAN_STOP,
   SCANNER_WORKER_EXITED,
   WATCHER_WORKER_EVENT,
+  WATCHER_WORKER_SUPPRESS_PATH,
   WATCHER_WORKER_WATCH,
 } from '../shared/actionTypes.js'
 
@@ -26,6 +27,7 @@ const log = initLogger('server', {
 const refs: { scanner?: childProcess.ChildProcess, watcher?: childProcess.ChildProcess } = {}
 const shutdownHandlers: Array<() => Promise<void>> = []
 let IPC
+const watcherSuppressedUntil = new Map<number, number>()
 
 process.on(PREFS_PATHS_CHANGED, startWatcher)
 
@@ -74,7 +76,11 @@ process.on('unhandledRejection', (reason) => {
 
   IPC.use({
     [WATCHER_WORKER_EVENT]: ({ payload }) => {
+      if ((watcherSuppressedUntil.get(payload.pathId) || 0) > Date.now()) return
       startScanner(payload.pathId)
+    },
+    [WATCHER_WORKER_SUPPRESS_PATH]: ({ payload }) => {
+      watcherSuppressedUntil.set(payload.pathId, Date.now() + 5000)
     },
   })
 

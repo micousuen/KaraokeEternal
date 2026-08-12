@@ -128,6 +128,7 @@ export const MEDIA_REMOVE = 'scannerWorker/MEDIA_REMOVE'
 export const MEDIA_UPDATE = 'scannerWorker/MEDIA_UPDATE'
 export const WATCHER_WORKER_EVENT = 'watcherWorker/EVENT'
 export const WATCHER_WORKER_WATCH = 'watcherWorker/WATCH'
+export const WATCHER_WORKER_SUPPRESS_PATH = 'watcherWorker/SUPPRESS_PATH'
 
 // Same-process messages via EventEmitter
 export const SCANNER_WORKER_EXITED = 'scannerWorker/EXITED'
