@@ -13,3 +13,12 @@
   text-shadow: 0 2px 4px black, 0 0 12px black;
   pointer-events: none;
 }
+
+.script span {
+  display: block;
+}
+
+.script .activeLine {
+  color: var(--link-color);
+  text-shadow: 0 2px 4px black, 0 0 12px black, 0 0 18px hsl(var(--hue-blue), 90%, 50%);
+}

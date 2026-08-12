@@ -13,6 +13,9 @@ export interface WhisperXSettings {
   model: string
   beamSize: number
   vadOnset: number
+  maxLineWidth: number
+  maxLineCount: number
+  minLineWidth: number
   language?: string
   initialPrompt?: string
 }

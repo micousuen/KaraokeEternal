@@ -27,10 +27,16 @@ scripting:
 
   # Lower values retain quieter sung vocals. Raise this if it produces too
   # many false lyric lines from the instrumental.
-  vadOnset: 0.3
+  vadOnset: 0.25
 
   # More decoding candidates improve difficult lyrics at the cost of CPU time.
   beamSize: 8
+
+  # Subtitle layout. Long lyric phrases are split into timed SRT cues after
+  # two readable lines instead of preserving WhisperX's entire segment.
+  maxLineWidth: 36
+  maxLineCount: 2
+  minLineWidth: 12
 
   # Leave unset: a generic prompt can be hallucinated as a lyric in short,
   # low-energy vocal regions.
