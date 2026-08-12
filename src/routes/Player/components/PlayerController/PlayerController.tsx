@@ -8,6 +8,7 @@ import { playerClaim, playerLeave, playerError, playerLoad, playerPlay, playerSt
 import getRoomPrefs from '../../selectors/getRoomPrefs'
 import type { QueueItem } from 'shared/types'
 import HttpApi from 'lib/HttpApi'
+import ScriptOverlay from '../ScriptOverlay/ScriptOverlay'
 
 const mediaApi = new HttpApi('media')
 
@@ -128,6 +129,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     player.audioTrack,
     player.isPlaying,
     player.mp4Alpha,
+    player.showScript,
     player.volume,
     playerVisualizer,
     queueItem?.isVideoKeyingEnabled,
@@ -222,6 +224,13 @@ const PlayerController = (props: PlayerControllerProps) => {
         width={props.width}
         height={props.height}
       />
+      {queueItem && player.showScript && (
+        <ScriptOverlay
+          mediaId={queueItem.mediaId}
+          mediaKey={queueItem.queueId}
+          position={player.position}
+        />
+      )}
       {roomPrefs?.qr?.password && (
         <PlayerQR
           height={props.height}

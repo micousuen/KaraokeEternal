@@ -7,6 +7,9 @@ services:
     image: karaoke-eternal:transcode
     pull_policy: never
     restart: unless-stopped
+    # Reap FFmpeg, separator, and WhisperX subprocesses reliably. Without an
+    # init process, long preprocessing runs can eventually fail with ECHILD.
+    init: true
     depends_on:
       - youtube-pot-provider
 
@@ -31,6 +34,8 @@ services:
       KES_PATH_DOWNLOADS: /downloads
       KES_YOUTUBE_MAX_DURATION: "300"
       KES_YOUTUBE_POT_PROVIDER_URL: http://youtube-pot-provider:4416
+      # WhisperX runs on CPU with int8 inference and batch size 1.
+      KES_PATH_WHISPERX: /opt/whisperx/bin/whisperx
 
     ports:
       # Change 10188 if that host port is already in use.

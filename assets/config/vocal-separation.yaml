@@ -16,3 +16,10 @@ segmentSeconds: 7.8
 overlap: 0.25
 shifts: 0
 outputBitrate: 192k
+
+# Generate an SRT sidecar beside the original media. WhisperX is deliberately
+# CPU-only so no CUDA runtime or GPU is required.
+scripting:
+  enabled: true
+  model: large-v3
+  # language: en

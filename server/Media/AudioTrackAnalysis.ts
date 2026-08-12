@@ -1,4 +1,6 @@
+import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
+import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
@@ -10,6 +12,8 @@ export interface AudioTrackAnalysisRecord {
   audioTrackCount: number
   ktvTrack: 0 | 1 | null
   confidence: number
+  duration: number
+  scriptReady: number
   sourceSize: number
   sourceMtimeMs: number
   dateAnalyzed: number
@@ -92,12 +96,15 @@ async function drain (): Promise<void> {
         const cached = await readCurrent(job.mediaId, job.source)
         const record = cached || await analyze(job.mediaId, job.source)
         job.onAnalysisComplete?.(job.mediaId)
-        if (record.audioTrackCount === 1 && job.pathId !== undefined && job.onSeparationComplete) {
+        if (job.pathId !== undefined && job.onSeparationComplete) {
           scheduleVocalSeparation({
             mediaId: job.mediaId,
             pathId: job.pathId,
             source: job.source,
-            onComplete: () => job.onSeparationComplete?.(job.mediaId, job.source),
+            generateInstrumental: record.audioTrackCount === 1,
+            onComplete: record.audioTrackCount === 1
+              ? () => job.onSeparationComplete?.(job.mediaId, job.source)
+              : undefined,
             onSourceReplacing: job.onSourceReplacing,
           }, job.isManagedDownload)
         }
@@ -122,7 +129,13 @@ async function readCurrent (mediaId: number, source: string): Promise<AudioTrack
   )
   if (!row) return undefined
   const stats = await fsPromises.stat(source)
-  return row.sourceSize === stats.size && row.sourceMtimeMs === stats.mtimeMs ? row : undefined
+  if (row.sourceSize !== stats.size || row.sourceMtimeMs !== stats.mtimeMs || row.duration <= 0) return undefined
+  const scriptReady = Number(fs.existsSync(scriptPath(source)))
+  if (row.scriptReady !== scriptReady) {
+    row.scriptReady = scriptReady
+    db.run('UPDATE audioTrackAnalysis SET scriptReady = ? WHERE mediaId = ?', [scriptReady, mediaId])
+  }
+  return row
 }
 
 async function analyze (mediaId: number, source: string): Promise<AudioTrackAnalysisRecord> {
@@ -133,18 +146,23 @@ async function analyze (mediaId: number, source: string): Promise<AudioTrackAnal
     audioTrackCount: result.audioTrackCount,
     ktvTrack: result.ktvTrack,
     confidence: result.confidence,
+    duration: result.duration,
+    scriptReady: Number(fs.existsSync(scriptPath(source))),
     sourceSize: stats.size,
     sourceMtimeMs: stats.mtimeMs,
     dateAnalyzed: Math.round(Date.now() / 1000),
   }
   db.run(`
     INSERT INTO audioTrackAnalysis
-      (mediaId, audioTrackCount, ktvTrack, confidence, sourceSize, sourceMtimeMs, dateAnalyzed)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+      (mediaId, audioTrackCount, ktvTrack, confidence, duration, scriptReady,
+       sourceSize, sourceMtimeMs, dateAnalyzed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(mediaId) DO UPDATE SET
       audioTrackCount = excluded.audioTrackCount,
       ktvTrack = excluded.ktvTrack,
       confidence = excluded.confidence,
+      duration = excluded.duration,
+      scriptReady = excluded.scriptReady,
       sourceSize = excluded.sourceSize,
       sourceMtimeMs = excluded.sourceMtimeMs,
       dateAnalyzed = excluded.dateAnalyzed
@@ -153,16 +171,25 @@ async function analyze (mediaId: number, source: string): Promise<AudioTrackAnal
     record.audioTrackCount,
     record.ktvTrack,
     record.confidence,
+    record.duration,
+    record.scriptReady,
     record.sourceSize,
     record.sourceMtimeMs,
     record.dateAnalyzed,
   ])
+  if (record.duration > 0) {
+    db.run('UPDATE media SET duration = ? WHERE mediaId = ?', [Math.round(record.duration), mediaId])
+  }
   log.info('Analyzed mediaId=%s: %s audio track(s), instrumental=%s confidence=%s',
     mediaId,
     record.audioTrackCount,
     record.ktvTrack === null ? 'unknown' : `A${record.ktvTrack + 1}`,
     record.confidence.toFixed(2))
   return record
+}
+
+function scriptPath (source: string): string {
+  return path.join(path.dirname(source), `${path.basename(source, path.extname(source))}.srt`)
 }
 
 function runClassifier (source: string): Promise<KtvTrackDetection> {

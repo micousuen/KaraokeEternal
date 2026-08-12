@@ -83,6 +83,21 @@ router.get('/:mediaId', async (ctx) => {
   let file = path.join(basePath, relPath)
   let buffer
 
+  if (type === 'script') {
+    const script = path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.srt`)
+    try {
+      const stats = await fsPromises.stat(script)
+      ctx.length = stats.size
+      ctx.type = 'application/x-subrip; charset=utf-8'
+      ctx.set('Cache-Control', 'no-store')
+      streamMedia(ctx, script, undefined, stats.size)
+    } catch (err) {
+      if (err instanceof Error && 'code' in err && err.code === 'ENOENT') ctx.throw(404, 'No script available')
+      throw err
+    }
+    return
+  }
+
   if (getExt(file) === '.zip') {
     const { entries } = await unzip(new Uint8Array(await fsPromises.readFile(file)))
     let entry

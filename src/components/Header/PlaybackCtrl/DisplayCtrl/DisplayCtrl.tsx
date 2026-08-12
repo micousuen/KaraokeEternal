@@ -16,6 +16,7 @@ interface DisplayCtrlProps {
   isWebGLSupported: boolean
   mediaType?: MediaType
   mp4Alpha: number
+  showScript: boolean
   sensitivity: number
   visualizerPresetName: string
   // actions
@@ -31,6 +32,7 @@ const DisplayCtrl = ({
   isWebGLSupported,
   mediaType = '',
   mp4Alpha,
+  showScript,
   sensitivity,
   visualizerPresetName,
   onRequestOptions,
@@ -52,6 +54,8 @@ const DisplayCtrl = ({
   const handleToggleVisualizer = () => onRequestOptions({
     visualizer: { isEnabled: !isVisualizerEnabled },
   })
+
+  const handleToggleScript = () => onRequestOptions({ showScript: !showScript })
 
   const handlePresetNext = () => onRequestOptions({
     visualizer: { nextPreset: true },
@@ -146,7 +150,12 @@ const DisplayCtrl = ({
         <div className={clsx(styles.section, styles.lyrics)}>
           <fieldset>
             <legend>
-              <label>Lyrics</label>
+              <InputCheckbox
+                label='Script'
+                checked={showScript}
+                disabled={mediaType !== 'mp4'}
+                onChange={handleToggleScript}
+              />
             </legend>
 
             {mediaType === 'cdg' && (
@@ -180,7 +189,9 @@ const DisplayCtrl = ({
             )}
 
             {mediaType !== 'cdg' && !isVideoKeyingEnabled && (
-              <p className={styles.unsupported}>No options available</p>
+              <p className={styles.unsupported}>
+                {mediaType === 'mp4' ? 'Displays the generated script when available' : 'No options available'}
+              </p>
             )}
           </fieldset>
         </div>

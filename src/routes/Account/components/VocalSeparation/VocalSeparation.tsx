@@ -32,7 +32,7 @@ const VocalSeparation = () => {
   const progress = status.currentProgress || 0
 
   return (
-    <Panel title='Instrumental generation' contentClassName={styles.content}>
+    <Panel title='Media processing' contentClassName={styles.content}>
       <div>
         <div className={styles.grid}>
           <button className={styles.summaryButton} type='button' onClick={() => setOpenList('queued')}>
@@ -55,10 +55,25 @@ const VocalSeparation = () => {
           </strong>
           {status.currentSong && (
             <>
+              <div className={styles.taskList}>
+                {status.currentTasks.map(task => (
+                  <div key={task.type} className={styles.task}>
+                    <span>{task.label}</span>
+                    <small>{task.progress === null ? task.status : `${task.progress}%`}</small>
+                    <div className={styles.taskTrack}>
+                      <div
+                        className={styles.taskFill}
+                        data-active={task.progress === null}
+                        style={{ width: task.progress === null ? '35%' : `${task.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
               <div
                 className={styles.progressTrack}
                 role='progressbar'
-                aria-label='Instrumental generation progress'
+                aria-label='Media processing progress'
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={progress}
@@ -90,17 +105,22 @@ const VocalSeparation = () => {
             disabled={!status.enabled || isScanning}
             onClick={() => dispatch(requestScanAll())}
           >
-            {isScanning ? 'Scanning media folders…' : 'Find single-track songs'}
+            {isScanning ? 'Scanning media folders…' : 'Process media library'}
           </Button>
           <small>
-            Scans all media folders and queues only videos that contain one audio track.
+            Scans media folders, adds an instrumental track when needed, and creates missing SRT scripts.
           </small>
         </div>
         {openList === 'queued' && (
           <Modal title={`Queued songs (${status.queued.length})`} onClose={() => setOpenList(null)} scrollable className={styles.listModal}>
             <div className={styles.songList}>
               {status.queued.length === 0 && <p>No songs are queued.</p>}
-              {status.queued.map(item => <div key={item.mediaId} title={item.song}>{item.song}</div>)}
+              {status.queued.map(item => (
+                <div key={item.mediaId} title={item.song}>
+                  <span>{item.song}</span>
+                  <small>{item.tasks.map(task => task.label).join(' · ')}</small>
+                </div>
+              ))}
             </div>
           </Modal>
         )}

@@ -108,6 +108,7 @@ export interface UserWithRole extends User {
 
 export interface PlaybackOptions {
   audioTrack?: 0 | 1
+  showScript?: boolean
   cdgAlpha?: number
   cdgSize?: number
   mp4Alpha?: number

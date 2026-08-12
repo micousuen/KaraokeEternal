@@ -38,6 +38,42 @@
   font-size: 80%;
 }
 
+.taskList {
+  display: grid;
+  gap: var(--space-s);
+  margin-top: var(--space-m);
+}
+
+.task {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-xs) var(--space-m);
+}
+
+.taskTrack {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .12);
+}
+
+.taskFill {
+  height: 100%;
+  border-radius: inherit;
+  background: hsl(var(--hue-blue), 70%, 55%);
+  transition: width .25s ease;
+}
+
+.taskFill[data-active='true'] {
+  animation: task-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes task-pulse {
+  from { transform: translateX(0); opacity: .55; }
+  to { transform: translateX(185%); opacity: 1; }
+}
+
 .grid strong,
 .current strong {
   display: block;

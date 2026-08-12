@@ -7,6 +7,7 @@ import { parse } from 'yaml'
 const execFile = promisify(childProcess.execFile)
 
 export interface KtvTrackDetection {
+  duration: number
   audioTrackCount: number
   ktvTrack: 0 | 1 | null
   confidence: number
@@ -60,7 +61,7 @@ export async function detectKtvTrack (
     throw new Error('windowSeconds must be greater than zero')
   }
   const { duration, audioTrackCount } = await probe(source)
-  if (audioTrackCount !== 2 || duration <= 0) return unknown(0, 0, 0, 0, audioTrackCount)
+  if (audioTrackCount !== 2 || duration <= 0) return unknown(0, 0, 0, 0, audioTrackCount, duration)
 
   const [track0, track1] = await Promise.all([
     readSpectralWindows(source, 0, duration, windowSeconds, smoothingFrames, lagFrames, vocalLowHz, vocalHighHz),
@@ -83,7 +84,7 @@ export async function detectKtvTrack (
     divergences.push(divergence)
   }
 
-  if (!signedEvidence.length) return unknown(0)
+  if (!signedEvidence.length) return unknown(0, 0, 0, 0, audioTrackCount, duration)
 
   const medianEvidence = median(signedEvidence)
   const agreement = signedEvidence.filter(value => Math.sign(value) === Math.sign(medianEvidence)).length / signedEvidence.length
@@ -91,11 +92,12 @@ export async function detectKtvTrack (
   const relativeEvidence = Math.abs(medianEvidence)
 
   if (agreement < minimumAgreement || relativeEvidence < minimumComplexity) {
-    return unknown(signedEvidence.length, medianDivergence, medianEvidence, agreement)
+    return unknown(signedEvidence.length, medianDivergence, medianEvidence, agreement, audioTrackCount, duration)
   }
 
   const vocalTrack: 0 | 1 = medianEvidence > 0 ? 0 : 1
   return {
+    duration,
     ktvTrack: vocalTrack === 0 ? 1 : 0,
     audioTrackCount,
     vocalTrack,
@@ -292,8 +294,10 @@ function unknown (
   complexityDifference = 0,
   agreement = 0,
   audioTrackCount = 2,
+  duration = 0,
 ): KtvTrackDetection {
   return {
+    duration,
     audioTrackCount,
     ktvTrack: null,
     confidence: 0,

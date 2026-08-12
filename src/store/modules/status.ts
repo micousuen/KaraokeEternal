@@ -79,6 +79,7 @@ interface StatusState {
   isWebGLSupported: boolean
   mediaType: MediaType | null
   mp4Alpha: number
+  showScript: boolean
   nextUserId: number | null
   position: number
   queueId: number
@@ -102,6 +103,7 @@ const initialState: StatusState = {
   isWebGLSupported: false,
   mediaType: null,
   mp4Alpha: 1,
+  showScript: false,
   nextUserId: null,
   position: 0,
   queueId: -1,

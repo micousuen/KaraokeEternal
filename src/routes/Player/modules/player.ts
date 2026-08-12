@@ -44,6 +44,7 @@ const playerCmdOptions = createAction<{
   cdgSize: number
   duration: number
   mp4Alpha: number
+  showScript: boolean
 }>(PLAYER_CMD_OPTIONS)
 const playerCmdTakeover = createAction(PLAYER_CMD_TAKEOVER)
 
@@ -127,6 +128,7 @@ export interface PlayerState {
   isWebGLSupported: boolean
   mediaType: string | null
   mp4Alpha: number
+  showScript: boolean
   nextUserId: number | null
   position: number
   queueId: number
@@ -158,6 +160,7 @@ const initialState: PlayerState = {
   isWebGLSupported: getWebGLSupport(),
   mediaType: null,
   mp4Alpha: 0.5,
+  showScript: false,
   nextUserId: null,
   position: 0,
   queueId: -1,
@@ -190,6 +193,7 @@ const playerReducer = createReducer(initialState, (builder) => {
       cdgAlpha: typeof payload.cdgAlpha === 'number' ? payload.cdgAlpha : state.cdgAlpha,
       cdgSize: typeof payload.cdgSize === 'number' ? payload.cdgSize : state.cdgSize,
       mp4Alpha: typeof payload.mp4Alpha === 'number' ? payload.mp4Alpha : state.mp4Alpha,
+      showScript: typeof payload.showScript === 'boolean' ? payload.showScript : state.showScript,
     }))
     .addCase(playerCmdPause, (state) => {
       state.isPlaying = false

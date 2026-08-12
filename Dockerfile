@@ -33,6 +33,9 @@ RUN apt-get update \
   && /opt/yt-dlp/bin/pip install --no-cache-dir "yt-dlp[default]" bgutil-ytdlp-pot-provider==1.3.1 \
   && python3 -m venv /opt/audio-separator \
   && /opt/audio-separator/bin/pip install --no-cache-dir "audio-separator[cpu]==0.44.5" \
+  && python3 -m venv /opt/whisperx \
+  && /opt/whisperx/bin/pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
+  && /opt/whisperx/bin/pip install --no-cache-dir whisperx \
   && apt-get purge --yes --auto-remove build-essential python3-dev \
   && rm -rf /var/lib/apt/lists/*
 
@@ -43,7 +46,7 @@ COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./
 
 ENV NODE_ENV=production \
-  PATH=/opt/audio-separator/bin:/opt/yt-dlp/bin:$PATH \
+  PATH=/opt/whisperx/bin:/opt/audio-separator/bin:/opt/yt-dlp/bin:$PATH \
   KES_PATH_DATA=/config \
   KES_PATH_DOWNLOADS=/media/downloads \
   KES_PATH_TRANSCODE=/transcode \

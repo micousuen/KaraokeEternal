@@ -111,6 +111,7 @@ const PlaybackCtrl = () => {
           isWebGLSupported={status.isWebGLSupported}
           mediaType={status.mediaType}
           mp4Alpha={status.mp4Alpha}
+          showScript={status.showScript}
           onClose={toggleDisplayCtrl}
           onRequestOptions={handleOptions}
           sensitivity={status.visualizer.sensitivity}

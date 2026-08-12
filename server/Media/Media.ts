@@ -30,7 +30,7 @@ class Media {
     const title = name.toLowerCase().endsWith(extension.toLowerCase())
       ? path.basename(name, extension)
       : name
-    const moves = mediaItems.map(media => {
+    const moves = mediaItems.map((media) => {
       const oldFile = path.resolve(media.path, media.relPath)
       const mediaExtension = path.extname(media.relPath)
       const newBasename = `${artist}-${title}${mediaExtension}`
@@ -41,6 +41,9 @@ class Media {
         oldFile,
         newFile: path.resolve(media.path, ...newRelPath.split('/')),
         newRelPath,
+        oldScript: path.join(path.dirname(oldFile), `${path.basename(oldFile, mediaExtension)}.srt`),
+        newScript: path.join(path.dirname(oldFile), `${path.basename(newBasename, mediaExtension)}.srt`),
+        moveScript: false,
       }
     })
     if (moves.every(move => move.newFile === move.oldFile)
@@ -53,13 +56,30 @@ class Media {
       } catch (err) {
         if (err instanceof Error && !('code' in err && err.code === 'ENOENT')) throw err
       }
+      try {
+        await fsPromises.access(move.oldScript)
+        move.moveScript = true
+        try {
+          await fsPromises.access(move.newScript)
+          throw new Error('An SRT script with that name already exists')
+        } catch (err) {
+          if (err instanceof Error && !('code' in err && err.code === 'ENOENT')) throw err
+        }
+      } catch (err) {
+        if (err instanceof Error && !('code' in err && err.code === 'ENOENT')) throw err
+      }
     }
 
     const completedMoves: typeof moves = []
+    const completedScriptMoves: typeof moves = []
     try {
       for (const move of moves.filter(move => move.newFile !== move.oldFile)) {
         await fsPromises.rename(move.oldFile, move.newFile)
         completedMoves.push(move)
+        if (move.moveScript) {
+          await fsPromises.rename(move.oldScript, move.newScript)
+          completedScriptMoves.push(move)
+        }
       }
       db.exec('BEGIN IMMEDIATE')
       for (const move of moves) {
@@ -105,6 +125,7 @@ class Media {
       } catch {
         // The transaction may have failed before BEGIN completed.
       }
+      for (const move of completedScriptMoves.reverse()) await fsPromises.rename(move.newScript, move.oldScript)
       for (const move of completedMoves.reverse()) await fsPromises.rename(move.newFile, move.oldFile)
       throw err
     }

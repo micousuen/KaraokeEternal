@@ -1,0 +1,15 @@
+.script {
+  position: absolute;
+  z-index: 4;
+  right: 6%;
+  bottom: 8%;
+  left: 6%;
+  color: white;
+  font-size: clamp(24px, 4vw, 64px);
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-line;
+  text-shadow: 0 2px 4px black, 0 0 12px black;
+  pointer-events: none;
+}
