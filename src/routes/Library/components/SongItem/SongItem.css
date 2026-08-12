@@ -85,6 +85,12 @@
   vertical-align: 2px;
 }
 
+.singleTrack {
+  composes: source;
+  border-color: var(--color-gray-5);
+  color: var(--color-gray-6);
+}
+
 /* Buttons */
 .btn {
   position: relative;

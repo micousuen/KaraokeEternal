@@ -28,6 +28,7 @@ interface SongItemProps {
   isUpcoming: boolean
   isAdmin: boolean
   isManagedDownload?: boolean
+  hasSingleAudioTrack?: boolean
   numStars: number
   numMedia: number
   filterKeywords: string[]
@@ -47,6 +48,7 @@ const SongItem = ({
   isUpcoming,
   isAdmin,
   isManagedDownload,
+  hasSingleAudioTrack,
   numStars,
   numMedia,
   filterKeywords,
@@ -120,6 +122,7 @@ const SongItem = ({
             <div className={styles.title}>
               {filterKeywords?.length ? <Highlighter autoEscape textToHighlight={title} searchWords={filterKeywords} /> : title}
               {isManagedDownload && <span className={styles.source}>YouTube download</span>}
+              {hasSingleAudioTrack && <span className={styles.singleTrack}>Single audio track</span>}
               {isAdmin && numMedia > 1 && (
                 <i>
                   {' '}

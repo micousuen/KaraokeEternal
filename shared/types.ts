@@ -11,6 +11,7 @@ export interface Song {
   title: string
   numMedia: number
   isManagedDownload?: boolean
+  hasSingleAudioTrack?: boolean
 }
 
 export interface YouTubeJob {

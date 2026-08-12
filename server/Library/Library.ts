@@ -45,19 +45,29 @@ class Library {
       const query = sql`
         SELECT duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
           MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia,
-          MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload
+          MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
+          MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack
         FROM media
           INNER JOIN songs USING (songId)
           INNER JOIN paths USING (pathId)
+          LEFT JOIN audioTrackAnalysis USING (mediaId)
         GROUP BY songId
         ORDER BY songs.titleNorm, paths.priority ASC
       `
-      const rows = db.all<Omit<Song, 'isManagedDownload'> & { isPreferred: number, isManagedDownload: number }>(String(query), query.parameters)
+      const rows = db.all<Omit<Song, 'isManagedDownload' | 'hasSingleAudioTrack'> & {
+        isPreferred: number
+        isManagedDownload: number
+        hasSingleAudioTrack: number
+      }>(String(query), query.parameters)
 
       for (const row of rows) {
         const song = { ...row }
         delete song.isPreferred
-        songs.entities[row.songId] = { ...song, isManagedDownload: !!row.isManagedDownload }
+        songs.entities[row.songId] = {
+          ...song,
+          isManagedDownload: !!row.isManagedDownload,
+          hasSingleAudioTrack: !!row.hasSingleAudioTrack,
+        }
         songs.result.push(row.songId)
 
         // add to artist's songIds
@@ -122,6 +132,10 @@ class Library {
         title: media.title,
         numMedia: result.length,
         isManagedDownload: result.some(mediaId => !!entities[mediaId].isManagedDownload || isManagedDownloadPath(entities[mediaId].pathData)),
+        hasSingleAudioTrack: db.get<{ audioTrackCount: number }>(
+          'SELECT audioTrackCount FROM audioTrackAnalysis WHERE mediaId = ?',
+          [media.mediaId],
+        )?.audioTrackCount === 1,
       },
     }
   }
@@ -138,21 +152,32 @@ class Library {
     const query = sql`
       SELECT artists.artistId, artists.name, songs.songId, songs.title,
         MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia,
-        MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload
+        MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
+        MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack
       FROM songs
         INNER JOIN artists USING (artistId)
         INNER JOIN media USING (songId)
         INNER JOIN paths USING (pathId)
+        LEFT JOIN audioTrackAnalysis USING (mediaId)
       WHERE songs.songId IN ${sql.in(songIds.slice(0, 999))}
       GROUP BY songs.songId
       ORDER BY songs.titleNorm
     `
-    const rows = db.all<Omit<Song, 'isManagedDownload'> & { name: string, isManagedDownload: number }>(String(query), query.parameters)
+    const rows = db.all<Omit<Song, 'isManagedDownload' | 'hasSingleAudioTrack'> & {
+      name: string
+      isManagedDownload: number
+      hasSingleAudioTrack: number
+    }>(String(query), query.parameters)
 
     for (const row of rows) {
       const { artistId, name, ...song } = row
       songs.result.push(song.songId)
-      songs.entities[song.songId] = { artistId, ...song, isManagedDownload: !!song.isManagedDownload }
+      songs.entities[song.songId] = {
+        artistId,
+        ...song,
+        isManagedDownload: !!song.isManagedDownload,
+        hasSingleAudioTrack: !!song.hasSingleAudioTrack,
+      }
 
       if (!artists.entities[artistId]) {
         artists.result.push(artistId)
