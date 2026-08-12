@@ -1,0 +1,8 @@
+# Frequency-domain KTV track detector defaults.
+windowSeconds: 5
+smoothingFrames: 1
+lagFrames: 4
+vocalLowHz: 300
+vocalHighHz: 3000
+minimumAgreement: 0.55
+minimumComplexity: 0.003

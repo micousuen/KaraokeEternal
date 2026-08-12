@@ -73,6 +73,7 @@
     "socket.io": "^4.8.3",
     "sqlate": "^2.2.0",
     "unzipit": "^1.4.3",
+    "yaml": "^2.9.0",
     "yargs": "^18.0.0"
   },
   "devDependencies": {
