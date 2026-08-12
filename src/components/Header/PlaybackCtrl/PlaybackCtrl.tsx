@@ -78,11 +78,10 @@ const PlaybackCtrl = () => {
           animateClassName={styles.btnAnimate}
           className={clsx(styles.btn, styles.audioTrack)}
           onClick={handleAudioTrack}
-          aria-label={`Switch to audio track ${status.audioTrack === 0 ? 2 : 1}`}
-          title={`Audio track ${status.audioTrack + 1}`}
+          aria-label={`Switch to ${status.audioTrack === 0 ? 'instrumental' : 'original'} track`}
+          title={status.audioTrack === 0 ? 'Original track' : 'Instrumental track'}
         >
-          A
-          {status.audioTrack + 1}
+          {status.audioTrack === 0 ? 'Orig.' : 'Instr.'}
         </Button>
       )}
 

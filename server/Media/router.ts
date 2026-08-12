@@ -14,6 +14,7 @@ import Queue from '../Queue/Queue.js'
 import Rooms from '../Rooms/Rooms.js'
 import fileTypes from './fileTypes.js'
 import { getBrowserMedia, prefetchBrowserMedia } from './Transcoder.js'
+import { ensureAudioTrackAnalysis, scheduleAudioTrackAnalysis } from './AudioTrackAnalysis.js'
 import { LIBRARY_PUSH_SONG, QUEUE_PUSH } from '../../shared/actionTypes.js'
 const log = getLogger('Media')
 const router = new KoaRouter({ prefix: '/api/media' })
@@ -47,6 +48,7 @@ router.post('/precache', (ctx) => {
     const file = path.join(paths.entities[pathId].path, relPath)
     if (!fileTypes[getExt(file)]?.mimeType.startsWith('video/')) continue
     items.push({ source: file, mediaId })
+    scheduleAudioTrackAnalysis(mediaId, file)
   }
 
   prefetchBrowserMedia(items)
@@ -112,7 +114,17 @@ router.get('/:mediaId', async (ctx) => {
     // server. Prevent browser/proxy caches from mixing old audio container
     // bytes with the current response MIME type.
     ctx.set('Cache-Control', 'no-store')
-    const bundle = await getBrowserMedia(file, mediaId)
+    const [bundle, analyzed] = await Promise.all([
+      getBrowserMedia(file, mediaId),
+      ensureAudioTrackAnalysis(mediaId, file).catch((err) => {
+        log.warn('Audio track analysis failed for mediaId=%s; using track order: %s', mediaId, err.message)
+        return null
+      }),
+    ])
+    const analysis = analyzed || {
+      audioTrackCount: bundle.audio.length,
+      ktvTrack: null,
+    }
 
     if (type === 'videoInfo') {
       ctx.body = { audioTrackCount: bundle.audio.length }
@@ -121,18 +133,20 @@ router.get('/:mediaId', async (ctx) => {
     }
 
     if (type === 'videoCombined') {
-      const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
-      const combinedFile = bundle.combined[audioTrack] || (audioTrack === 1 ? bundle.combined[0] : undefined)
-      if (!Number.isInteger(audioTrack) || !combinedFile) {
+      const requestedTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
+      const audioTrack = getPhysicalAudioTrack(requestedTrack, analysis.audioTrackCount, analysis.ktvTrack)
+      const combinedFile = audioTrack === null ? undefined : bundle.combined[audioTrack]
+      if (!combinedFile) {
         ctx.throw(404, 'Combined audio track not found')
       }
       file = combinedFile
       ctx.type = 'video/mp4'
     } else if (type === 'videoAudio') {
-      const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
+      const requestedTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
+      const audioTrack = getPhysicalAudioTrack(requestedTrack, analysis.audioTrackCount, analysis.ktvTrack)
       const audioFiles = ctx.query.audioFormat === 'aac' ? bundle.audioAac : bundle.audio
-      const audioFile = audioFiles[audioTrack] || (audioTrack === 1 ? audioFiles[0] : undefined)
-      if (!Number.isInteger(audioTrack) || !audioFile) {
+      const audioFile = audioTrack === null ? undefined : audioFiles[audioTrack]
+      if (!audioFile) {
         ctx.throw(404, 'Audio track not found')
       }
       file = audioFile
@@ -184,6 +198,17 @@ router.all('/:mediaId/prefer', (ctx) => {
 })
 
 export default router
+
+export function getPhysicalAudioTrack (
+  requestedTrack: number,
+  audioTrackCount: number,
+  ktvTrack: 0 | 1 | null,
+): 0 | 1 | null {
+  if (requestedTrack !== 0 && requestedTrack !== 1) return null
+  if (audioTrackCount < 2) return 0
+  if (ktvTrack === null) return requestedTrack
+  return requestedTrack === 1 ? ktvTrack : (ktvTrack === 0 ? 1 : 0)
+}
 
 function streamMedia (ctx, file: string, buffer: Buffer | undefined, length: number) {
   ctx.set('Accept-Ranges', 'bytes')

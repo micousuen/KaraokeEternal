@@ -7,6 +7,7 @@ import { parse } from 'yaml'
 const execFile = promisify(childProcess.execFile)
 
 export interface KtvTrackDetection {
+  audioTrackCount: number
   ktvTrack: 0 | 1 | null
   confidence: number
   vocalTrack: 0 | 1 | null
@@ -59,7 +60,7 @@ export async function detectKtvTrack (
     throw new Error('windowSeconds must be greater than zero')
   }
   const { duration, audioTrackCount } = await probe(source)
-  if (audioTrackCount !== 2 || duration <= 0) return unknown(0)
+  if (audioTrackCount !== 2 || duration <= 0) return unknown(0, 0, 0, 0, audioTrackCount)
 
   const [track0, track1] = await Promise.all([
     readSpectralWindows(source, 0, duration, windowSeconds, smoothingFrames, lagFrames, vocalLowHz, vocalHighHz),
@@ -96,6 +97,7 @@ export async function detectKtvTrack (
   const vocalTrack: 0 | 1 = medianEvidence > 0 ? 0 : 1
   return {
     ktvTrack: vocalTrack === 0 ? 1 : 0,
+    audioTrackCount,
     vocalTrack,
     confidence: Math.min(0.99, relativeEvidence * agreement * 40),
     spectralDifference: medianDivergence,
@@ -289,8 +291,10 @@ function unknown (
   spectralDifference = 0,
   complexityDifference = 0,
   agreement = 0,
+  audioTrackCount = 2,
 ): KtvTrackDetection {
   return {
+    audioTrackCount,
     ktvTrack: null,
     confidence: 0,
     vocalTrack: null,

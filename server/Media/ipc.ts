@@ -1,6 +1,7 @@
 import Media from './Media.js'
 import Library from '../Library/Library.js'
-import { LIBRARY_SCAN_BATCH, MEDIA_ADD, MEDIA_CLEANUP, MEDIA_REMOVE, MEDIA_UPDATE } from '../../shared/actionTypes.js'
+import { scheduleAudioTrackAnalysis } from './AudioTrackAnalysis.js'
+import { LIBRARY_SCAN_BATCH, MEDIA_ADD, MEDIA_ANALYZE_AUDIO_TRACKS, MEDIA_CLEANUP, MEDIA_REMOVE, MEDIA_UPDATE } from '../../shared/actionTypes.js'
 
 /**
  * IPC action handlers
@@ -31,6 +32,9 @@ export default function (io) {
   }
 
   return {
+    [MEDIA_ANALYZE_AUDIO_TRACKS]: ({ payload }) => {
+      scheduleAudioTrackAnalysis(payload.mediaId, payload.source)
+    },
     [MEDIA_ADD]: ({ payload }) => {
       const mediaId = Media.add(payload)
       queueLiveUpdate(payload.songId)

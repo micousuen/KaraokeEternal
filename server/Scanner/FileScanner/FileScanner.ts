@@ -8,7 +8,7 @@ import Scanner from '../Scanner.js'
 import IPC from '../../lib/IPCBridge.js'
 import fileTypes from '../../Media/fileTypes.js'
 import MetadataWorkerPool, { MetadataResult } from './MetadataWorkerPool.js'
-import { LIBRARY_MATCH_SONG, MEDIA_ADD, MEDIA_REMOVE, MEDIA_UPDATE } from '../../../shared/actionTypes.js'
+import { LIBRARY_MATCH_SONG, MEDIA_ADD, MEDIA_ANALYZE_AUDIO_TRACKS, MEDIA_REMOVE, MEDIA_UPDATE } from '../../../shared/actionTypes.js'
 const log = getLogger('FileScanner')
 
 const searchExts = Object.keys(fileTypes).filter(ext => fileTypes[ext].scan !== false)
@@ -82,6 +82,12 @@ class FileScanner extends Scanner {
           if (!extracted?.result) throw extracted?.error || new Error('metadata worker returned no result')
           const res = await this.process(files[i].file, pathId, extracted.result)
           validMediaIds.push(res.mediaId)
+          if (fileTypes[getExt(files[i].file)]?.mimeType.startsWith('video/')) {
+            IPC.send({
+              type: MEDIA_ANALYZE_AUDIO_TRACKS,
+              payload: { mediaId: res.mediaId, source: files[i].file },
+            })
+          }
 
           if (res.isNew) stats.new++
           else stats.existing++
