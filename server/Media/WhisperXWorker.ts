@@ -8,6 +8,7 @@ const log = getLogger('WhisperXWorker')
 const pythonPath = process.env.KES_PATH_PYTHON || 'python'
 const workerPath = process.env.KES_PATH_WHISPERX_WORKER || '/opt/processing/whisperx_worker.py'
 const modelRoot = path.join(process.env.KES_PATH_DOWNLOADS || '/media/downloads', '.karaoke-eternal-models')
+const pixiLibPath = '/opt/processing/.pixi/envs/default/lib'
 
 export interface WhisperXSettings {
   model: string
@@ -91,6 +92,9 @@ class WhisperXWorker {
         TORCH_HOME: modelRoot,
         CUDA_VISIBLE_DEVICES: '',
         PYTHONUNBUFFERED: '1',
+        // Pixi's ICU and Python extensions are built against its bundled C++
+        // runtime, which is newer than Debian Bookworm's system libstdc++.
+        LD_LIBRARY_PATH: [pixiLibPath, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':'),
       },
     })
     this.#child = child
