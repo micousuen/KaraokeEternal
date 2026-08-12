@@ -38,6 +38,7 @@ const PlaybackCtrl = () => {
   const handleAudioTrack = () => handleOptions({
     audioTrack: status.audioTrack === 0 ? 1 : 0,
   })
+  const handleToggleScript = () => handleOptions({ showScript: !status.showScript })
 
   const toggleDisplayCtrl = () => {
     setDisplayCtrlVisible(!isDisplayCtrlVisible)
@@ -65,11 +66,13 @@ const PlaybackCtrl = () => {
         aria-label='Play Next'
       />
 
-      <PlaybackProgress
-        duration={status.duration}
-        position={status.position}
-        onSeek={handleSeek}
-      />
+      <div className={styles.progress}>
+        <PlaybackProgress
+          duration={status.duration}
+          position={status.position}
+          onSeek={handleSeek}
+        />
+      </div>
 
       <VolumeSlider volume={status.volume} onVolumeChange={handleVolume} />
 
@@ -82,6 +85,18 @@ const PlaybackCtrl = () => {
           title={status.audioTrack === 0 ? 'Original track' : 'Instrumental track'}
         >
           {status.audioTrack === 0 ? 'Orig.' : 'Instr.'}
+        </Button>
+      )}
+
+      {status.mediaType === 'mp4' && (
+        <Button
+          animateClassName={styles.btnAnimate}
+          className={clsx(styles.btn, styles.script, status.showScript && styles.scriptActive)}
+          onClick={handleToggleScript}
+          aria-label={`${status.showScript ? 'Hide' : 'Show'} script`}
+          title={status.showScript ? 'Hide script' : 'Show script'}
+        >
+          Script
         </Button>
       )}
 
@@ -111,7 +126,6 @@ const PlaybackCtrl = () => {
           isWebGLSupported={status.isWebGLSupported}
           mediaType={status.mediaType}
           mp4Alpha={status.mp4Alpha}
-          showScript={status.showScript}
           onClose={toggleDisplayCtrl}
           onRequestOptions={handleOptions}
           sensitivity={status.visualizer.sensitivity}

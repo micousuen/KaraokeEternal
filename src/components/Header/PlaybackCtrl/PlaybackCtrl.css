@@ -4,6 +4,11 @@
   padding: 0 var(--container-padding);
 }
 
+.progress {
+  flex: 1 1 auto;
+  min-width: 8rem;
+}
+
 .btn {
   color: var(--transport-btn-bg-color);
   filter: var(--transport-btn-filter);
@@ -43,7 +48,32 @@
   font-weight: bold;
 }
 
+.script {
+  width: auto;
+  min-width: 48px;
+  padding: 0 8px;
+  color: var(--transport-btn-bg-color);
+  font-size: var(--font-size-s);
+  font-weight: bold;
+}
+
+.scriptActive {
+  color: var(--btn-active-bg-color);
+  filter: var(--btn-active-filter);
+}
+
 .fullscreen {
   color: var(--btn-active-bg-color);
   filter: var(--btn-active-filter);
+}
+
+@media (max-width: 600px) {
+  .container {
+    flex-wrap: wrap;
+  }
+
+  .progress {
+    flex-basis: 100%;
+    order: 2;
+  }
 }
