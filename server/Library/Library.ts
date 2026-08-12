@@ -44,18 +44,20 @@ class Library {
     {
       const query = sql`
         SELECT duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
-          MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia
+          MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia,
+          MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload
         FROM media
           INNER JOIN songs USING (songId)
           INNER JOIN paths USING (pathId)
         GROUP BY songId
         ORDER BY songs.titleNorm, paths.priority ASC
       `
-      const rows = db.all<Song & { isPreferred: number }>(String(query), query.parameters)
+      const rows = db.all<Omit<Song, 'isManagedDownload'> & { isPreferred: number, isManagedDownload: number }>(String(query), query.parameters)
 
       for (const row of rows) {
-        delete row.isPreferred
-        songs.entities[row.songId] = row
+        const song = { ...row }
+        delete song.isPreferred
+        songs.entities[row.songId] = { ...song, isManagedDownload: !!row.isManagedDownload }
         songs.result.push(row.songId)
 
         // add to artist's songIds
@@ -119,6 +121,7 @@ class Library {
         songId: media.songId,
         title: media.title,
         numMedia: result.length,
+        isManagedDownload: result.some(mediaId => !!entities[mediaId].isManagedDownload || isManagedDownloadPath(entities[mediaId].pathData)),
       },
     }
   }
@@ -134,20 +137,22 @@ class Library {
 
     const query = sql`
       SELECT artists.artistId, artists.name, songs.songId, songs.title,
-        MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia
+        MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia,
+        MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload
       FROM songs
         INNER JOIN artists USING (artistId)
         INNER JOIN media USING (songId)
+        INNER JOIN paths USING (pathId)
       WHERE songs.songId IN ${sql.in(songIds.slice(0, 999))}
       GROUP BY songs.songId
       ORDER BY songs.titleNorm
     `
-    const rows = db.all<Song & { name: string }>(String(query), query.parameters)
+    const rows = db.all<Omit<Song, 'isManagedDownload'> & { name: string, isManagedDownload: number }>(String(query), query.parameters)
 
     for (const row of rows) {
       const { artistId, name, ...song } = row
       songs.result.push(song.songId)
-      songs.entities[song.songId] = { artistId, ...song }
+      songs.entities[song.songId] = { artistId, ...song, isManagedDownload: !!song.isManagedDownload }
 
       if (!artists.entities[artistId]) {
         artists.result.push(artistId)
@@ -372,6 +377,15 @@ class Library {
     }
 
     return this.starCountsCache
+  }
+}
+
+function isManagedDownloadPath (data: unknown): boolean {
+  if (typeof data !== 'string') return false
+  try {
+    return !!JSON.parse(data).isManagedDownloadPath
+  } catch {
+    return false
   }
 }
 

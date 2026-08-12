@@ -30,6 +30,7 @@ const SongList = (props: SongListProps) => {
     <SongItem
       {...songs[songId]}
       artist={props.showArtist ? artists[songs[songId].artistId].name : ''}
+      author={artists[songs[songId].artistId].name}
       filterKeywords={props.filterKeywords}
       isPlayed={played.includes(songId)}
       isUpcoming={upcoming.includes(songId) || current === songId}

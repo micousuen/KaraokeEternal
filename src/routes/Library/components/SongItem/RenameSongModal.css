@@ -1,0 +1,28 @@
+.form {
+  width: min(30rem, 80vw);
+
+  label,
+  input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  input {
+    margin-top: var(--space-xs);
+  }
+
+  label + label {
+    margin-top: var(--space-m);
+  }
+}
+
+.buttons {
+  display: flex;
+  gap: var(--space-s);
+  margin-top: var(--space-m);
+}
+
+.error {
+  color: var(--danger-color, #d33);
+}

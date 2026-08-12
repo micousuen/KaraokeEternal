@@ -131,6 +131,7 @@ class FileScanner extends Scanner {
       duration: Math.round(metadata.duration),
       rgTrackGain: metadata.rgTrackGain,
       rgTrackPeak: metadata.rgTrackPeak,
+      isManagedDownload: /^YouTube-.*-YouTube \[[A-Za-z0-9_-]{11}\]\.[^.]+$/.test(path.basename(file)) ? 1 : 0,
     }
 
     // file already in database?
@@ -143,6 +144,7 @@ class FileScanner extends Scanner {
 
     if (res.result.length) {
       const row = res.entities[res.result[0]]
+      if (row.isManagedDownload) media.isManagedDownload = 1
       const diff = {}
 
       // did anything change?

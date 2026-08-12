@@ -10,6 +10,7 @@ export interface Song {
   songId: number
   title: string
   numMedia: number
+  isManagedDownload?: boolean
 }
 
 export interface YouTubeJob {
