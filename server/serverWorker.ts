@@ -27,7 +27,8 @@ import socketActions from './socket.js'
 import IPC from './lib/IPCBridge.js'
 import IPCLibraryActions from './Library/ipc.js'
 import IPCMediaActions from './Media/ipc.js'
-import { SCANNER_WORKER_EXITED, SERVER_WORKER_STATUS, SERVER_WORKER_ERROR } from '../shared/actionTypes.js'
+import { setVocalSeparationStatusPublisher } from './Media/VocalSeparation.js'
+import { SCANNER_WORKER_EXITED, SERVER_WORKER_STATUS, SERVER_WORKER_ERROR, VOCAL_SEPARATION_STATUS } from '../shared/actionTypes.js'
 
 const log = getLogger('server')
 const { verify: jwtVerify } = jsonWebToken
@@ -61,13 +62,18 @@ async function serverWorker ({ env, startScanner, stopScanner, shutdownHandlers 
       path: urlPath + 'socket.io',
       serveClient: false,
     })
+    setVocalSeparationStatusPublisher((payload) => {
+      for (const socket of io.of('/').sockets.values()) {
+        if (socket.user?.isAdmin) socket.emit('action', { type: VOCAL_SEPARATION_STATUS, payload })
+      }
+    })
 
     // attach socket.io handlers
     socketActions(io, jwtKey)
 
     // attach IPC action handlers
     IPC.use(IPCLibraryActions(io))
-    IPC.use(IPCMediaActions(io))
+    IPC.use(IPCMediaActions(io, startScanner))
 
     // success callback in 3rd arg
     server.listen(env.KES_PORT, () => {

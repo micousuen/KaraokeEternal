@@ -8,6 +8,7 @@ import Account from '../../components/Account/Account'
 import Prefs from '../../components/Prefs/Prefs'
 import Rooms from '../../components/Rooms/Rooms'
 import Users from '../../components/Users/Users'
+import VocalSeparation from '../../components/VocalSeparation/VocalSeparation'
 
 const SignedInView = () => {
   const { isAdmin } = useAppSelector(state => state.user)
@@ -34,6 +35,9 @@ const SignedInView = () => {
 
       {isAdmin
         && <Prefs />}
+
+      {isAdmin
+        && <VocalSeparation />}
 
       <Account />
 

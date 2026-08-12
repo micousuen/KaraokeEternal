@@ -46,7 +46,11 @@ const searchExts = Object.keys(fileTypes).filter(ext => fileTypes[ext].scan !== 
         log.info('  => %s', entities[pathId].path)
 
         const cb = accumulatedThrottle((events) => {
-          const event = events.find(([, filename]) => searchExts.includes(pathLib.extname(filename).toLowerCase()))
+          const event = events.find(([, filename]) => {
+            const parts = String(filename).split(/[\\/]/)
+            return !parts.some(part => ['.karaoke-eternal-separation', '.karaoke-eternal-models'].includes(part))
+              && searchExts.includes(pathLib.extname(filename).toLowerCase())
+          })
           if (!event) return
 
           log.info('event in path: %s (filename=%s) (type=%s)', entities[pathId].path, event[1], event[0])

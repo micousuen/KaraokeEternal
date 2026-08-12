@@ -3,6 +3,7 @@ import { Worker } from 'node:worker_threads'
 import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
 import type { KtvTrackDetection } from './KtvTrackDetector.js'
+import { scheduleVocalSeparation } from './VocalSeparation.js'
 
 export interface AudioTrackAnalysisRecord {
   mediaId: number
@@ -17,6 +18,10 @@ export interface AudioTrackAnalysisRecord {
 interface Job {
   mediaId: number
   source: string
+  pathId?: number
+  isManagedDownload?: boolean
+  onSeparationComplete?: (pathId: number) => void
+  onAnalysisComplete?: (mediaId: number) => void
   resolve?: (record: AudioTrackAnalysisRecord) => void
   reject?: (err: Error) => void
 }
@@ -26,7 +31,16 @@ const queue: Job[] = []
 const pending = new Map<number, Promise<AudioTrackAnalysisRecord>>()
 let active = false
 
-export function scheduleAudioTrackAnalysis (mediaId: number, source: string): void {
+export function scheduleAudioTrackAnalysis (
+  mediaId: number,
+  source: string,
+  options?: {
+    pathId: number
+    isManagedDownload: boolean
+    onSeparationComplete: (pathId: number) => void
+    onAnalysisComplete: (mediaId: number) => void
+  },
+): void {
   if (pending.has(mediaId)) return
   let resolveJob: (record: AudioTrackAnalysisRecord) => void
   let rejectJob: (err: Error) => void
@@ -36,7 +50,7 @@ export function scheduleAudioTrackAnalysis (mediaId: number, source: string): vo
   })
   pending.set(mediaId, promise)
   void promise.catch(() => {})
-  queue.push({ mediaId, source, resolve: resolveJob!, reject: rejectJob! })
+  queue.push({ mediaId, source, ...options, resolve: resolveJob!, reject: rejectJob! })
   void drain()
 }
 
@@ -75,6 +89,15 @@ async function drain (): Promise<void> {
       try {
         const cached = await readCurrent(job.mediaId, job.source)
         const record = cached || await analyze(job.mediaId, job.source)
+        job.onAnalysisComplete?.(job.mediaId)
+        if (record.audioTrackCount === 1 && job.pathId !== undefined && job.onSeparationComplete) {
+          scheduleVocalSeparation({
+            mediaId: job.mediaId,
+            pathId: job.pathId,
+            source: job.source,
+            onComplete: job.onSeparationComplete,
+          }, job.isManagedDownload)
+        }
         job.resolve?.(record)
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err))

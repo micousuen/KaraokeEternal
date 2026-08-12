@@ -85,7 +85,12 @@ class FileScanner extends Scanner {
           if (fileTypes[getExt(files[i].file)]?.mimeType.startsWith('video/')) {
             IPC.send({
               type: MEDIA_ANALYZE_AUDIO_TRACKS,
-              payload: { mediaId: res.mediaId, source: files[i].file },
+              payload: {
+                mediaId: res.mediaId,
+                pathId,
+                source: files[i].file,
+                isManagedDownload: res.isManagedDownload,
+              },
             })
           }
 
@@ -167,7 +172,7 @@ class FileScanner extends Scanner {
         log.info('  => ok')
       }
 
-      return { mediaId: row.mediaId, isNew: false }
+      return { mediaId: row.mediaId, isNew: false, isManagedDownload: !!media.isManagedDownload }
     } // end if
 
     // new media
@@ -177,6 +182,7 @@ class FileScanner extends Scanner {
     return {
       mediaId: await (IPC as any).req({ type: MEDIA_ADD, payload: media }),
       isNew: true,
+      isManagedDownload: !!media.isManagedDownload,
     }
   }
 

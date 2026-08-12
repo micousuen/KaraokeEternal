@@ -1,0 +1,18 @@
+# Generate an instrumental A2 for videos that contain only one audio stream.
+enabled: true
+
+# Available Demucs models:
+#   htdemucs.yaml      - recommended balance of quality and speed
+#   htdemucs_ft.yaml   - slightly better quality, about four times slower
+#   htdemucs_6s.yaml   - experimental six-stem model
+#   hdemucs_mmi.yaml   - older Hybrid Demucs v3 model
+#   mdx.yaml           - Demucs MDX challenge model
+#   mdx_extra.yaml     - MDX model trained with additional data
+#   mdx_q.yaml         - smaller quantized MDX model
+#   mdx_extra_q.yaml   - smaller quantized MDX-extra model
+model: htdemucs.yaml
+
+segmentSeconds: 7.8
+overlap: 0.25
+shifts: 0
+outputBitrate: 192k

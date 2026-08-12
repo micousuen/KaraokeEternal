@@ -1,0 +1,84 @@
+.content {
+  padding: var(--space-m);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-m);
+}
+
+.grid > div,
+.current {
+  min-width: 0;
+  padding: var(--space-m);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .05);
+}
+
+.grid span,
+.current span,
+.current small {
+  display: block;
+  color: #aaa;
+  font-size: 80%;
+}
+
+.grid strong,
+.current strong {
+  display: block;
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.current {
+  margin-top: var(--space-m);
+}
+
+.current small {
+  margin-top: var(--space-xs);
+}
+
+.progressTrack {
+  height: 10px;
+  margin-top: var(--space-m);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .12);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: hsl(var(--hue-blue), 70%, 55%);
+  transition: width .25s ease;
+}
+
+.error {
+  margin-top: var(--space-m);
+  color: #ff9b9b;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-m);
+  margin-top: var(--space-m);
+}
+
+.actions small {
+  color: #aaa;
+}
+
+@media (max-width: 600px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

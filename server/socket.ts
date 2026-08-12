@@ -11,6 +11,7 @@ import RoomsSocket from './Rooms/socket.js'
 import Queue from './Queue/Queue.js'
 import QueueSocket from './Queue/socket.js'
 import { getRoomYouTubeJobs } from './YouTube/YouTube.js'
+import { getVocalSeparationStatus } from './Media/VocalSeparation.js'
 
 import {
   LIBRARY_PUSH,
@@ -22,6 +23,7 @@ import {
   PREFS_PUSH,
   YOUTUBE_JOBS_PUSH,
   SOCKET_AUTH_ERROR,
+  VOCAL_SEPARATION_STATUS,
   _ERROR,
 } from '../shared/actionTypes.js'
 const log = getLogger('server')
@@ -115,6 +117,10 @@ export default function (io, jwtKey) {
       io.to(sock.id).emit('action', {
         type: PREFS_PUSH,
         payload: Prefs.get(),
+      })
+      io.to(sock.id).emit('action', {
+        type: VOCAL_SEPARATION_STATUS,
+        payload: getVocalSeparationStatus(),
       })
     }
 

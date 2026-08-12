@@ -27,6 +27,7 @@ function getFiles (dir: string, filterFn?: (file: string) => boolean): { file: s
     }
 
     if (stats && stats.isDirectory()) {
+      if (['.karaoke-eternal-separation', '.karaoke-eternal-models'].includes(path.basename(file))) return
       try {
         results = results.concat(getFiles(file, filterFn))
       } catch (err) {
