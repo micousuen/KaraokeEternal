@@ -1,6 +1,7 @@
 export interface FilenameFields {
   artist: string
   title: string
+  language: string
 }
 
 export default function parseFilename (name: string, format: string): FilenameFields | undefined {
@@ -10,9 +11,9 @@ export default function parseFilename (name: string, format: string): FilenameFi
   if (parts.length < 3) throw new Error('expected filename format: singer-song-language')
 
   const artist = parts.shift()
-  parts.pop() // language is not represented in the current database schema
+  const language = parts.pop()
   const title = parts.join(' - ')
 
-  if (!artist || !title) throw new Error('singer and song must not be empty')
-  return { artist, title }
+  if (!artist || !title || !language) throw new Error('singer, song, and language must not be empty')
+  return { artist, title, language }
 }

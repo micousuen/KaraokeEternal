@@ -44,6 +44,7 @@ class Library {
     {
       const query = sql`
         SELECT media.duration AS duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
+          songs.language AS language,
           MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia,
           MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
           MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack
@@ -128,6 +129,7 @@ class Library {
       [songId]: {
         artistId: media.artistId,
         duration: media.duration,
+        language: media.language,
         songId: media.songId,
         title: media.title,
         numMedia: result.length,
@@ -150,7 +152,7 @@ class Library {
     if (!songIds.length) return { artists, songs }
 
     const query = sql`
-      SELECT artists.artistId, artists.name, songs.songId, songs.title,
+      SELECT artists.artistId, artists.name, songs.songId, songs.title, songs.language,
         MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia,
         MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
         MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack
@@ -192,7 +194,7 @@ class Library {
   /**
   * Matches or creates artist and song
   */
-  static matchSong (parsed: { artist: string, artistNorm: string, title: string, titleNorm: string }): {
+  static matchSong (parsed: { artist: string, artistNorm: string, title: string, titleNorm: string, language?: string }): {
     artistId?: number
     artist?: string
     artistNorm?: string
@@ -246,10 +248,14 @@ class Library {
         FROM songs
         WHERE artistId = ${match.artistId} AND titleNorm = ${parsed.titleNorm}
       `
-      const row = db.get<{ songId: number, title: string, titleNorm: string }>(String(query), query.parameters)
+      const row = db.get<{ songId: number, title: string, titleNorm: string, language: string | null }>(String(query), query.parameters)
 
       if (row) {
         log.debug('matched song: %s', row.title)
+        if (parsed.language && row.language !== parsed.language) {
+          db.run('UPDATE songs SET language = ? WHERE songId = ?', [parsed.language, row.songId])
+          this.cache.version = null
+        }
         match.songId = row.songId
         match.title = row.title
         match.titleNorm = row.titleNorm
@@ -260,6 +266,7 @@ class Library {
         fields.set('artistId', match.artistId)
         fields.set('title', parsed.title)
         fields.set('titleNorm', parsed.titleNorm)
+        if (parsed.language) fields.set('language', parsed.language)
 
         const query = sql`
           INSERT INTO songs ${sql.tuple(Array.from(fields.keys()).map(sql.column))}

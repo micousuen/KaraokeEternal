@@ -41,7 +41,7 @@ export interface KtvDetectorOptions {
 
 const frameCache = new Map<string, Promise<number[][]>>()
 const configPath = process.env.KES_PATH_KTV_DETECTOR_CONFIG
-  || path.resolve('assets/config/ktv-detector.yaml')
+  || path.resolve('config/ktv-detector.yaml')
 export const ktvDetectorDefaults = loadConfig(configPath)
 
 /** Compare normalized spectral shapes, independently of overall magnitude. */

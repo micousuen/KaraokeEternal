@@ -6,6 +6,7 @@ describe('parseFilename', () => {
     expect(parseFilename('Adele-Hello-English', 'artist-title-language')).toEqual({
       artist: 'Adele',
       title: 'Hello',
+      language: 'English',
     })
   })
 
@@ -13,6 +14,7 @@ describe('parseFilename', () => {
     expect(parseFilename('Singer One Singer Two-Duet Song-English', 'artist-title-language')).toEqual({
       artist: 'Singer One Singer Two',
       title: 'Duet Song',
+      language: 'English',
     })
   })
 
@@ -20,6 +22,7 @@ describe('parseFilename', () => {
     expect(parseFilename('Singer-Song - Live-Version-Chinese', 'artist-title-language')).toEqual({
       artist: 'Singer',
       title: 'Song - Live - Version',
+      language: 'Chinese',
     })
   })
 

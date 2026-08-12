@@ -3,14 +3,14 @@ enabled: true
 
 # Available Demucs models:
 #   htdemucs.yaml      - recommended balance of quality and speed
-#   htdemucs_ft.yaml   - slightly better quality, about four times slower
+#   htdemucs_ft.yaml   - better vocal separation, about four times slower
 #   htdemucs_6s.yaml   - experimental six-stem model
 #   hdemucs_mmi.yaml   - older Hybrid Demucs v3 model
 #   mdx.yaml           - Demucs MDX challenge model
 #   mdx_extra.yaml     - MDX model trained with additional data
 #   mdx_q.yaml         - smaller quantized MDX model
 #   mdx_extra_q.yaml   - smaller quantized MDX-extra model
-model: htdemucs.yaml
+model: htdemucs_ft.yaml
 
 segmentSeconds: 7.8
 overlap: 0.25
@@ -22,4 +22,16 @@ outputBitrate: 192k
 scripting:
   enabled: true
   model: large-v3
+  # Leave unset to detect the language for every song.
   # language: en
+
+  # Lower values retain quieter sung vocals. Raise this if it produces too
+  # many false lyric lines from the instrumental.
+  vadOnset: 0.35
+
+  # More decoding candidates improve difficult lyrics at the cost of CPU time.
+  beamSize: 8
+
+  # A neutral hint helps WhisperX favor lyric-like text without locking it to
+  # one artist, song, or language.
+  initialPrompt: Karaoke song lyrics.

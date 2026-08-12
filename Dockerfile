@@ -32,7 +32,7 @@ COPY python/processing/pixi.toml python/processing/pixi.lock /opt/processing/
 COPY python/processing/whisperx-cpu.patch /tmp/whisperx-cpu.patch
 
 RUN apt-get update \
-  && apt-get install --yes --no-install-recommends build-essential ca-certificates curl ffmpeg python3-dev \
+  && apt-get install --yes --no-install-recommends build-essential ca-certificates curl ffmpeg python3-dev python3-pip \
   && arch="$(dpkg --print-architecture)" \
   && case "$arch" in \
        amd64) pixi_arch=x86_64 ;; \
@@ -43,16 +43,18 @@ RUN apt-get update \
        "https://github.com/prefix-dev/pixi/releases/download/v${PIXI_VERSION}/pixi-${pixi_arch}-unknown-linux-musl.tar.gz" \
        | tar --extract --gzip --directory /usr/local/bin pixi \
   && PIXI_HOME=/opt/pixi pixi install --locked --manifest-path /opt/processing/pixi.toml \
+  && /usr/bin/python3 -m pip install --no-cache-dir --no-deps --target /opt/processing/.pixi/envs/default/lib/python3.11/site-packages silero-vad==5.1.2 \
   && patch --directory=/opt/processing/.pixi/envs/default/lib/python3.11/site-packages --strip=1 < /tmp/whisperx-cpu.patch \
   && if [ "$arch" = arm64 ]; then rm -rf /opt/processing/.pixi/envs/default/lib/python3.11/site-packages/torchcodec*; fi \
   && rm /tmp/whisperx-cpu.patch \
-  && apt-get purge --yes --auto-remove build-essential curl python3-dev \
+  && apt-get purge --yes --auto-remove build-essential curl python3-dev python3-pip \
   && pixi clean cache --yes \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=build /app/assets ./assets
 COPY --from=build /app/build ./build
+COPY --from=build /app/config ./config
 COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./
 

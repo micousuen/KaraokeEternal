@@ -7,6 +7,7 @@ export interface Artist {
 export interface Song {
   artistId: number
   duration: number
+  language: string | null
   songId: number
   title: string
   numMedia: number

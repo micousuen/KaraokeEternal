@@ -10,7 +10,7 @@ import { db } from '../lib/Database.js'
 const execFileAsync = promisify(childProcess.execFile)
 const log = getLogger('VocalSeparation')
 const downloadsPath = process.env.KES_PATH_DOWNLOADS || '/media/downloads'
-const configPath = process.env.KES_PATH_VOCAL_SEPARATION_CONFIG || path.resolve('assets/config/vocal-separation.yaml')
+const configPath = process.env.KES_PATH_VOCAL_SEPARATION_CONFIG || path.resolve('config/vocal-separation.yaml')
 const tempRoot = path.join(downloadsPath, '.karaoke-eternal-separation')
 const modelRoot = path.join(downloadsPath, '.karaoke-eternal-models')
 const numbaCacheRoot = path.join(modelRoot, '.numba-cache')
@@ -30,6 +30,9 @@ interface SeparationConfig {
     enabled: boolean
     model: string
     language?: string
+    vadOnset?: number
+    beamSize?: number
+    initialPrompt?: string
   }
 }
 
@@ -394,8 +397,10 @@ function scriptPath (source: string): string {
 
 async function runWhisperX (vocal: string, outputDir: string): Promise<void> {
   const args = [vocal, '--model', config.scripting.model, '--device', 'cpu', '--compute_type', 'int8',
-    '--batch_size', '1', '--vad_method', 'silero', '--output_format', 'srt', '--output_dir', outputDir]
+    '--batch_size', '1', '--vad_method', 'silero', '--vad_onset', String(config.scripting.vadOnset ?? 0.35),
+    '--beam_size', String(config.scripting.beamSize ?? 8), '--output_format', 'srt', '--output_dir', outputDir]
   if (config.scripting.language) args.push('--language', config.scripting.language)
+  if (config.scripting.initialPrompt) args.push('--initial_prompt', config.scripting.initialPrompt)
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       await runProcess(whisperxPath, args, {
@@ -538,6 +543,15 @@ function loadConfig (): SeparationConfig {
   if (!value.scripting || typeof value.scripting.enabled !== 'boolean'
     || typeof value.scripting.model !== 'string' || !value.scripting.model) {
     throw new Error(`${configPath}: invalid scripting configuration`)
+  }
+  const invalidVadOnset = value.scripting.vadOnset !== undefined
+    && (!Number.isFinite(value.scripting.vadOnset) || value.scripting.vadOnset <= 0 || value.scripting.vadOnset >= 1)
+  const invalidBeamSize = value.scripting.beamSize !== undefined
+    && (!Number.isInteger(value.scripting.beamSize) || value.scripting.beamSize < 1)
+  const invalidInitialPrompt = value.scripting.initialPrompt !== undefined
+    && typeof value.scripting.initialPrompt !== 'string'
+  if (invalidVadOnset || invalidBeamSize || invalidInitialPrompt) {
+    throw new Error(`${configPath}: invalid scripting tuning configuration`)
   }
   return value
 }

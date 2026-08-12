@@ -83,6 +83,7 @@ const MetaParser = (userCfg = {}) => {
       artistNorm: ctx.artistNorm ?? ctx.artist,
       title: ctx.title,
       titleNorm: ctx.titleNorm ?? ctx.title,
+      ...(typeof ctx.language === 'string' && ctx.language ? { language: ctx.language } : {}),
     }
   }
 }

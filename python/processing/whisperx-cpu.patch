@@ -8,28 +8,41 @@
  from whisperx.vads.vad import Vad as Vad
 --- a/whisperx/vads/silero.py
 +++ b/whisperx/vads/silero.py
-@@ -6,7 +6,6 @@
+@@ -1,13 +1,14 @@
+ from io import IOBase
+ from pathlib import Path
+ from typing import Mapping, Text
+ from typing import Optional
+ from typing import Union
++from types import SimpleNamespace
  
  import torch
- 
++from silero_vad import get_speech_timestamps, load_silero_vad
+
 -from whisperx.diarize import Segment as SegmentX
  from whisperx.vads.vad import Vad
  from whisperx.log_utils import get_logger
  
-@@ -15,6 +14,13 @@
- AudioFile = Union[Text, Path, IOBase, Mapping]
+ logger = get_logger(__name__)
+@@ -23,6 +23,9 @@
  
+         self.vad_onset = kwargs['vad_onset']
+         self.chunk_size = kwargs['chunk_size']
++        self.vad_pipeline = load_silero_vad()
++        self.get_speech_timestamps = get_speech_timestamps
++        return
+         self.vad_pipeline, vad_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
+                                                       model='silero_vad',
+                                                       force_reload=False,
+@@ -49,7 +52,7 @@
+                                                 # ...
+                                                 # See silero documentation for full option list
+                                                 )
+-        return [SegmentX(i['start'] / sample_rate, i['end'] / sample_rate, "UNKNOWN") for i in timestamps]
++        return [SimpleNamespace(start=i['start'] / sample_rate, end=i['end'] / sample_rate, speaker="UNKNOWN") for i in timestamps]
  
-+class SegmentX:
-+    def __init__(self, start: float, end: float, speaker: Optional[str] = None):
-+        self.start = start
-+        self.end = end
-+        self.speaker = speaker
-+
-+
- class Silero(Vad):
-     # check again default values
-     def __init__(self, **kwargs):
+     @staticmethod
+     def preprocess_audio(audio):
 --- a/whisperx/transcribe.py
 +++ b/whisperx/transcribe.py
 @@ -9,7 +9,6 @@
@@ -48,4 +61,3 @@
 +
          if hf_token is None:
              logger.warning(
-                 "No --hf_token provided, needs to be saved in environment variable, otherwise will throw error loading diarization model"
