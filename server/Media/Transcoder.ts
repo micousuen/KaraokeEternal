@@ -8,22 +8,38 @@ import getLogger from '../lib/Log.js'
 import { BROWSER_MEDIA_VERSION } from '../../shared/media.js'
 
 interface BrowserMediaBundle {
-  video: string
+  video?: string
   audio: string[]
   audioAac: string[]
   combined: string[]
 }
 
 interface BundleManifest {
-  video: string
+  video?: string
   audio: string[]
   audioAac: string[]
   combined: string[]
 }
 
+export interface SourceMediaInfo {
+  audioTrackCount: number
+  audioTracks: SourceAudioTrack[]
+  videoCodec: string | null
+}
+
+export interface SourceAudioTrack {
+  codec: string | null
+  extension: string | null
+  mimeType: string | null
+}
+
+interface SourceAudioFile {
+  file: string
+  mimeType: string
+}
 const log = getLogger('Transcoder')
 const pending = new Map<string, Promise<BrowserMediaBundle>>()
-const prefetchQueue: { source: string, mediaId: number, key: string }[] = []
+const prefetchQueue: { source: string, mediaId: number, prepareVideo: boolean, key: string }[] = []
 const prefetchedOrQueued = new Set<string>()
 let isPrefetching = false
 let activePrefetchKey: string | undefined
@@ -44,13 +60,24 @@ const maxCacheBytes = Math.max(
  * preparation job.
  */
 export async function getBrowserMedia (source: string, mediaId: number): Promise<BrowserMediaBundle> {
-  const stats = await fsPromises.stat(source)
-  const fingerprint = crypto
-    .createHash('sha256')
-    .update(`${BROWSER_MEDIA_VERSION}\0${source}\0${stats.size}\0${stats.mtimeMs}`)
-    .digest('hex')
-    .slice(0, 16)
-  const output = path.join(cacheDir, `${mediaId}-${fingerprint}`)
+  return getBrowserBundle(source, mediaId, true)
+}
+
+/**
+ * Return browser-ready audio without re-encoding a video stream that the
+ * requesting player can decode directly.
+ */
+export async function getBrowserAudio (source: string, mediaId: number): Promise<BrowserMediaBundle> {
+  return getBrowserBundle(source, mediaId, false)
+}
+
+async function getBrowserBundle (
+  source: string,
+  mediaId: number,
+  includeVideo: boolean,
+): Promise<BrowserMediaBundle> {
+  const fingerprint = await sourceFingerprint(source)
+  const output = path.join(cacheDir, `${mediaId}-${fingerprint}${includeVideo ? '' : '-audio'}`)
   const manifestFile = path.join(output, 'manifest.json')
 
   if (await exists(manifestFile)) {
@@ -63,29 +90,83 @@ export async function getBrowserMedia (source: string, mediaId: number): Promise
   const current = pending.get(output)
   if (current) return current
 
-  const job = transcode(source, output, mediaId)
+  const job = transcode(source, output, mediaId, includeVideo)
     .finally(() => pending.delete(output))
   pending.set(output, job)
   return job
 }
 
 /**
+ * Stream-copy one source audio track into a browser-native audio container.
+ * Unlike the browser bundle, this does not decode or re-encode the audio.
+ */
+export async function getSourceAudio (
+  source: string,
+  mediaId: number,
+  audioTrack: number,
+  format: SourceAudioTrack,
+): Promise<SourceAudioFile> {
+  if (!format.extension || !format.mimeType) throw new Error('Source audio format cannot be stream-copied')
+  const fingerprint = await sourceFingerprint(source)
+  const output = path.join(cacheDir, `${mediaId}-${fingerprint}-source-audio-${audioTrack + 1}`)
+  const file = path.join(output, `audio.${format.extension}`)
+
+  if (await exists(file)) {
+    const now = new Date()
+    await fsPromises.utimes(output, now, now)
+    await pruneCache(output)
+    return { file, mimeType: format.mimeType }
+  }
+
+  const current = pending.get(file)
+  if (current) {
+    await current
+    return { file, mimeType: format.mimeType }
+  }
+
+  const job = (async () => {
+    await fsPromises.mkdir(cacheDir, { recursive: true })
+    const partial = `${output}.partial`
+    await fsPromises.rm(partial, { recursive: true, force: true })
+    await fsPromises.mkdir(partial, { recursive: true })
+    try {
+      await run(ffmpegPath, [
+        '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+        '-i', source, '-map', `0:a:${audioTrack}`, '-vn', '-c:a', 'copy',
+        ...(format.extension === 'm4a' ? ['-movflags', '+faststart'] : []),
+        path.join(partial, path.basename(file)),
+      ])
+      await fsPromises.rm(output, { recursive: true, force: true })
+      await fsPromises.rename(partial, output)
+      await pruneCache(output)
+    } catch (err) {
+      await fsPromises.rm(partial, { recursive: true, force: true })
+      throw err
+    }
+    return { video: undefined, audio: [], audioAac: [], combined: [] }
+  })().finally(() => pending.delete(file))
+  pending.set(file, job)
+  await job
+  return { file, mimeType: format.mimeType }
+}
+
+/**
  * Prepare media in the background, one item at a time. Keeping this queue
  * serial avoids five speculative FFmpeg jobs competing with current playback.
  */
-export function prefetchBrowserMedia (items: { source: string, mediaId: number }[]): void {
+export function prefetchBrowserMedia (items: { source: string, mediaId: number, prepareVideo: boolean }[]): void {
   // Each request represents the latest playback order. Replace speculative
   // queued work so a newly prioritized song runs immediately after the active
   // FFmpeg job (active transcodes are intentionally not interrupted).
   for (const queued of prefetchQueue) prefetchedOrQueued.delete(queued.key)
   prefetchQueue.length = 0
 
-  for (const { source, mediaId } of items) {
-    const key = `${mediaId}\0${source}`
+  for (const { source, mediaId, prepareVideo } of items) {
+    const key = `${mediaId}\0${source}\0${prepareVideo}`
     if (key === activePrefetchKey || prefetchedOrQueued.has(key)) continue
 
     prefetchedOrQueued.add(key)
-    prefetchQueue.push({ source, mediaId, key })
+    prefetchQueue.push({ source, mediaId, prepareVideo, key })
   }
 
   if (!isPrefetching) void runPrefetchQueue()
@@ -101,7 +182,7 @@ async function runPrefetchQueue (): Promise<void> {
       activePrefetchKey = item.key
 
       try {
-        await getBrowserMedia(item.source, item.mediaId)
+        await getBrowserBundle(item.source, item.mediaId, item.prepareVideo)
       } catch (err) {
         log.warn('Could not pre-cache mediaId=%s: %s', item.mediaId, err.message)
       } finally {
@@ -114,14 +195,20 @@ async function runPrefetchQueue (): Promise<void> {
   }
 }
 
-async function transcode (source: string, output: string, mediaId: number): Promise<BrowserMediaBundle> {
+async function transcode (
+  source: string,
+  output: string,
+  mediaId: number,
+  includeVideo: boolean,
+): Promise<BrowserMediaBundle> {
   await fsPromises.mkdir(cacheDir, { recursive: true })
 
-  // Remove stale cache versions for this media record, including the legacy
-  // single-MP4 cache format.
+  // Remove only stale source versions. Keep the current full, audio-only, and
+  // stream-copy bundles together so a fallback does not invalidate fast paths.
+  const currentVersion = path.basename(output).replace(/-audio$/, '')
   const entries = await fsPromises.readdir(cacheDir)
   await Promise.all(entries
-    .filter(file => file.startsWith(`${mediaId}-`))
+    .filter(file => file.startsWith(`${mediaId}-`) && !file.startsWith(currentVersion))
     .map(file => fsPromises.rm(path.join(cacheDir, file), { recursive: true, force: true })))
 
   const partial = `${output}.partial`
@@ -130,7 +217,7 @@ async function transcode (source: string, output: string, mediaId: number): Prom
   log.info('Preparing browser media bundle mediaId=%s: %s', mediaId, source)
 
   try {
-    const audioCount = await getAudioTrackCount(source)
+    const { audioTrackCount: audioCount } = await getSourceMediaInfo(source)
     if (audioCount === 0) throw new Error('Video contains no audio tracks')
 
     const videoName = 'video.mp4'
@@ -138,22 +225,7 @@ async function transcode (source: string, output: string, mediaId: number): Prom
     const audioAacNames = Array.from({ length: audioCount }, (_, i) => `audio-${i + 1}.m4a`)
     const combinedNames = Array.from({ length: audioCount }, (_, i) => `combined-${i + 1}.mp4`)
 
-    await Promise.all([
-      run(ffmpegPath, [
-        '-nostdin',
-        '-hide_banner',
-        '-loglevel', 'error',
-        '-y',
-        '-i', source,
-        '-map', '0:v:0',
-        '-an',
-        '-c:v', 'libx264',
-        '-preset', process.env.KES_TRANSCODE_PRESET || 'veryfast',
-        '-crf', process.env.KES_TRANSCODE_CRF || '20',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
-        path.join(partial, videoName),
-      ]),
+    const conversions = [
       ...audioNames.map((name, i) => run(ffmpegPath, [
         '-nostdin',
         '-hide_banner',
@@ -179,11 +251,27 @@ async function transcode (source: string, output: string, mediaId: number): Prom
         '-movflags', '+faststart',
         path.join(partial, name),
       ])),
-    ])
+    ]
+    if (includeVideo) conversions.unshift(run(ffmpegPath, [
+      '-nostdin',
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-y',
+      '-i', source,
+      '-map', '0:v:0',
+      '-an',
+      '-c:v', 'libx264',
+      '-preset', process.env.KES_TRANSCODE_PRESET || 'veryfast',
+      '-crf', process.env.KES_TRANSCODE_CRF || '20',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      path.join(partial, videoName),
+    ]))
+    await Promise.all(conversions)
 
     // webOS is substantially more reliable when audio and video share one
     // MP4. Stream-copy the prepared tracks, avoiding another encode.
-    await Promise.all(combinedNames.map((name, i) => run(ffmpegPath, [
+    if (includeVideo) await Promise.all(combinedNames.map((name, i) => run(ffmpegPath, [
       '-nostdin',
       '-hide_banner',
       '-loglevel', 'error',
@@ -199,7 +287,7 @@ async function transcode (source: string, output: string, mediaId: number): Prom
     ])))
 
     const manifest: BundleManifest = {
-      video: videoName,
+      ...(includeVideo ? { video: videoName } : {}),
       audio: audioNames,
       audioAac: audioAacNames,
       combined: combinedNames,
@@ -221,15 +309,66 @@ async function transcode (source: string, output: string, mediaId: number): Prom
   }
 }
 
-async function getAudioTrackCount (source: string): Promise<number> {
+export async function getSourceMediaInfo (source: string): Promise<SourceMediaInfo> {
   const stdout = await runCapture(ffprobePath, [
     '-v', 'error',
-    '-select_streams', 'a',
-    '-show_entries', 'stream=index',
-    '-of', 'csv=p=0',
+    '-show_entries', 'stream=codec_type,codec_name,codec_tag_string',
+    '-of', 'json',
     source,
   ])
-  return stdout.split(/\r?\n/).filter(Boolean).length
+  const probe = JSON.parse(stdout) as {
+    streams?: Array<{ codec_type?: string, codec_name?: string, codec_tag_string?: string }>
+  }
+  const streams = probe.streams || []
+  const audioTracks = streams
+    .filter(stream => stream.codec_type === 'audio')
+    .map(stream => sourceAudioTrack(stream.codec_tag_string, stream.codec_name))
+  const video = streams.find(stream => stream.codec_type === 'video')
+  return {
+    audioTrackCount: audioTracks.length,
+    audioTracks,
+    videoCodec: browserCodec(video?.codec_tag_string, video?.codec_name),
+  }
+}
+
+function sourceAudioTrack (tag: string | undefined, name: string | undefined): SourceAudioTrack {
+  const codec = browserCodec(tag, name)
+  const format = ({
+    aac: { extension: 'm4a', mimeType: 'audio/mp4' },
+    alac: { extension: 'm4a', mimeType: 'audio/mp4' },
+    mp3: { extension: 'mp3', mimeType: 'audio/mpeg' },
+    opus: { extension: 'opus', mimeType: 'audio/ogg' },
+    vorbis: { extension: 'ogg', mimeType: 'audio/ogg' },
+    flac: { extension: 'flac', mimeType: 'audio/flac' },
+  })[name || '']
+  return { codec, extension: format?.extension || null, mimeType: format?.mimeType || null }
+}
+
+function browserCodec (tag: string | undefined, name: string | undefined): string | null {
+  if (tag && /^[a-z0-9][a-z0-9._-]*$/i.test(tag)) return tag
+  return ({
+    h264: 'avc1',
+    hevc: 'hvc1',
+    av1: 'av01',
+    vp9: 'vp09',
+    vp8: 'vp8',
+    mpeg4: 'mp4v',
+    aac: 'mp4a',
+    alac: 'alac',
+    mp3: 'mp3',
+    opus: 'opus',
+    vorbis: 'vorbis',
+    flac: 'flac',
+  })[name || ''] || null
+}
+
+async function sourceFingerprint (source: string): Promise<string> {
+  const stats = await fsPromises.stat(source)
+  return crypto
+    .createHash('sha256')
+    .update(`${BROWSER_MEDIA_VERSION}\0${source}\0${stats.size}\0${stats.mtimeMs}`)
+    .digest('hex')
+    .slice(0, 16)
 }
 
 async function readBundle (directory: string): Promise<BrowserMediaBundle> {
@@ -241,7 +380,7 @@ async function readBundle (directory: string): Promise<BrowserMediaBundle> {
 
 function resolveBundle (directory: string, manifest: BundleManifest): BrowserMediaBundle {
   return {
-    video: path.join(directory, manifest.video),
+    ...(manifest.video ? { video: path.join(directory, manifest.video) } : {}),
     audio: manifest.audio.map(file => path.join(directory, file)),
     audioAac: manifest.audioAac.map(file => path.join(directory, file)),
     combined: manifest.combined.map(file => path.join(directory, file)),
@@ -311,7 +450,7 @@ async function pruneCache (keep: string): Promise<void> {
   const prune = async () => {
     const entries = await fsPromises.readdir(cacheDir, { withFileTypes: true })
     const bundles = await Promise.all(entries
-      .filter(entry => entry.isDirectory() && /^\d+-[a-f0-9]+$/.test(entry.name))
+      .filter(entry => entry.isDirectory() && /^\d+-[a-f0-9]+(?:-audio|-source-audio-\d+)?$/.test(entry.name))
       .map(async (entry) => {
         const directory = path.join(cacheDir, entry.name)
         const stats = await fsPromises.stat(directory)

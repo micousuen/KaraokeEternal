@@ -3,7 +3,7 @@ name = "karaoke-eternal-processing"
 version = "0.1.0"
 description = "Locked CPU-only media processing tools for Karaoke Eternal"
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "linux-aarch64"]
 
 [dependencies]
 python = "3.11.*"

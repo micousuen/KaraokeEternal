@@ -1,5 +1,6 @@
 import React from 'react'
 import { BROWSER_MEDIA_VERSION } from 'shared/media'
+import { type SourceMediaInfo, supportsSourceAudio, supportsSourceVideo } from '../../../lib/mediaSupport'
 import styles from './MP4Player.css'
 
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
@@ -29,6 +30,10 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   video = React.createRef<HTMLVideoElement>()
   audio = React.createRef<HTMLAudioElement>()
   pendingPosition = 0
+  sourceInfo: SourceMediaInfo | undefined
+  usingSourceVideo = false
+  usingSourceAudio = false
+  sourceRequest = 0
 
   componentDidMount () {
     this.props.onAudioElement(isWebOs ? this.video.current as HTMLAudioElement : this.audio.current)
@@ -103,25 +108,40 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     this.pendingPosition = 0
     if (isWebOs) {
       this.updateWebOsSource()
-      this.fetchAudioTrackCount()
+      void this.fetchSourceInfo().catch(err => this.props.onError(err.message))
       return
     }
 
-    this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
-    this.video.current.load()
-    this.updateAudioSource()
-
-    this.fetchAudioTrackCount()
+    const request = ++this.sourceRequest
+    void this.fetchSourceInfo()
+      .then((info): undefined => {
+        if (request !== this.sourceRequest || !this.video.current || !this.audio.current) return undefined
+        this.sourceInfo = info
+        this.usingSourceVideo = supportsSourceVideo(this.video.current, info)
+        this.usingSourceAudio = supportsSourceAudio(this.audio.current, info.audioTracks[this.props.audioTrack])
+        this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceVideo ? 'sourceVideo' : 'video'}${mediaVersion}`
+        this.video.current.load()
+        this.updateAudioSource()
+        return undefined
+      })
+      .catch((err): undefined => {
+        if (request !== this.sourceRequest || !this.video.current) return undefined
+        this.usingSourceVideo = false
+        this.usingSourceAudio = false
+        this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
+        this.video.current.load()
+        this.updateAudioSource()
+        this.props.onError(err.message)
+        return undefined
+      })
   }
 
-  fetchAudioTrackCount = () => {
-    fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await response.text())
-        return response.json()
-      })
-      .then(({ audioTrackCount }) => this.props.onStatus({ audioTrackCount }))
-      .catch(err => this.props.onError(err.message))
+  fetchSourceInfo = async (): Promise<SourceMediaInfo> => {
+    const response = await fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
+    if (!response.ok) throw new Error(await response.text())
+    const info = await response.json() as SourceMediaInfo
+    this.props.onStatus({ audioTrackCount: info.audioTrackCount })
+    return info
   }
 
   updateWebOsSource = (position = 0) => {
@@ -132,13 +152,15 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     this.video.current.load()
   }
 
-  updateAudioSource = (position = 0) => {
+  updateAudioSource = (position = 0, preferSource = true) => {
     if (!this.audio.current) return
 
     this.video.current?.pause()
     this.audio.current.pause()
     this.pendingPosition = position
-    this.audio.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}${audioFormat}${mediaVersion}`
+    this.usingSourceAudio = preferSource && !!this.sourceInfo
+      && supportsSourceAudio(this.audio.current, this.sourceInfo.audioTracks[this.props.audioTrack])
+    this.audio.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceAudio ? 'sourceAudio' : 'videoAudio'}&audioTrack=${this.props.audioTrack}${this.usingSourceAudio ? '' : audioFormat}${mediaVersion}`
     this.audio.current.load()
   }
 
@@ -190,11 +212,22 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   }
 
   handleVideoError = () => {
+    if (this.usingSourceVideo && this.video.current) {
+      this.usingSourceVideo = false
+      this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
+      this.video.current.load()
+      return
+    }
     const { message, code } = this.video.current.error
     this.props.onError(`${message} (video code ${code})`)
   }
 
   handleAudioError = () => {
+    if (this.usingSourceAudio) {
+      this.usingSourceAudio = false
+      this.updateAudioSource(this.audio.current?.currentTime || 0, false)
+      return
+    }
     const { message, code } = this.audio.current.error
     this.props.onError(`${message} (audio code ${code})`)
   }

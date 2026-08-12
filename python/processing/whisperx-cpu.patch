@@ -1,0 +1,51 @@
+--- a/whisperx/vads/__init__.py
++++ b/whisperx/vads/__init__.py
+@@ -1,3 +1,4 @@
+-from whisperx.vads.pyannote import Pyannote as Pyannote
++# Diarization is not required for the CPU/Silero transcription path.
++Pyannote = None
+ from whisperx.vads.silero import Silero as Silero
+ from whisperx.vads.vad import Vad as Vad
+--- a/whisperx/vads/silero.py
++++ b/whisperx/vads/silero.py
+@@ -6,7 +6,6 @@
+ 
+ import torch
+ 
+-from whisperx.diarize import Segment as SegmentX
+ from whisperx.vads.vad import Vad
+ from whisperx.log_utils import get_logger
+ 
+@@ -15,6 +14,13 @@
+ AudioFile = Union[Text, Path, IOBase, Mapping]
+ 
+ 
++class SegmentX:
++    def __init__(self, start: float, end: float, speaker: Optional[str] = None):
++        self.start = start
++        self.end = end
++        self.speaker = speaker
++
++
+ class Silero(Vad):
+     # check again default values
+     def __init__(self, **kwargs):
+--- a/whisperx/transcribe.py
++++ b/whisperx/transcribe.py
+@@ -9,7 +9,6 @@
+ from whisperx.alignment import align, load_align_model
+ from whisperx.asr import load_model
+ from whisperx.audio import load_audio
+-from whisperx.diarize import DiarizationPipeline, assign_word_speakers
+ from whisperx.schema import AlignedTranscriptionResult, TranscriptionResult
+ from whisperx.utils import LANGUAGES, TO_LANGUAGE_CODE, get_writer
+ from whisperx.log_utils import get_logger
+@@ -207,6 +206,8 @@
+ 
+     # >> Diarize
+     if diarize:
++        from whisperx.diarize import DiarizationPipeline, assign_word_speakers
++
+         if hf_token is None:
+             logger.warning(
+                 "No --hf_token provided, needs to be saved in environment variable, otherwise will throw error loading diarization model"

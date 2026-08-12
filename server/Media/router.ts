@@ -13,7 +13,7 @@ import Prefs from '../Prefs/Prefs.js'
 import Queue from '../Queue/Queue.js'
 import Rooms from '../Rooms/Rooms.js'
 import fileTypes from './fileTypes.js'
-import { getBrowserMedia, prefetchBrowserMedia } from './Transcoder.js'
+import { getBrowserAudio, getBrowserMedia, getSourceAudio, getSourceMediaInfo, prefetchBrowserMedia } from './Transcoder.js'
 import { ensureAudioTrackAnalysis, scheduleAudioTrackAnalysis } from './AudioTrackAnalysis.js'
 import { LIBRARY_PUSH_SONG, QUEUE_PUSH } from '../../shared/actionTypes.js'
 const log = getLogger('Media')
@@ -27,17 +27,20 @@ const precacheCount = Number.isInteger(configuredPrecacheCount)
 
 // Queue upcoming videos for background conversion. The player sends its real
 // round-robin playback order, which the server cannot infer from the raw queue.
-router.post('/precache', (ctx) => {
+router.post('/precache', async (ctx) => {
   requireRoomMember(ctx)
 
-  const requested = (ctx.request.body as { mediaIds?: unknown })?.mediaIds
+  const body = ctx.request.body as { mediaIds?: unknown, videoTypes?: unknown, audioTypes?: unknown }
+  const requested = body?.mediaIds
   if (!Array.isArray(requested)) ctx.throw(422, 'mediaIds must be an array')
   const requestedIds = requested as unknown[]
 
   const mediaIds = [...new Set(requestedIds
     .filter((mediaId): mediaId is number => Number.isInteger(mediaId))
     .slice(0, precacheCount))]
-  const items: { source: string, mediaId: number }[] = []
+  const videoTypes = supportedTypes(body.videoTypes)
+  const audioTypes = supportedTypes(body.audioTypes)
+  const items: { source: string, mediaId: number, prepareVideo: boolean }[] = []
   const { paths } = Prefs.get()
 
   for (const mediaId of mediaIds) {
@@ -46,8 +49,15 @@ router.post('/precache', (ctx) => {
 
     const { pathId, relPath } = res.entities[mediaId]
     const file = path.join(paths.entities[pathId].path, relPath)
-    if (!fileTypes[getExt(file)]?.mimeType.startsWith('video/')) continue
-    items.push({ source: file, mediaId })
+    const mimeType = fileTypes[getExt(file)]?.mimeType
+    if (!mimeType?.startsWith('video/')) continue
+    const sourceInfo = await getSourceMediaInfo(file)
+    const canStreamVideo = supportsType(videoTypes, mimeType, sourceInfo.videoCodec)
+    const canStreamAudio = sourceInfo.audioTracks.length > 0
+      && sourceInfo.audioTracks.every(track => supportsType(audioTypes, track.mimeType, track.codec))
+    if (!canStreamVideo || !canStreamAudio) {
+      items.push({ source: file, mediaId, prepareVideo: !canStreamVideo })
+    }
     scheduleAudioTrackAnalysis(mediaId, file)
   }
 
@@ -124,13 +134,63 @@ router.get('/:mediaId', async (ctx) => {
     ctx.type = fileTypes[getExt(file)]?.mimeType
   }
 
-  if (['video', 'videoAudio', 'videoCombined', 'videoInfo'].includes(String(type))) {
+  if (type === 'sourceVideo') {
+    if (!ctx.type?.startsWith('video/')) ctx.throw(422, 'Source is not a video')
+    ctx.set('Cache-Control', 'no-store')
+  }
+
+  if (type === 'videoInfo') {
+    ctx.set('Cache-Control', 'no-store')
+    const [sourceInfo, analyzed] = await Promise.all([
+      getSourceMediaInfo(file),
+      ensureAudioTrackAnalysis(mediaId, file).catch((err) => {
+        log.warn('Audio track analysis failed for mediaId=%s; using track order: %s', mediaId, err.message)
+        return null
+      }),
+    ])
+    const analysis = analyzed || { audioTrackCount: sourceInfo.audioTrackCount, ktvTrack: null }
+    ctx.body = {
+      audioTrackCount: sourceInfo.audioTrackCount,
+      videoMimeType: ctx.type,
+      videoCodec: sourceInfo.videoCodec,
+      audioTracks: [0, 1].map((requestedTrack) => {
+        const track = getPhysicalAudioTrack(requestedTrack, analysis.audioTrackCount, analysis.ktvTrack)
+        return track === null ? null : sourceInfo.audioTracks[track]
+      }),
+    }
+    ctx.type = 'application/json'
+    return
+  }
+
+  if (type === 'sourceAudio') {
+    ctx.set('Cache-Control', 'no-store')
+    const [sourceInfo, analyzed] = await Promise.all([
+      getSourceMediaInfo(file),
+      ensureAudioTrackAnalysis(mediaId, file).catch((err) => {
+        log.warn('Audio track analysis failed for mediaId=%s; using track order: %s', mediaId, err.message)
+        return null
+      }),
+    ])
+    const analysis = analyzed || { audioTrackCount: sourceInfo.audioTrackCount, ktvTrack: null }
+    const requestedTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
+    const audioTrack = getPhysicalAudioTrack(requestedTrack, analysis.audioTrackCount, analysis.ktvTrack)
+    const format = audioTrack === null ? undefined : sourceInfo.audioTracks[audioTrack]
+    if (!format) ctx.throw(404, 'Source audio track not found')
+    const sourceAudio = await getSourceAudio(file, mediaId, audioTrack, format)
+    file = sourceAudio.file
+    ctx.type = sourceAudio.mimeType
+    const stats = await fsPromises.stat(file)
+    ctx.length = stats.size
+    buffer = undefined
+  }
+
+  if (['video', 'videoAudio', 'videoCombined'].includes(String(type))) {
     // Browser media is versioned on the client and cached on disk by the
     // server. Prevent browser/proxy caches from mixing old audio container
     // bytes with the current response MIME type.
     ctx.set('Cache-Control', 'no-store')
     const [bundle, analyzed] = await Promise.all([
-      getBrowserMedia(file, mediaId),
+      type === 'videoAudio' ? getBrowserAudio(file, mediaId) : getBrowserMedia(file, mediaId),
       ensureAudioTrackAnalysis(mediaId, file).catch((err) => {
         log.warn('Audio track analysis failed for mediaId=%s; using track order: %s', mediaId, err.message)
         return null
@@ -139,12 +199,6 @@ router.get('/:mediaId', async (ctx) => {
     const analysis = analyzed || {
       audioTrackCount: bundle.audio.length,
       ktvTrack: null,
-    }
-
-    if (type === 'videoInfo') {
-      ctx.body = { audioTrackCount: bundle.audio.length }
-      ctx.type = 'application/json'
-      return
     }
 
     if (type === 'videoCombined') {
@@ -167,6 +221,7 @@ router.get('/:mediaId', async (ctx) => {
       file = audioFile
       ctx.type = fileTypes[getExt(file)]?.mimeType || 'audio/mpeg'
     } else {
+      if (!bundle.video) ctx.throw(500, 'Browser video not found')
       file = bundle.video
       ctx.type = 'video/mp4'
     }
@@ -223,6 +278,14 @@ export function getPhysicalAudioTrack (
   if (audioTrackCount < 2) return 0
   if (ktvTrack === null) return requestedTrack
   return requestedTrack === 1 ? ktvTrack : (ktvTrack === 0 ? 1 : 0)
+}
+
+function supportedTypes (value: unknown): Set<string> {
+  return new Set(Array.isArray(value) ? value.filter((type): type is string => typeof type === 'string') : [])
+}
+
+function supportsType (types: Set<string>, mimeType: string | null | undefined, codec: string | null): boolean {
+  return !!mimeType && !!codec && types.has(`${mimeType}; codecs="${codec}"`)
 }
 
 function streamMedia (ctx, file: string, buffer: Buffer | undefined, length: number) {

@@ -90,21 +90,6 @@
   margin-top: var(--space-xs);
 }
 
-.progressTrack {
-  height: 10px;
-  margin-top: var(--space-m);
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .12);
-}
-
-.progressFill {
-  height: 100%;
-  border-radius: inherit;
-  background: hsl(var(--hue-blue), 70%, 55%);
-  transition: width .25s ease;
-}
-
 .error {
   margin-top: var(--space-m);
   color: #ff9b9b;
@@ -127,12 +112,45 @@
   height: min(700px, 85vh);
 }
 
-.songList > div {
+.songList > div,
+.resultSummary {
   display: flex;
   justify-content: space-between;
   gap: var(--space-m);
+}
+
+.songList > div {
   padding: var(--space-s) 0;
   border-bottom: 1px solid rgba(255, 255, 255, .1);
+  overflow-wrap: anywhere;
+}
+
+.resultItem {
+  display: block !important;
+}
+
+.errorDetails {
+  margin-top: var(--space-s);
+  color: #ff9b9b;
+}
+
+.errorDetails summary {
+  cursor: pointer;
+  font-size: 80%;
+}
+
+.errorDetails pre {
+  max-height: 320px;
+  margin: var(--space-s) 0 0;
+  padding: var(--space-s);
+  overflow: auto;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .35);
+  color: #ffd0d0;
+  font-family: monospace;
+  font-size: 75%;
+  line-height: 1.4;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 

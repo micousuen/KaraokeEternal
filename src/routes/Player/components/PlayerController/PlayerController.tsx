@@ -9,6 +9,7 @@ import getRoomPrefs from '../../selectors/getRoomPrefs'
 import type { QueueItem } from 'shared/types'
 import HttpApi from 'lib/HttpApi'
 import ScriptOverlay from '../ScriptOverlay/ScriptOverlay'
+import { getSupportedMediaTypes } from '../../lib/mediaSupport'
 
 const mediaApi = new HttpApi('media')
 
@@ -181,7 +182,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     const mediaIds = ordered.map(item => item.mediaId)
 
     if (mediaIds.length) {
-      void mediaApi.post('/precache', { body: { mediaIds } }).catch((): void => {})
+      void mediaApi.post('/precache', { body: { mediaIds, ...getSupportedMediaTypes() } }).catch((): void => {})
     }
   }, [player.isPlaying, player._priorityQueueId, priorityQueueItem, queue, queueItem])
 

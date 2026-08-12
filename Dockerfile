@@ -29,6 +29,7 @@ FROM node:24-bookworm-slim
 
 ARG PIXI_VERSION=0.75.0
 COPY python/processing/pixi.toml python/processing/pixi.lock /opt/processing/
+COPY python/processing/whisperx-cpu.patch /tmp/whisperx-cpu.patch
 
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends build-essential ca-certificates curl ffmpeg python3-dev \
@@ -42,6 +43,9 @@ RUN apt-get update \
        "https://github.com/prefix-dev/pixi/releases/download/v${PIXI_VERSION}/pixi-${pixi_arch}-unknown-linux-musl.tar.gz" \
        | tar --extract --gzip --directory /usr/local/bin pixi \
   && PIXI_HOME=/opt/pixi pixi install --locked --manifest-path /opt/processing/pixi.toml \
+  && patch --directory=/opt/processing/.pixi/envs/default/lib/python3.11/site-packages --strip=1 < /tmp/whisperx-cpu.patch \
+  && if [ "$arch" = arm64 ]; then rm -rf /opt/processing/.pixi/envs/default/lib/python3.11/site-packages/torchcodec*; fi \
+  && rm /tmp/whisperx-cpu.patch \
   && apt-get purge --yes --auto-remove build-essential curl python3-dev \
   && pixi clean cache --yes \
   && rm -rf /var/lib/apt/lists/*

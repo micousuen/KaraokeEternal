@@ -43,7 +43,7 @@ class Library {
     // query #1: songs
     {
       const query = sql`
-        SELECT duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
+        SELECT media.duration AS duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
           MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia,
           MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
           MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack

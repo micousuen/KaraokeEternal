@@ -173,7 +173,7 @@ async function drain (): Promise<void> {
         job.onComplete?.()
         job.sourceReplaced = false
       } catch (err) {
-        lastError = errorMessage(err)
+        lastError = errorMessage(err, currentStage)
         const elapsedSeconds = currentStartedAt ? (Date.now() - currentStartedAt) / 1000 : 0
         markFinished(job, 'failed', null, elapsedSeconds, lastError)
         // The instrumental replacement may have succeeded before scripting
@@ -329,7 +329,14 @@ async function separate (job: Job): Promise<number> {
     if (job.needsScript && !fs.existsSync(scriptPath(job.source))) {
       currentStage = 'scripting'
       setProgress(80)
-      await runWhisperX(vocal, workDir)
+      // Give WhisperX a simple, decoder-independent audio input. This also
+      // matches the sample rate required by its Silero VAD implementation.
+      const scriptingInput = path.join(workDir, 'vocals-for-whisperx.wav')
+      await execFile(ffmpegPath, [
+        '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+        '-i', vocal, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
+      ])
+      await runWhisperX(scriptingInput, workDir)
       const generated = (await fsPromises.readdir(workDir)).find(file => path.extname(file).toLowerCase() === '.srt')
       if (!generated) throw new Error('WhisperX produced no SRT file')
       await fsPromises.copyFile(path.join(workDir, generated), `${scriptPath(job.source)}.partial`)
@@ -387,12 +394,13 @@ function scriptPath (source: string): string {
 
 async function runWhisperX (vocal: string, outputDir: string): Promise<void> {
   const args = [vocal, '--model', config.scripting.model, '--device', 'cpu', '--compute_type', 'int8',
-    '--batch_size', '1', '--output_format', 'srt', '--output_dir', outputDir]
+    '--batch_size', '1', '--vad_method', 'silero', '--output_format', 'srt', '--output_dir', outputDir]
   if (config.scripting.language) args.push('--language', config.scripting.language)
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       await runProcess(whisperxPath, args, {
         ...process.env,
+        HOME: modelRoot,
         HF_HOME: modelRoot,
         TORCH_HOME: modelRoot,
         CUDA_VISIBLE_DEVICES: '',
@@ -534,17 +542,18 @@ function loadConfig (): SeparationConfig {
   return value
 }
 
-function errorMessage (err: unknown): string {
-  if (!(err instanceof Error)) return String(err)
-  if (!('stderr' in err) || typeof err.stderr !== 'string') return err.message
-  const lines = err.stderr
+function errorMessage (err: unknown, stage?: 'separating' | 'scripting'): string {
+  const stageLabel = stage === 'scripting' ? 'Scripting' : 'Separation'
+  if (!(err instanceof Error)) return `[${stageLabel}] ${String(err)}`
+
+  const output = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr : ''
+  const lines = output
+    .replace(/\x1b\[[0-9;]*m/g, '')
     .replace(/\r/g, '\n')
     .split('\n')
     .map(line => line.trim())
     .filter(Boolean)
-  const useful = [...lines].reverse().find(line =>
-    /error|exception|failed|unable|unsupported|invalid|no such|permission denied/i.test(line)
-    && !/separation produced no output files|see errors above/i.test(line),
-  )
-  return useful || lines.at(-1) || err.message
+  const tail = lines.slice(-80).join('\n').slice(-12_000)
+  const headline = `[${stageLabel}] ${err.message}`
+  return tail && tail !== err.message ? `${headline}\n${tail}` : headline
 }

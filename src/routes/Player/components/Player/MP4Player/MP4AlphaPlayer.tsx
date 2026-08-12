@@ -1,6 +1,7 @@
 import React from 'react'
 import GLChroma from 'gl-chromakey'
 import { BROWSER_MEDIA_VERSION } from 'shared/media'
+import { type SourceMediaInfo, supportsSourceAudio, supportsSourceVideo } from '../../../lib/mediaSupport'
 import styles from './MP4Player.css'
 
 const BACKDROP_PADDING = 10 // px at 1:1 scale
@@ -34,6 +35,10 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   video = document.createElement('video')
   audio = document.createElement('audio')
   pendingPosition = 0
+  sourceInfo: SourceMediaInfo | undefined
+  usingSourceVideo = false
+  usingSourceAudio = false
+  sourceRequest = 0
   chroma: GLChroma
   supportsFilters = CSS.supports('backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)') || CSS.supports('-webkit-backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
   state = {
@@ -170,24 +175,42 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   updateSources = () => {
     this.stopChroma()
-    this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
-    this.video.load()
-    this.updateAudioSource()
-
-    fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
-      .then(async (response) => {
+    const request = ++this.sourceRequest
+    void fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
+      .then(async (response): Promise<SourceMediaInfo> => {
         if (!response.ok) throw new Error(await response.text())
-        return response.json()
+        return response.json() as Promise<SourceMediaInfo>
       })
-      .then(({ audioTrackCount }) => this.props.onStatus({ audioTrackCount }))
-      .catch(err => this.props.onError(err.message))
+      .then((info): undefined => {
+        if (request !== this.sourceRequest) return undefined
+        this.sourceInfo = info
+        this.props.onStatus({ audioTrackCount: info.audioTrackCount })
+        this.usingSourceVideo = supportsSourceVideo(this.video, info)
+        this.usingSourceAudio = supportsSourceAudio(this.audio, info.audioTracks[this.props.audioTrack])
+        this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceVideo ? 'sourceVideo' : 'video'}${mediaVersion}`
+        this.video.load()
+        this.updateAudioSource()
+        return undefined
+      })
+      .catch((err): undefined => {
+        if (request !== this.sourceRequest) return undefined
+        this.usingSourceVideo = false
+        this.usingSourceAudio = false
+        this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
+        this.video.load()
+        this.updateAudioSource()
+        this.props.onError(err.message)
+        return undefined
+      })
   }
 
-  updateAudioSource = (position = 0) => {
+  updateAudioSource = (position = 0, preferSource = true) => {
     this.video.pause()
     this.audio.pause()
     this.pendingPosition = position
-    this.audio.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoAudio&audioTrack=${this.props.audioTrack}${audioFormat}${mediaVersion}`
+    this.usingSourceAudio = preferSource && !!this.sourceInfo
+      && supportsSourceAudio(this.audio, this.sourceInfo.audioTracks[this.props.audioTrack])
+    this.audio.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceAudio ? 'sourceAudio' : 'videoAudio'}&audioTrack=${this.props.audioTrack}${this.usingSourceAudio ? '' : audioFormat}${mediaVersion}`
     this.audio.load()
   }
 
@@ -224,11 +247,22 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   handleVideoError = () => {
+    if (this.usingSourceVideo) {
+      this.usingSourceVideo = false
+      this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
+      this.video.load()
+      return
+    }
     const { message, code } = this.video.error
     this.props.onError(`${message} (video code ${code})`)
   }
 
   handleAudioError = () => {
+    if (this.usingSourceAudio) {
+      this.usingSourceAudio = false
+      this.updateAudioSource(this.audio.currentTime || 0, false)
+      return
+    }
     const { message, code } = this.audio.error
     this.props.onError(`${message} (audio code ${code})`)
   }

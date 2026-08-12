@@ -29,8 +29,6 @@ const VocalSeparation = () => {
   const elapsed = status.currentStartedAt === null || now === 0
     ? null
     : Math.max(0, Math.floor((now - status.currentStartedAt) / 1000))
-  const progress = status.currentProgress || 0
-
   return (
     <Panel title='Media processing' contentClassName={styles.content}>
       <div>
@@ -70,20 +68,7 @@ const VocalSeparation = () => {
                   </div>
                 ))}
               </div>
-              <div
-                className={styles.progressTrack}
-                role='progressbar'
-                aria-label='Media processing progress'
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={progress}
-              >
-                <div className={styles.progressFill} style={{ width: `${progress}%` }} />
-              </div>
               <small>
-                {progress}
-                % ·
-                {' '}
                 {Math.floor((elapsed || 0) / 60)}
                 m
                 {' '}
@@ -129,13 +114,21 @@ const VocalSeparation = () => {
             <div className={styles.songList}>
               {status.recent.length === 0 && <p>No processing results recorded yet.</p>}
               {status.recent.map(item => (
-                <div key={item.mediaId} title={item.song}>
-                  <span>{item.song}</span>
-                  <small>
-                    {item.status}
-                    {item.processingSeconds ? ` · ${Math.round(item.processingSeconds)}s` : ''}
-                    {item.attempts > 1 ? ` · ${item.attempts} attempts` : ''}
-                  </small>
+                <div key={item.mediaId} className={styles.resultItem}>
+                  <div className={styles.resultSummary} title={item.song}>
+                    <span>{item.song}</span>
+                    <small>
+                      {item.status}
+                      {item.processingSeconds ? ` · ${Math.round(item.processingSeconds)}s` : ''}
+                      {item.attempts > 1 ? ` · ${item.attempts} attempts` : ''}
+                    </small>
+                  </div>
+                  {item.error && (
+                    <details className={styles.errorDetails}>
+                      <summary>Show failure details</summary>
+                      <pre>{item.error}</pre>
+                    </details>
+                  )}
                 </div>
               ))}
             </div>
