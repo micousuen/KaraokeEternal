@@ -50,6 +50,7 @@ interface Job {
 
 export interface VocalSeparationStatus {
   enabled: boolean
+  isPaused: boolean
   modelsMounted: boolean
   modelsLoading: boolean
   queuedSongs: number
@@ -89,6 +90,7 @@ const config = loadConfig()
 const queue: Job[] = []
 const scheduled = new Set<number>()
 let active = false
+let paused = false
 let currentJob: Job | undefined
 let currentStartedAt: number | undefined
 let currentProgress: number | undefined
@@ -138,10 +140,23 @@ export async function unmountWhisperXModels (): Promise<void> {
   emitStatus()
 }
 
+export function pauseVocalSeparation (): void {
+  paused = true
+  emitStatus()
+}
+
+export function resumeVocalSeparation (): void {
+  if (!paused) return
+  paused = false
+  emitStatus()
+  void drain()
+}
+
 export function getVocalSeparationStatus (): VocalSeparationStatus {
   const history = getHistory()
   return {
     enabled: config.enabled,
+    isPaused: paused,
     modelsMounted: whisperxWorker.mounted,
     modelsLoading: whisperxWorker.loading,
     queuedSongs: queue.length,
@@ -175,7 +190,7 @@ async function drain (): Promise<void> {
   active = true
   try {
     await startupCleanup
-    while (queue.length) {
+    while (queue.length && !paused) {
       const job = queue.shift()!
       currentJob = job
       currentStartedAt = Date.now()

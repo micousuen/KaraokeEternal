@@ -4,7 +4,12 @@ import Modal from 'components/Modal/Modal'
 import Panel from 'components/Panel/Panel'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { requestScanAll } from 'store/modules/prefs'
-import { mountWhisperXModels, unmountWhisperXModels } from 'store/modules/vocalSeparation'
+import {
+  mountWhisperXModels,
+  pauseVocalSeparation,
+  resumeVocalSeparation,
+  unmountWhisperXModels,
+} from 'store/modules/vocalSeparation'
 import styles from './VocalSeparation.css'
 
 const formatSpeed = (speed: number | null) => speed === null ? 'Waiting for first result' : `${speed.toFixed(2)}× realtime`
@@ -45,6 +50,10 @@ const VocalSeparation = () => {
           <div>
             <span>Average speed</span>
             <strong>{formatSpeed(status.averageSpeed)}</strong>
+          </div>
+          <div>
+            <span>WhisperX models</span>
+            <strong>{status.modelsLoading ? 'Mounting…' : status.modelsMounted ? 'Mounted' : 'Unmounted'}</strong>
           </div>
         </div>
         <div className={styles.current}>
@@ -87,6 +96,13 @@ const VocalSeparation = () => {
         )}
         <div className={styles.actions}>
           <Button
+            variant={status.isPaused ? 'primary' : 'default'}
+            disabled={!status.enabled || (!status.isPaused && !status.currentSong && status.queuedSongs === 0)}
+            onClick={() => dispatch(status.isPaused ? resumeVocalSeparation() : pauseVocalSeparation())}
+          >
+            {status.isPaused ? 'Resume processing' : 'Stop processing'}
+          </Button>
+          <Button
             variant='primary'
             disabled={!status.enabled || isScanning}
             onClick={() => dispatch(requestScanAll())}
@@ -94,7 +110,9 @@ const VocalSeparation = () => {
             {isScanning ? 'Scanning media folders…' : 'Process media library'}
           </Button>
           <small>
-            Scans media folders, adds an instrumental track when needed, and creates missing SRT scripts.
+            {status.isPaused
+              ? 'Processing is paused. Resume to continue queued media.'
+              : 'Stop pauses the queue after the current media task finishes.'}
           </small>
         </div>
         <div className={styles.actions}>
