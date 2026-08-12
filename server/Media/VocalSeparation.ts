@@ -331,7 +331,8 @@ async function separate (job: Job): Promise<number> {
 
     if (job.needsScript && !fs.existsSync(scriptPath(job.source))) {
       currentStage = 'scripting'
-      setProgress(80)
+      currentProgress = 0
+      emitStatus()
       // Give WhisperX a simple, decoder-independent audio input. This also
       // matches the sample rate required by its Silero VAD implementation.
       const scriptingInput = path.join(workDir, 'vocals-for-whisperx.wav')
@@ -386,7 +387,7 @@ function tasksForJob (
     type: 'scripting',
     label: 'Create SRT script (WhisperX CPU)',
     status: stage === 'scripting' ? 'processing' : 'queued',
-    progress: stage === 'scripting' ? null : 0,
+    progress: stage === 'scripting' ? progress ?? 0 : 0,
   })
   return tasks
 }
@@ -398,7 +399,8 @@ function scriptPath (source: string): string {
 async function runWhisperX (vocal: string, outputDir: string): Promise<void> {
   const args = [vocal, '--model', config.scripting.model, '--device', 'cpu', '--compute_type', 'int8',
     '--batch_size', '1', '--vad_method', 'silero', '--vad_onset', String(config.scripting.vadOnset ?? 0.35),
-    '--beam_size', String(config.scripting.beamSize ?? 8), '--output_format', 'srt', '--output_dir', outputDir]
+    '--beam_size', String(config.scripting.beamSize ?? 8), '--print_progress',
+    '--output_format', 'srt', '--output_dir', outputDir]
   if (config.scripting.language) args.push('--language', config.scripting.language)
   if (config.scripting.initialPrompt) args.push('--initial_prompt', config.scripting.initialPrompt)
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -409,7 +411,9 @@ async function runWhisperX (vocal: string, outputDir: string): Promise<void> {
         HF_HOME: modelRoot,
         TORCH_HOME: modelRoot,
         CUDA_VISIBLE_DEVICES: '',
-      }, 'WhisperX')
+        PYTHONUNBUFFERED: '1',
+      }, 'WhisperX', updateWhisperXProgress)
+      setProgress(100)
       return
     } catch (err) {
       if (attempt === 2 || !isNoChildProcessError(err)) throw err
@@ -474,7 +478,13 @@ async function runSeparatorOnce (args: string[]): Promise<void> {
   })
 }
 
-function runProcess (command: string, args: string[], env: NodeJS.ProcessEnv, label: string): Promise<void> {
+function runProcess (
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  label: string,
+  onOutput?: (output: string) => void,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = childProcess.spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], env })
     let output = ''
@@ -486,7 +496,9 @@ function runProcess (command: string, args: string[], env: NodeJS.ProcessEnv, la
       else resolve()
     }
     const collect = (chunk: Buffer) => {
-      output = (output + chunk.toString()).slice(-10 * 1024 * 1024)
+      const text = chunk.toString()
+      output = (output + text).slice(-10 * 1024 * 1024)
+      onOutput?.(text)
     }
     child.stdout.on('data', collect)
     child.stderr.on('data', collect)
@@ -496,6 +508,14 @@ function runProcess (command: string, args: string[], env: NodeJS.ProcessEnv, la
       else finish(new Error(`${label} exited with ${code === null ? `signal ${signal}` : `code ${code}`}`))
     })
   })
+}
+
+function updateWhisperXProgress (output: string): void {
+  for (const match of output.matchAll(/Progress:\s*(\d{1,3}(?:\.\d+)?)%/g)) {
+    // WhisperX reports transcription chunks but not its final alignment pass.
+    // Reserve the last few percent until the process exits successfully.
+    setProgress(Math.min(95, Math.round(Number(match[1]) * 0.95)))
+  }
 }
 
 function isNoChildProcessError (err: unknown): boolean {
