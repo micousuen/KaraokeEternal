@@ -84,13 +84,30 @@ def transcribe(request):
     )
     language = result["language"]
     emit({"id": request["id"], "event": "stage", "stage": "Aligning lyric timings"})
-    if language not in alignment_models:
-        alignment_models[language] = whisperx.load_align_model(
-            language,
-            "cpu",
-            model_dir=model_root,
-        )
-    align_model, align_metadata = alignment_models[language]
+    alignment_language = language
+    if alignment_language not in alignment_models:
+        try:
+            alignment_models[alignment_language] = whisperx.load_align_model(
+                alignment_language,
+                "cpu",
+                model_dir=model_root,
+            )
+        except ValueError as error:
+            if "No default align-model for language:" not in str(error) or alignment_language == "en":
+                raise
+            alignment_language = "en"
+            emit({
+                "id": request["id"],
+                "event": "stage",
+                "stage": f"No {language} alignment model; using English alignment",
+            })
+            if alignment_language not in alignment_models:
+                alignment_models[alignment_language] = whisperx.load_align_model(
+                    alignment_language,
+                    "cpu",
+                    model_dir=model_root,
+                )
+    align_model, align_metadata = alignment_models[alignment_language]
     result = whisperx.align(
         result["segments"],
         align_model,

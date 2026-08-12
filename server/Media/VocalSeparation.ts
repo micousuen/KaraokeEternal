@@ -40,6 +40,7 @@ interface Job {
   mediaId: number
   pathId: number
   source: string
+  vocalTrack: 0 | 1
   generateInstrumental: boolean
   needsScript?: boolean
   sourceReplaced?: boolean
@@ -296,7 +297,7 @@ async function separate (job: Job): Promise<number> {
   await fsPromises.mkdir(workDir, { recursive: true })
   await fsPromises.mkdir(modelRoot, { recursive: true })
   await fsPromises.mkdir(numbaCacheRoot, { recursive: true })
-  log.info('Separating vocals for mediaId=%s: %s', job.mediaId, job.source)
+  log.info('Separating vocals for mediaId=%s from A%s: %s', job.mediaId, job.vocalTrack + 1, job.source)
 
   try {
     // Normalize input decoding through FFmpeg. audio-separator's librosa/audioread
@@ -304,7 +305,7 @@ async function separate (job: Job): Promise<number> {
     const separatorInput = path.join(workDir, 'input.wav')
     await execFile(ffmpegPath, [
       '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', job.source, '-map', '0:a:0', '-vn', '-ac', '2', '-ar', '44100',
+      '-i', job.source, '-map', `0:a:${job.vocalTrack}`, '-vn', '-ac', '2', '-ar', '44100',
       '-c:a', 'pcm_s16le', separatorInput,
     ])
     setProgress(2)

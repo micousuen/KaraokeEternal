@@ -97,10 +97,24 @@ async function drain (): Promise<void> {
         const record = cached || await analyze(job.mediaId, job.source)
         job.onAnalysisComplete?.(job.mediaId)
         if (job.pathId !== undefined && job.onSeparationComplete) {
+          const vocalTrack = record.audioTrackCount === 1
+            ? 0
+            : record.ktvTrack === null
+              ? null
+              : record.ktvTrack === 0 ? 1 : 0
+          if (vocalTrack === null) {
+            log.warn('Skipping vocal separation for mediaId=%s: could not identify the vocal track', job.mediaId)
+            job.resolve?.(record)
+            continue
+          }
           scheduleVocalSeparation({
             mediaId: job.mediaId,
             pathId: job.pathId,
             source: job.source,
+            // A one-track source must use A1. For a dual-track source, the
+            // classifier identifies the karaoke/instrumental track and we
+            // separate its opposite vocal/master track.
+            vocalTrack,
             generateInstrumental: record.audioTrackCount === 1,
             onComplete: record.audioTrackCount === 1
               ? () => job.onSeparationComplete?.(job.mediaId, job.source)

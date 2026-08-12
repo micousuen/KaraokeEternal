@@ -10,7 +10,7 @@ enabled: true
 #   mdx_extra.yaml     - MDX model trained with additional data
 #   mdx_q.yaml         - smaller quantized MDX model
 #   mdx_extra_q.yaml   - smaller quantized MDX-extra model
-model: htdemucs_ft.yaml
+model: htdemucs.yaml
 
 segmentSeconds: 7.8
 overlap: 0.25
@@ -27,11 +27,11 @@ scripting:
 
   # Lower values retain quieter sung vocals. Raise this if it produces too
   # many false lyric lines from the instrumental.
-  vadOnset: 0.35
+  vadOnset: 0.3
 
   # More decoding candidates improve difficult lyrics at the cost of CPU time.
   beamSize: 8
 
-  # A neutral hint helps WhisperX favor lyric-like text without locking it to
-  # one artist, song, or language.
-  initialPrompt: Karaoke song lyrics.
+  # Leave unset: a generic prompt can be hallucinated as a lyric in short,
+  # low-energy vocal regions.
+  # initialPrompt: Karaoke song lyrics.

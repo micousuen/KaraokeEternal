@@ -109,11 +109,6 @@ const VocalSeparation = () => {
           >
             {isScanning ? 'Scanning media folders…' : 'Process media library'}
           </Button>
-          <small>
-            {status.isPaused
-              ? 'Processing is paused. Resume to continue queued media.'
-              : 'Stop pauses the queue after the current media task finishes.'}
-          </small>
         </div>
         <div className={styles.actions}>
           <Button
@@ -123,9 +118,6 @@ const VocalSeparation = () => {
           >
             {status.modelsLoading ? 'Mounting WhisperX models…' : status.modelsMounted ? 'Unmount WhisperX models' : 'Mount WhisperX models'}
           </Button>
-          <small>
-            Keeps WhisperX and voice-activity detection models ready for faster script generation.
-          </small>
         </div>
         {openList === 'queued' && (
           <Modal title={`Queued songs (${status.queued.length})`} onClose={() => setOpenList(null)} scrollable className={styles.listModal}>
