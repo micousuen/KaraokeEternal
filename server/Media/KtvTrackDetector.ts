@@ -1,10 +1,7 @@
 import childProcess from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { parse } from 'yaml'
-
-const execFile = promisify(childProcess.execFile)
 
 export interface KtvTrackDetection {
   duration: number
@@ -142,7 +139,7 @@ async function probe (source: string): Promise<{ duration: number, audioTrackCou
   const { stdout } = await execFile(ffprobePath, [
     '-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', source,
   ])
-  const result = JSON.parse(stdout) as {
+  const result = JSON.parse(stdout.toString()) as {
     format?: { duration?: string }
     streams?: { codec_type?: string }[]
   }
@@ -208,7 +205,7 @@ async function extractSpectralFrames (source: string, track: number, duration: n
   const { stdout } = await execFile(ffmpegPath, [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-i', source,
     '-map', `0:a:${track}`, '-vn', '-ac', '1', '-ar', String(sampleRate), '-f', 'f32le', 'pipe:1',
-  ], { encoding: 'buffer', maxBuffer: Math.ceil(sampleRate * duration * 4 * 1.05) + 1024 })
+  ], { maxBuffer: Math.ceil(sampleRate * duration * 4 * 1.05) + 1024 })
   const samples = new Float32Array(stdout.buffer, stdout.byteOffset, Math.floor(stdout.byteLength / 4))
   const frames: number[][] = []
 
@@ -231,6 +228,62 @@ async function extractSpectralFrames (source: string, track: number, duration: n
     frames.push(frameSpectrum)
   }
   return frames
+}
+
+async function execFile (
+  command: string,
+  args: string[],
+  options: { maxBuffer?: number } = {},
+): Promise<{ stdout: Buffer, stderr: Buffer }> {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await execFileOnce(command, args, options.maxBuffer)
+    } catch (err) {
+      if (attempt === 3 || !isNoChildProcessError(err)) throw err
+    }
+  }
+  throw new Error(`${path.basename(command)} did not start`)
+}
+
+function execFileOnce (
+  command: string,
+  args: string[],
+  maxBuffer = Number.POSITIVE_INFINITY,
+): Promise<{ stdout: Buffer, stderr: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const child = childProcess.spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout: Buffer[] = []
+    const stderr: Buffer[] = []
+    let stdoutSize = 0
+    let settled = false
+    const finish = (err?: Error) => {
+      if (settled) return
+      settled = true
+      const output = { stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) }
+      if (err) reject(Object.assign(err, output))
+      else resolve(output)
+    }
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdoutSize += chunk.length
+      if (stdoutSize > maxBuffer) {
+        child.kill('SIGKILL')
+        finish(new Error(`${path.basename(command)} output exceeded ${maxBuffer} bytes`))
+        return
+      }
+      stdout.push(chunk)
+    })
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+    child.on('error', finish)
+    child.on('close', (code, signal) => {
+      if (code === 0) finish()
+      else finish(new Error(`${path.basename(command)} exited with ${code === null ? `signal ${signal || 'unknown'}` : `code ${code}`}`))
+    })
+  })
+}
+
+function isNoChildProcessError (err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  return ('code' in err && err.code === 'ECHILD') || /no child processes/i.test(`${err.message}\n${'stderr' in err ? err.stderr : ''}`)
 }
 
 function fft (real: Float64Array, imag: Float64Array): void {

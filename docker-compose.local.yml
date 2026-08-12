@@ -5,6 +5,7 @@ services:
       context: .
     image: karaoke-eternal:transcode
     restart: unless-stopped
+    init: true
 
     environment:
       PUID: "1000"

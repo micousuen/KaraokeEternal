@@ -33,13 +33,12 @@ import {
   SERVER_WORKER_STATUS,
   SERVER_WORKER_ERROR,
   VOCAL_SEPARATION_STATUS,
-  WATCHER_WORKER_SUPPRESS_PATH,
 } from '../shared/actionTypes.js'
 
 const log = getLogger('server')
 const { verify: jwtVerify } = jsonWebToken
 
-async function serverWorker ({ env, startScanner, stopScanner, shutdownHandlers }) {
+async function serverWorker ({ env, startScanner, stopScanner, suppressWatcher, shutdownHandlers }) {
   const indexFile = path.join(env.KES_PATH_WEBROOT, 'index.html')
   const urlPath = env.KES_URL_PATH.replace(/\/?$/, '/') // force trailing slash
   const jwtKey = Prefs.getJwtKey(env.KES_ROTATE_KEY)
@@ -79,9 +78,7 @@ async function serverWorker ({ env, startScanner, stopScanner, shutdownHandlers 
 
     // attach IPC action handlers
     IPC.use(IPCLibraryActions(io))
-    IPC.use(IPCMediaActions(io, (pathId) => {
-      IPC.send({ type: WATCHER_WORKER_SUPPRESS_PATH, payload: { pathId } })
-    }))
+    IPC.use(IPCMediaActions(io, suppressWatcher))
 
     // success callback in 3rd arg
     server.listen(env.KES_PORT, () => {

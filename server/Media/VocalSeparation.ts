@@ -2,13 +2,11 @@ import childProcess from 'node:child_process'
 import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { parse } from 'yaml'
 import getLogger from '../lib/Log.js'
 import { db } from '../lib/Database.js'
 import whisperxWorker, { type WhisperXSettings } from './WhisperXWorker.js'
 
-const execFileAsync = promisify(childProcess.execFile)
 const log = getLogger('VocalSeparation')
 const downloadsPath = process.env.KES_PATH_DOWNLOADS || '/media/downloads'
 const configPath = process.env.KES_PATH_VOCAL_SEPARATION_CONFIG || path.resolve('config/vocal-separation.yaml')
@@ -466,13 +464,13 @@ async function mediaDuration (filename: string): Promise<number> {
 }
 
 async function runSeparator (args: string[]): Promise<void> {
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await runSeparatorOnce(args)
       return
     } catch (err) {
-      if (attempt === 2 || !isNoChildProcessError(err)) throw err
-      log.warn('audio-separator process wait failed with ECHILD; retrying once')
+      if (attempt === 3 || !isNoChildProcessError(err)) throw err
+      log.warn('audio-separator process wait failed with ECHILD; retrying (%s/3)', attempt + 1)
     }
   }
 }
@@ -522,13 +520,38 @@ async function execFile (
   command: string,
   args: string[],
 ): Promise<{ stdout: string, stderr: string }> {
-  try {
-    return await execFileAsync(command, args, { encoding: 'utf8' })
-  } catch (err) {
-    if (!isNoChildProcessError(err)) throw err
-    log.warn('%s process wait failed with ECHILD; retrying once', path.basename(command))
-    return execFileAsync(command, args, { encoding: 'utf8' })
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await runCommand(command, args)
+    } catch (err) {
+      if (attempt === 3 || !isNoChildProcessError(err)) throw err
+      log.warn('%s process wait failed with ECHILD; retrying (%s/3)', path.basename(command), attempt + 1)
+    }
   }
+  throw new Error(`${path.basename(command)} did not start`)
+}
+
+function runCommand (command: string, args: string[]): Promise<{ stdout: string, stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = childProcess.spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout: Buffer[] = []
+    const stderr: Buffer[] = []
+    let settled = false
+    const finish = (err?: Error) => {
+      if (settled) return
+      settled = true
+      const output = { stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }
+      if (err) reject(Object.assign(err, output))
+      else resolve(output)
+    }
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+    child.on('error', finish)
+    child.on('close', (code, signal) => {
+      if (code === 0) finish()
+      else finish(new Error(`${path.basename(command)} exited with ${code === null ? `signal ${signal || 'unknown'}` : `code ${code}`}`))
+    })
+  })
 }
 
 function setProgress (progress: number): void {

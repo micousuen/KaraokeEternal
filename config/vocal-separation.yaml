@@ -27,7 +27,7 @@ scripting:
 
   # Lower values retain quieter sung vocals. Raise this if it produces too
   # many false lyric lines from the instrumental.
-  vadOnset: 0.25
+  vadOnset: 0.15
 
   # More decoding candidates improve difficult lyrics at the cost of CPU time.
   beamSize: 8

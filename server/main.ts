@@ -86,7 +86,7 @@ process.on('unhandledRejection', (reason) => {
 
   // start web server
   const serverWorker = await import('./serverWorker.js')
-  serverWorker.default({ env, startScanner, stopScanner, shutdownHandlers })
+  serverWorker.default({ env, startScanner, stopScanner, suppressWatcher, shutdownHandlers })
 
   // scanning on startup?
   const pathIds = parsePathIds(env.KES_SCAN)
@@ -139,7 +139,7 @@ function startScanner (pathIds) {
       IPC.removeChild(refs.scanner)
       delete refs.scanner
 
-      ;(process as any).emit(SCANNER_WORKER_EXITED, { signal, code })
+      process.emit(SCANNER_WORKER_EXITED, { signal, code })
       log.info(`Media scanner process exited (${signal || code})`)
     })
 
@@ -153,6 +153,10 @@ function stopScanner () {
   if (refs.scanner) {
     IPC.send({ type: REQUEST_SCAN_STOP })
   }
+}
+
+function suppressWatcher (pathId) {
+  watcherSuppressedUntil.set(pathId, Date.now() + 5000)
 }
 
 async function shutdown (signal) {
