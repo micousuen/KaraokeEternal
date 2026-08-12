@@ -51,7 +51,6 @@ const PlayerController = (props: PlayerControllerProps) => {
     }
 
     handleStatus({
-      audioTrack: 0,
       audioTrackCount: 0,
       duration: 0,
       historyJSON: JSON.stringify(history),
@@ -94,7 +93,6 @@ const PlayerController = (props: PlayerControllerProps) => {
 
     // play next
     handleStatus({
-      audioTrack: 0,
       audioTrackCount: 0,
       duration: 0,
       historyJSON: JSON.stringify(history),

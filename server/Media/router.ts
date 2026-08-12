@@ -122,18 +122,20 @@ router.get('/:mediaId', async (ctx) => {
 
     if (type === 'videoCombined') {
       const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
-      if (!Number.isInteger(audioTrack) || !bundle.combined[audioTrack]) {
+      const combinedFile = bundle.combined[audioTrack] || (audioTrack === 1 ? bundle.combined[0] : undefined)
+      if (!Number.isInteger(audioTrack) || !combinedFile) {
         ctx.throw(404, 'Combined audio track not found')
       }
-      file = bundle.combined[audioTrack]
+      file = combinedFile
       ctx.type = 'video/mp4'
     } else if (type === 'videoAudio') {
       const audioTrack = parseInt(String(ctx.query.audioTrack || '0'), 10)
       const audioFiles = ctx.query.audioFormat === 'aac' ? bundle.audioAac : bundle.audio
-      if (!Number.isInteger(audioTrack) || !audioFiles[audioTrack]) {
+      const audioFile = audioFiles[audioTrack] || (audioTrack === 1 ? audioFiles[0] : undefined)
+      if (!Number.isInteger(audioTrack) || !audioFile) {
         ctx.throw(404, 'Audio track not found')
       }
-      file = audioFiles[audioTrack]
+      file = audioFile
       ctx.type = fileTypes[getExt(file)]?.mimeType || 'audio/mpeg'
     } else {
       file = bundle.video
