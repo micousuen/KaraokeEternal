@@ -97,6 +97,13 @@ async function drain (): Promise<void> {
         const record = cached || await analyze(job.mediaId, job.source)
         job.onAnalysisComplete?.(job.mediaId)
         if (job.pathId !== undefined && job.onSeparationComplete) {
+          const requiresProcessing = record.audioTrackCount === 1 || !!job.isManagedDownload
+          if (!requiresProcessing) {
+            // Existing dual-track media is classified so playback can select
+            // its vocal channel, but it must never enter the processing queue.
+            job.resolve?.(record)
+            continue
+          }
           const vocalTrack = record.audioTrackCount === 1
             ? 0
             : record.ktvTrack === null

@@ -128,6 +128,8 @@ class FileScanner extends Scanner {
     // get artistId and songId
     const match = await (IPC as any).req({ type: LIBRARY_MATCH_SONG, payload: metadata.parsed })
 
+    const isManagedDownload = !!this.paths.entities[pathId].isManagedDownloadPath
+      || /^YouTube-.*-YouTube \[[A-Za-z0-9_-]{11}\]\.[^.]+$/.test(path.basename(file))
     const media = {
       songId: match.songId,
       pathId,
@@ -136,7 +138,9 @@ class FileScanner extends Scanner {
       duration: Math.round(metadata.duration),
       rgTrackGain: metadata.rgTrackGain,
       rgTrackPeak: metadata.rgTrackPeak,
-      isManagedDownload: /^YouTube-.*-YouTube \[[A-Za-z0-9_-]{11}\]\.[^.]+$/.test(path.basename(file)) ? 1 : 0,
+      // A managed-download path keeps its origin even after the download is
+      // renamed into the library's normal artist-title filename format.
+      isManagedDownload: Number(isManagedDownload),
     }
 
     // file already in database?
