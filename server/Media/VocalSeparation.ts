@@ -115,7 +115,10 @@ const startupCleanup = fsPromises.rm(tempRoot, { recursive: true, force: true })
 export function scheduleVocalSeparation (job: Job, prioritize = false): void {
   if (!config.enabled || scheduled.has(job.mediaId)) return
   job.needsScript = job.allowScript && config.scripting.enabled && !fs.existsSync(scriptPath(job.source))
-  if (!job.runSeparation && !job.needsScript) return
+  // Separation is an intermediate step, not a standalone deliverable. Once
+  // both downstream outputs already exist, there is nothing left to process.
+  if (!job.generateInstrumental && !job.needsScript) return
+  job.runSeparation = job.runSeparation && (job.generateInstrumental || job.needsScript)
   job.prioritized = prioritize
   scheduled.add(job.mediaId)
   if (prioritize) {
