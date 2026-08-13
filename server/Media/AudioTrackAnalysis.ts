@@ -115,7 +115,14 @@ async function drain (): Promise<void> {
             // classifier identifies the karaoke/instrumental track and we
             // separate its opposite vocal/master track.
             vocalTrack,
+            // A YouTube download still needs an isolated vocal stem for an
+            // accurate script. Existing dual-track library files stop after
+            // classification, since they already have their own vocal/KTV pair.
+            runSeparation: record.audioTrackCount === 1 || !!job.isManagedDownload,
             generateInstrumental: record.audioTrackCount === 1,
+            // Keep library videos that already have A1/A2 untouched. Downloads
+            // are still scripted because their dual tracks may not include one.
+            allowScript: record.audioTrackCount === 1 || !!job.isManagedDownload,
             onComplete: record.audioTrackCount === 1
               ? () => job.onSeparationComplete?.(job.mediaId, job.source)
               : undefined,

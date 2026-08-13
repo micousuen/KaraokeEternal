@@ -42,7 +42,9 @@ interface Job {
   pathId: number
   source: string
   vocalTrack: 0 | 1
+  runSeparation: boolean
   generateInstrumental: boolean
+  allowScript: boolean
   needsScript?: boolean
   sourceReplaced?: boolean
   prioritized?: boolean
@@ -111,8 +113,8 @@ const startupCleanup = fsPromises.rm(tempRoot, { recursive: true, force: true })
 
 export function scheduleVocalSeparation (job: Job, prioritize = false): void {
   if (!config.enabled || scheduled.has(job.mediaId)) return
-  job.needsScript = config.scripting.enabled && !fs.existsSync(scriptPath(job.source))
-  if (!job.generateInstrumental && !job.needsScript) return
+  job.needsScript = job.allowScript && config.scripting.enabled && !fs.existsSync(scriptPath(job.source))
+  if (!job.runSeparation && !job.needsScript) return
   job.prioritized = prioritize
   scheduled.add(job.mediaId)
   if (prioritize) {
@@ -197,7 +199,7 @@ async function drain (): Promise<void> {
       currentJob = job
       currentStartedAt = Date.now()
       currentProgress = 0
-      currentStage = 'separating'
+      currentStage = job.runSeparation ? 'separating' : 'scripting'
       lastError = null
       markStarted(job)
       emitStatus()
@@ -298,71 +300,74 @@ async function separate (job: Job): Promise<number> {
   await fsPromises.mkdir(workDir, { recursive: true })
   await fsPromises.mkdir(modelRoot, { recursive: true })
   await fsPromises.mkdir(numbaCacheRoot, { recursive: true })
-  log.info('Separating vocals for mediaId=%s from A%s: %s', job.mediaId, job.vocalTrack + 1, job.source)
+  log.info('%s for mediaId=%s from A%s: %s', job.runSeparation ? 'Separating vocals' : 'Creating script', job.mediaId, job.vocalTrack + 1, job.source)
 
   try {
-    // Normalize input decoding through FFmpeg. audio-separator's librosa/audioread
-    // fallback cannot reliably open every video container that FFmpeg supports.
-    const separatorInput = path.join(workDir, 'input.wav')
-    await execFile(ffmpegPath, [
-      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', job.source, '-map', `0:a:${job.vocalTrack}`, '-vn', '-ac', '2', '-ar', '44100',
-      '-c:a', 'pcm_s16le', separatorInput,
-    ])
-    setProgress(2)
-    await runSeparator([
-      separatorInput,
-      '--model_filename', config.model,
-      '--model_file_dir', modelRoot,
-      '--output_dir', workDir,
-      '--output_format', 'FLAC',
-      '--demucs_segment_size', String(config.segmentSeconds),
-      '--demucs_shifts', String(config.shifts),
-      '--demucs_overlap', String(config.overlap),
-    ])
-
-    const files = await fsPromises.readdir(workDir)
-    const vocalName = files.find(file => /_\(Vocals\)_.*\.flac$/i.test(file))
-    if (!vocalName) throw new Error('HTDemucs produced no vocal stem')
-    const vocal = path.join(workDir, vocalName)
-
-    const stems = files
-      .filter(file => /_\((?!Vocals\))[^)]+\)_.*\.flac$/i.test(file))
-      .map(file => path.join(workDir, file))
-    if (job.generateInstrumental && !stems.length) throw new Error('HTDemucs produced no non-vocal stems')
-
-    if (job.generateInstrumental) {
-      const instrumental = path.join(workDir, 'instrumental.m4a')
-      setProgress(72)
+    let vocal: string | undefined
+    if (job.runSeparation) {
+      // Normalize input decoding through FFmpeg. audio-separator's librosa/audioread
+      // fallback cannot reliably open every video container that FFmpeg supports.
+      const separatorInput = path.join(workDir, 'input.wav')
       await execFile(ffmpegPath, [
         '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-        ...stems.flatMap(file => ['-i', file]),
-        '-filter_complex', `amix=inputs=${stems.length}:duration=longest:normalize=0,alimiter=limit=0.99`,
-        '-c:a', 'aac', '-b:a', config.outputBitrate, instrumental,
+        '-i', job.source, '-map', `0:a:${job.vocalTrack}`, '-vn', '-ac', '2', '-ar', '44100',
+        '-c:a', 'pcm_s16le', separatorInput,
+      ])
+      setProgress(2)
+      await runSeparator([
+        separatorInput,
+        '--model_filename', config.model,
+        '--model_file_dir', modelRoot,
+        '--output_dir', workDir,
+        '--output_format', 'FLAC',
+        '--demucs_segment_size', String(config.segmentSeconds),
+        '--demucs_shifts', String(config.shifts),
+        '--demucs_overlap', String(config.overlap),
       ])
 
-      const remuxed = path.join(workDir, `remuxed${path.extname(job.source)}`)
-      setProgress(76)
-      await execFile(ffmpegPath, [
-        '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-        '-i', job.source, '-i', instrumental,
-        '-map', '0', '-map', '1:a:0', '-c', 'copy',
-        '-metadata:s:a:1', 'title=Instrumental', '-disposition:a:1', '0',
-        ...(path.extname(job.source).toLowerCase() === '.mp4' ? ['-movflags', '+faststart'] : []),
-        remuxed,
-      ])
-      if (await audioTrackCount(remuxed) !== 2) throw new Error('Remuxed video does not contain exactly two audio tracks')
+      const files = await fsPromises.readdir(workDir)
+      const vocalName = files.find(file => /_\(Vocals\)_.*\.flac$/i.test(file))
+      if (!vocalName) throw new Error('HTDemucs produced no vocal stem')
+      vocal = path.join(workDir, vocalName)
 
-      const currentStats = await fsPromises.stat(job.source)
-      if (currentStats.size !== initialStats.size || currentStats.mtimeMs !== initialStats.mtimeMs) {
-        throw new Error('Source changed while vocal separation was running')
+      const stems = files
+        .filter(file => /_\((?!Vocals\))[^)]+\)_.*\.flac$/i.test(file))
+        .map(file => path.join(workDir, file))
+      if (job.generateInstrumental && !stems.length) throw new Error('HTDemucs produced no non-vocal stems')
+
+      if (job.generateInstrumental) {
+        const instrumental = path.join(workDir, 'instrumental.m4a')
+        setProgress(72)
+        await execFile(ffmpegPath, [
+          '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+          ...stems.flatMap(file => ['-i', file]),
+          '-filter_complex', `amix=inputs=${stems.length}:duration=longest:normalize=0,alimiter=limit=0.99`,
+          '-c:a', 'aac', '-b:a', config.outputBitrate, instrumental,
+        ])
+
+        const remuxed = path.join(workDir, `remuxed${path.extname(job.source)}`)
+        setProgress(76)
+        await execFile(ffmpegPath, [
+          '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+          '-i', job.source, '-i', instrumental,
+          '-map', '0', '-map', '1:a:0', '-c', 'copy',
+          '-metadata:s:a:1', 'title=Instrumental', '-disposition:a:1', '0',
+          ...(path.extname(job.source).toLowerCase() === '.mp4' ? ['-movflags', '+faststart'] : []),
+          remuxed,
+        ])
+        if (await audioTrackCount(remuxed) !== 2) throw new Error('Remuxed video does not contain exactly two audio tracks')
+
+        const currentStats = await fsPromises.stat(job.source)
+        if (currentStats.size !== initialStats.size || currentStats.mtimeMs !== initialStats.mtimeMs) {
+          throw new Error('Source changed while vocal separation was running')
+        }
+        await fsPromises.copyFile(remuxed, replacement)
+        await fsPromises.chmod(replacement, initialStats.mode)
+        job.onSourceReplacing(job.pathId)
+        await fsPromises.rename(replacement, job.source)
+        job.sourceReplaced = true
+        log.info('Added generated instrumental as A2 for mediaId=%s', job.mediaId)
       }
-      await fsPromises.copyFile(remuxed, replacement)
-      await fsPromises.chmod(replacement, initialStats.mode)
-      job.onSourceReplacing(job.pathId)
-      await fsPromises.rename(replacement, job.source)
-      job.sourceReplaced = true
-      log.info('Added generated instrumental as A2 for mediaId=%s', job.mediaId)
     }
 
     if (job.needsScript && !fs.existsSync(scriptPath(job.source))) {
@@ -374,7 +379,9 @@ async function separate (job: Job): Promise<number> {
       const scriptingInput = path.join(workDir, 'vocals-for-whisperx.wav')
       await execFile(ffmpegPath, [
         '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-        '-i', vocal, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
+        '-i', vocal || job.source,
+        ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
+        '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
       ])
       const { srt } = await runWhisperX(scriptingInput, workDir)
       await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
@@ -399,14 +406,15 @@ function tasksForJob (
   stage?: 'separating' | 'scripting',
   progress?: number,
 ): ProcessingTask[] {
-  const separationDone = stage === 'scripting'
+  const separationDone = job.runSeparation && stage === 'scripting'
   const instrumentalActive = stage === 'separating' && (progress || 0) >= 70
-  const tasks: ProcessingTask[] = [{
+  const tasks: ProcessingTask[] = []
+  if (job.runSeparation) tasks.push({
     type: 'separation',
     label: 'Separate vocals',
     status: separationDone ? 'completed' : stage === 'separating' ? 'processing' : 'queued',
     progress: separationDone ? 100 : stage === 'separating' ? Math.min(100, Math.round((progress || 0) / 0.7)) : 0,
-  }]
+  })
   if (job.generateInstrumental) tasks.push({
     type: 'instrumental',
     label: 'Add instrumental track',
