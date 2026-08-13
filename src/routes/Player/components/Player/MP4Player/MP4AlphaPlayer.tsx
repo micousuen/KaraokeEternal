@@ -39,6 +39,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   usingSourceVideo = false
   usingSourceAudio = false
   sourceRequest = 0
+  playRequest = 0
   videoReady = false
   audioReady = false
   chroma: GLChroma
@@ -119,6 +120,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.audio.pause()
     this.video.pause()
     this.stopChroma()
+    this.playRequest++
 
     this.chroma.unload()
     this.video.removeAttribute('src')
@@ -180,6 +182,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   updateSources = () => {
     this.stopChroma()
+    this.playRequest++
     this.videoReady = false
     this.audioReady = false
     this.video.pause()
@@ -216,8 +219,10 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   updateAudioSource = (position = 0, preferSource = true) => {
+    this.stopChroma()
     this.video.pause()
     this.audio.pause()
+    this.playRequest++
     this.audioReady = false
     this.pendingPosition = position
     this.usingSourceAudio = preferSource && !!this.sourceInfo
@@ -230,9 +235,13 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     if (this.props.isPlaying) {
       if (!this.videoReady || !this.audioReady) return
       this.video.currentTime = this.audio.currentTime
+      const request = ++this.playRequest
       Promise.all([this.video.play(), this.audio.play()])
-        .catch(err => this.props.onError(err.message))
+        .catch((err) => {
+          if (request === this.playRequest && !isPlayInterruption(err)) this.props.onError(err.message)
+        })
     } else {
+      this.playRequest++
       this.audio.pause()
       this.video.pause()
       this.stopChroma()
@@ -263,6 +272,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     if (this.usingSourceVideo) {
       const position = this.audio.currentTime || this.video.currentTime || 0
       this.usingSourceVideo = false
+      this.playRequest++
       this.videoReady = false
       this.video.pause()
       this.audio.pause()
@@ -278,6 +288,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   handleAudioError = () => {
     if (this.usingSourceAudio) {
       this.usingSourceAudio = false
+      this.playRequest++
       this.audioReady = false
       this.updateAudioSource(this.audio.currentTime || 0, false)
       return
@@ -320,6 +331,13 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.video.currentTime = position
     this.audio.currentTime = position
   }
+}
+
+function isPlayInterruption (err: unknown): boolean {
+  return err instanceof Error && (
+    err.name === 'AbortError'
+    || /play\(\) request was interrupted|play request was interrupted/i.test(err.message)
+  )
 }
 
 export default MP4AlphaPlayer

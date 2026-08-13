@@ -34,6 +34,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   usingSourceVideo = false
   usingSourceAudio = false
   sourceRequest = 0
+  playRequest = 0
   videoReady = false
   audioReady = false
 
@@ -108,6 +109,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (!this.video.current || !this.audio.current) return
 
     this.pendingPosition = 0
+    this.playRequest++
     this.videoReady = false
     this.audioReady = false
     this.video.current.pause()
@@ -155,6 +157,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   updateWebOsSource = (position = 0) => {
     if (!this.video.current) return
     this.video.current.pause()
+    this.playRequest++
     this.videoReady = false
     this.pendingPosition = position
     this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoCombined&audioTrack=${this.props.audioTrack}${mediaVersion}`
@@ -166,6 +169,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
 
     this.video.current?.pause()
     this.audio.current.pause()
+    this.playRequest++
     this.audioReady = false
     this.pendingPosition = position
     this.usingSourceAudio = preferSource && !!this.sourceInfo
@@ -180,8 +184,12 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (isWebOs) {
       if (this.props.isPlaying) {
         if (!this.videoReady) return
-        this.video.current.play().catch(err => this.props.onError(err.message))
+        const request = ++this.playRequest
+        this.video.current.play().catch((err) => {
+          if (request === this.playRequest && !isPlayInterruption(err)) this.props.onError(err.message)
+        })
       } else {
+        this.playRequest++
         this.video.current.pause()
       }
       return
@@ -190,9 +198,13 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (this.props.isPlaying) {
       if (!this.videoReady || !this.audioReady) return
       this.video.current.currentTime = this.audio.current.currentTime
+      const request = ++this.playRequest
       Promise.all([this.video.current.play(), this.audio.current.play()])
-        .catch(err => this.props.onError(err.message))
+        .catch((err) => {
+          if (request === this.playRequest && !isPlayInterruption(err)) this.props.onError(err.message)
+        })
     } else {
+      this.playRequest++
       this.video.current.pause()
       this.audio.current.pause()
     }
@@ -237,6 +249,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (this.usingSourceVideo && this.video.current) {
       const position = this.audio.current?.currentTime || this.video.current.currentTime || 0
       this.usingSourceVideo = false
+      this.playRequest++
       this.videoReady = false
       this.video.current.pause()
       this.audio.current?.pause()
@@ -252,6 +265,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   handleAudioError = () => {
     if (this.usingSourceAudio) {
       this.usingSourceAudio = false
+      this.playRequest++
       this.audioReady = false
       this.updateAudioSource(this.audio.current?.currentTime || 0, false)
       return
@@ -271,6 +285,13 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     }
     this.props.onStatus({ position })
   }
+}
+
+function isPlayInterruption (err: unknown): boolean {
+  return err instanceof Error && (
+    err.name === 'AbortError'
+    || /play\(\) request was interrupted|play request was interrupted/i.test(err.message)
+  )
 }
 
 export default MP4Player
