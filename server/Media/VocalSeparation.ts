@@ -24,6 +24,7 @@ interface SeparationConfig {
   overlap: number
   shifts: number
   outputBitrate: string
+  instrumentalVocalMix: number
   scripting: {
     enabled: boolean
     model: string
@@ -336,12 +337,15 @@ async function separate (job: Job): Promise<number> {
       if (job.generateInstrumental && !stems.length) throw new Error('HTDemucs produced no non-vocal stems')
 
       if (job.generateInstrumental) {
+        if (!vocal) throw new Error('HTDemucs produced no vocal stem')
         const instrumental = path.join(workDir, 'instrumental.m4a')
+        const mixInputs = [...stems, vocal]
+        const mixWeights = [...stems.map(() => '1'), String(config.instrumentalVocalMix)].join(' ')
         setProgress(72)
         await execFile(ffmpegPath, [
           '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-          ...stems.flatMap(file => ['-i', file]),
-          '-filter_complex', `amix=inputs=${stems.length}:duration=longest:normalize=0,alimiter=limit=0.99`,
+          ...mixInputs.flatMap(file => ['-i', file]),
+          '-filter_complex', `amix=inputs=${mixInputs.length}:weights='${mixWeights}':duration=longest:normalize=0,alimiter=limit=0.99`,
           '-c:a', 'aac', '-b:a', config.outputBitrate, instrumental,
         ])
 
@@ -583,7 +587,8 @@ function loadConfig (): SeparationConfig {
   const value = parse(fs.readFileSync(configPath, 'utf8')) as SeparationConfig
   if (typeof value.enabled !== 'boolean' || typeof value.model !== 'string' || !value.model
     || !Number.isFinite(value.segmentSeconds) || !Number.isFinite(value.overlap)
-    || !Number.isInteger(value.shifts) || typeof value.outputBitrate !== 'string') {
+    || !Number.isInteger(value.shifts) || typeof value.outputBitrate !== 'string'
+    || !Number.isFinite(value.instrumentalVocalMix) || value.instrumentalVocalMix < 0 || value.instrumentalVocalMix > 1) {
     throw new Error(`${configPath}: invalid vocal separation configuration`)
   }
   if (!value.scripting || typeof value.scripting.enabled !== 'boolean'

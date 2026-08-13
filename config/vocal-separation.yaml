@@ -17,6 +17,10 @@ overlap: 0.25
 shifts: 0
 outputBitrate: 192k
 
+# Keep a light vocal presence in generated instrumental tracks. 0 is a fully
+# stripped backing track; 0.1 blends the separated vocal stem at 10% level.
+instrumentalVocalMix: 0.1
+
 # Generate an SRT sidecar beside the original media. WhisperX is deliberately
 # CPU-only so no CUDA runtime or GPU is required.
 scripting:
