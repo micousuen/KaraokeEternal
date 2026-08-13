@@ -182,7 +182,10 @@ def mount(request):
                 "condition_on_previous_text": False,
             },
             vad_method="silero",
-            vad_options={"vad_onset": settings["vadOnset"], "chunk_size": 30},
+            vad_options={
+                "vad_onset": settings["vadOnset"],
+                "chunk_size": settings["vadChunkSeconds"],
+            },
             download_root=model_root,
         )
     emit({"id": request["id"], "event": "mounted"})
@@ -205,6 +208,7 @@ def transcribe(request):
     result = model.transcribe(
         audio,
         batch_size=1,
+        chunk_size=request["settings"]["vadChunkSeconds"],
         print_progress=False,
         progress_callback=transcription_progress,
     )

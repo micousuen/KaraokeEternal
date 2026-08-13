@@ -33,6 +33,10 @@ scripting:
   # many false lyric lines from the instrumental.
   vadOnset: 0.15
 
+  # Shorter chunks reduce Whisper skipping repeated lyric phrases inside long,
+  # continuous vocal sections. Both Silero and WhisperX use this duration.
+  vadChunkSeconds: 15
+
   # More decoding candidates improve difficult lyrics at the cost of CPU time.
   beamSize: 8
 

@@ -30,6 +30,7 @@ interface SeparationConfig {
     model: string
     language?: string
     vadOnset?: number
+    vadChunkSeconds?: number
     beamSize?: number
     maxLineWidth?: number
     maxLineCount?: number
@@ -462,6 +463,7 @@ function whisperXSettings (): WhisperXSettings {
     model: config.scripting.model,
     language: config.scripting.language,
     vadOnset: config.scripting.vadOnset ?? 0.35,
+    vadChunkSeconds: config.scripting.vadChunkSeconds ?? 15,
     beamSize: config.scripting.beamSize ?? 8,
     maxLineWidth: config.scripting.maxLineWidth ?? 36,
     maxLineCount: config.scripting.maxLineCount ?? 2,
@@ -600,6 +602,8 @@ function loadConfig (): SeparationConfig {
   }
   const invalidVadOnset = value.scripting.vadOnset !== undefined
     && (!Number.isFinite(value.scripting.vadOnset) || value.scripting.vadOnset <= 0 || value.scripting.vadOnset >= 1)
+  const invalidVadChunkSeconds = value.scripting.vadChunkSeconds !== undefined
+    && (!Number.isFinite(value.scripting.vadChunkSeconds) || value.scripting.vadChunkSeconds < 5 || value.scripting.vadChunkSeconds > 30)
   const invalidBeamSize = value.scripting.beamSize !== undefined
     && (!Number.isInteger(value.scripting.beamSize) || value.scripting.beamSize < 1)
   const invalidMaxLineWidth = value.scripting.maxLineWidth !== undefined
@@ -610,7 +614,7 @@ function loadConfig (): SeparationConfig {
     && (!Number.isInteger(value.scripting.minLineWidth) || value.scripting.minLineWidth < 1)
   const invalidInitialPrompt = value.scripting.initialPrompt !== undefined
     && typeof value.scripting.initialPrompt !== 'string'
-  if (invalidVadOnset || invalidBeamSize || invalidMaxLineWidth || invalidMaxLineCount || invalidMinLineWidth || invalidInitialPrompt) {
+  if (invalidVadOnset || invalidVadChunkSeconds || invalidBeamSize || invalidMaxLineWidth || invalidMaxLineCount || invalidMinLineWidth || invalidInitialPrompt) {
     throw new Error(`${configPath}: invalid scripting tuning configuration`)
   }
   return value
