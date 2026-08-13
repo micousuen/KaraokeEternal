@@ -28,6 +28,9 @@ let config = {
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.json'],
+    extensionAlias: {
+      '.js': ['.ts', '.tsx', '.js'],
+    },
     modules: [
       path.join(baseDir, 'src'),
       'node_modules',

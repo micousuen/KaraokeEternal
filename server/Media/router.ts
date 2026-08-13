@@ -6,13 +6,12 @@ import KoaRouter from '@koa/router'
 import Library from '../Library/Library.js'
 import Media from './Media.js'
 import Prefs from '../Prefs/Prefs.js'
-import Queue from '../Queue/Queue.js'
-import Rooms from '../Rooms/Rooms.js'
 import fileTypes from './fileTypes.js'
-import { getSourceMediaInfo, prefetchBrowserMedia } from './Transcoder.js'
+import { getSourceMediaInfo, prefetchBrowserMedia, type BrowserMediaPrefetch } from './Transcoder.js'
 import { scheduleAudioTrackAnalysis } from './AudioTrackAnalysis.js'
 import { resolveMediaRequest } from './MediaRequestResolver.js'
-import { LIBRARY_PUSH_SONG, QUEUE_PUSH } from '../../shared/actionTypes.js'
+import { LIBRARY_PUSH_SONG } from '../../shared/actionTypes.js'
+import { publishAllQueues } from '../Queue/QueuePublisher.js'
 const log = getLogger('Media')
 const router = new KoaRouter({ prefix: '/api/media' })
 
@@ -26,7 +25,12 @@ const precacheCount = Number.isInteger(configuredPrecacheCount)
 router.post('/precache', async (ctx) => {
   requireRoomMember(ctx)
 
-  const body = ctx.request.body as { mediaIds?: unknown, videoTypes?: unknown, audioTypes?: unknown }
+  const body = ctx.request.body as {
+    mediaIds?: unknown
+    videoTypes?: unknown
+    audioTypes?: unknown
+    combinedPlayback?: unknown
+  }
   const requested = body?.mediaIds
   if (!Array.isArray(requested)) ctx.throw(422, 'mediaIds must be an array')
   const requestedIds = requested as unknown[]
@@ -36,7 +40,8 @@ router.post('/precache', async (ctx) => {
     .slice(0, precacheCount))]
   const videoTypes = supportedTypes(body.videoTypes)
   const audioTypes = supportedTypes(body.audioTypes)
-  const items: { source: string, mediaId: number, prepareVideo: boolean }[] = []
+  const combinedPlayback = body.combinedPlayback === true
+  const items: BrowserMediaPrefetch[] = []
   const { paths } = Prefs.get()
 
   for (const mediaId of mediaIds) {
@@ -49,10 +54,20 @@ router.post('/precache', async (ctx) => {
     if (!mimeType?.startsWith('video/')) continue
     const sourceInfo = await getSourceMediaInfo(file)
     const canStreamVideo = supportsType(videoTypes, mimeType, sourceInfo.videoCodec)
-    const canStreamAudio = sourceInfo.audioTracks.length > 0
-      && sourceInfo.audioTracks.every(track => supportsType(audioTypes, track.mimeType, track.codec))
-    if (!canStreamVideo || !canStreamAudio) {
-      items.push({ source: file, mediaId, prepareVideo: !canStreamVideo })
+    const unsupportedAudioTracks = sourceInfo.audioTracks
+      .map((track, index) => supportsType(audioTypes, track.mimeType, track.codec) ? -1 : index)
+      .filter(index => index >= 0)
+    if (combinedPlayback || !canStreamVideo || unsupportedAudioTracks.length) {
+      items.push({
+        source: file,
+        mediaId,
+        prepareVideo: combinedPlayback || !canStreamVideo,
+        prepareCombined: combinedPlayback,
+        audioFormat: combinedPlayback ? 'aac' : 'mp3',
+        audioTracks: combinedPlayback
+          ? sourceInfo.audioTracks.map((_, index) => index)
+          : unsupportedAudioTracks,
+      })
     }
     scheduleAudioTrackAnalysis(mediaId, file)
   }
@@ -101,12 +116,7 @@ router.all('/:mediaId/prefer', (ctx) => {
   ctx.status = 200
 
   // emit (potentially) updated queues to each room
-  for (const { room, roomId } of Rooms.getActive(ctx.io)) {
-    ctx.io.to(room).emit('action', {
-      type: QUEUE_PUSH,
-      payload: Queue.get(roomId),
-    })
-  }
+  publishAllQueues(ctx.io)
 
   // emit (potentially) new duration
   ctx.io.emit('action', {

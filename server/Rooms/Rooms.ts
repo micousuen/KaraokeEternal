@@ -1,8 +1,8 @@
 import crypto from '../lib/crypto.js'
 import sql from 'sqlate'
-import type { Server } from 'socket.io'
 import { db } from '../lib/Database.js'
 import { ValidationError } from '../lib/Errors.js'
+import { countRoomUsers } from '../User/PresenceRegistry.js'
 
 const NAME_MIN_LENGTH = 1
 const NAME_MAX_LENGTH = 50
@@ -199,58 +199,12 @@ class Rooms {
     return true
   }
 
-  static prefix (roomId: string | number = '') {
-    return `ROOM_ID_${roomId}`
-  }
-
-  /**
-   * Utility method to list active rooms on a socket.io instance
-   */
-  static getActive (io: any): { room: string, roomId: number }[] {
-    const rooms = []
-
-    for (const room of io.sockets.adapter.rooms.keys()) {
-      // ignore auto-generated per-user rooms
-      if (room.startsWith(Rooms.prefix())) {
-        const roomId = parseInt(room.substring(Rooms.prefix().length), 10)
-        rooms.push({ room, roomId })
-      }
-    }
-
-    return rooms
-  }
-
-  /**
-   * Utility method to determine if a player is in a room
-   */
-  static isPlayerPresent (io: any, roomId: number): boolean {
-    for (const sock of io.of('/').sockets.values()) {
-      if (sock.user && sock.user.roomId === roomId && sock._lastPlayerStatus) {
-        return true
-      }
-    }
-
-    return false
-  }
-
   /**
    * Count distinct authenticated users in a room. A user may have several
    * tabs or devices connected, but should only appear once in the room count.
    */
-  static countActiveUsers (io: Server, roomId: number): number {
-    const userIds = new Set<number>()
-
-    for (const socket of io.of('/').sockets.values()) {
-      const sock = socket as typeof socket & {
-        user?: { roomId?: number, userId?: number }
-      }
-
-      if (sock.user?.roomId === roomId && typeof sock.user.userId === 'number') {
-        userIds.add(sock.user.userId)
-      }
-    }
-
-    return userIds.size
+  static countActiveUsers (roomId: number): number {
+    return countRoomUsers(roomId)
   }
 
   /**

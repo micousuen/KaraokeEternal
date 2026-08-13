@@ -1,14 +1,16 @@
 import Queue from './Queue.js'
 import Rooms from '../Rooms/Rooms.js'
-import { PLAYER_CMD_PRIORITY, QUEUE_ADD, QUEUE_MOVE, QUEUE_REMOVE, QUEUE_SHUFFLE, QUEUE_PUSH } from '../../shared/actionTypes.js'
+import { PLAYER_CMD_PRIORITY, QUEUE_ADD, QUEUE_MOVE, QUEUE_REMOVE, QUEUE_SHUFFLE, QUEUE_SYNC } from '../../shared/actionTypes.js'
 import { emitToRoom } from '../lib/socketActions.js'
+import { getQueueSnapshot, publishQueue, sendQueueSnapshot } from './QueuePublisher.js'
 import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
+import { runQueueOperation } from './QueueOperationLane.js'
 
 // ------------------------------------
 // Action Handlers
 // ------------------------------------
 const ACTION_HANDLERS = {
-  [QUEUE_ADD]: async (sock, { payload }, acknowledge) => {
+  [QUEUE_ADD]: (sock, { payload }, acknowledge) => runQueueOperation(sock.user.roomId, async () => {
     const { songId } = payload
 
     try {
@@ -30,9 +32,10 @@ const ACTION_HANDLERS = {
     acknowledge({ type: QUEUE_ADD + '_SUCCESS' })
 
     // to all in room
-    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
-  },
-  [QUEUE_MOVE]: async (sock, { payload }, acknowledge) => {
+    publishQueue(sock.server, sock.user.roomId)
+  }),
+  [QUEUE_MOVE]: (sock, action, acknowledge) => runQueueOperation(sock.user.roomId, async () => {
+    const { payload } = action
     const { queueId, prevQueueId } = payload
 
     try {
@@ -43,6 +46,7 @@ const ACTION_HANDLERS = {
         error: err.message,
       })
     }
+    if (rejectConflict(sock, action, acknowledge, QUEUE_MOVE)) return
 
     Queue.move({
       prevQueueId,
@@ -54,18 +58,22 @@ const ACTION_HANDLERS = {
     acknowledge({ type: QUEUE_MOVE + '_SUCCESS' })
 
     // tell room
-    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
-  },
-  [QUEUE_SHUFFLE]: async (sock, { payload }, acknowledge) => {
+    publishQueue(sock.server, sock.user.roomId)
+  }),
+  [QUEUE_SHUFFLE]: (sock, action, acknowledge) => runQueueOperation(sock.user.roomId, async () => {
+    const { payload } = action
     await Rooms.validate(sock.user.roomId, null, { validatePassword: false })
+    if (rejectConflict(sock, action, acknowledge, QUEUE_SHUFFLE)) return
     Queue.setOrder(sock.user.roomId, payload.queueIds)
 
     acknowledge({ type: QUEUE_SHUFFLE + '_SUCCESS' })
 
     emitToRoom(sock, PLAYER_CMD_PRIORITY, { queueId: null })
-    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
-  },
-  [QUEUE_REMOVE]: (sock, { payload }, acknowledge) => {
+    publishQueue(sock.server, sock.user.roomId)
+  }),
+  [QUEUE_REMOVE]: (sock, action, acknowledge) => runQueueOperation(sock.user.roomId, () => {
+    if (rejectConflict(sock, action, acknowledge, QUEUE_REMOVE)) return
+    const { payload } = action
     const { queueId } = payload
     const ids = Array.isArray(queueId) ? queueId : [queueId]
 
@@ -84,8 +92,21 @@ const ACTION_HANDLERS = {
     acknowledge({ type: QUEUE_REMOVE + '_SUCCESS' })
 
     // tell room
-    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
-  },
+    publishQueue(sock.server, sock.user.roomId)
+  }),
+  [QUEUE_SYNC]: sock => runQueueOperation(sock.user.roomId, () => sendQueueSnapshot(sock, sock.user.roomId)),
 } satisfies SocketHandlerMap
+
+function rejectConflict (sock, action, acknowledge, actionType: string): boolean {
+  const queue = getQueueSnapshot(sock.user.roomId)
+  if (action.meta?.baseRevision === queue.revision) return false
+
+  acknowledge({
+    type: actionType + '_ERROR',
+    error: 'Someone else changed the queue first. Your change was not applied; the queue has been refreshed.',
+    payload: { code: 'QUEUE_CONFLICT', queue },
+  })
+  return true
+}
 
 export default ACTION_HANDLERS

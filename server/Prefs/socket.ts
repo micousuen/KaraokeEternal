@@ -1,9 +1,10 @@
 import getLogger from '../lib/Log.js'
-import Library from '../Library/Library.js'
 import Prefs from './Prefs.js'
-import { LIBRARY_PUSH, PREFS_PATH_SET_PRIORITY, PREFS_PUSH, PREFS_SET } from '../../shared/actionTypes.js'
+import { PREFS_PATH_SET_PRIORITY, PREFS_PUSH, PREFS_SET } from '../../shared/actionTypes.js'
 import { emitAction, requireAdmin } from '../lib/socketActions.js'
 import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
+import { ADMIN_SOCKETS } from '../lib/socketRooms.js'
+import { invalidateLibrary } from '../Library/LibraryPublisher.js'
 const log = getLogger(`server[${process.pid}]`)
 
 const ACTION_HANDLERS = {
@@ -23,29 +24,13 @@ const ACTION_HANDLERS = {
 
     pushPrefs(sock)
 
-    // invalidate cache
-    Library.cache.version = null
-
-    sock.server.emit('action', {
-      type: LIBRARY_PUSH,
-      payload: Library.get(),
-    })
+    invalidateLibrary(sock.server)
   },
 } satisfies SocketHandlerMap
 
 // helper to push prefs to admins
 const pushPrefs = (sock) => {
-  const admins: string[] = []
-
-  for (const s of sock.server.sockets.sockets.values()) {
-    if (s.user && s.user.isAdmin) {
-      admins.push(s.id)
-    }
-  }
-
-  if (admins.length) {
-    emitAction(sock.server.to(admins), PREFS_PUSH, Prefs.get())
-  }
+  emitAction(sock.server.to(ADMIN_SOCKETS), PREFS_PUSH, Prefs.get())
 }
 
 export default ACTION_HANDLERS

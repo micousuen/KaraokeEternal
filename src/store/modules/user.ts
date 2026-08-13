@@ -1,4 +1,4 @@
-import { createAction, createAsyncThunk, createReducer } from '@reduxjs/toolkit'
+import { createAction, createAsyncThunk, createReducer, type ThunkDispatch, type UnknownAction } from '@reduxjs/toolkit'
 import { persistReducer } from 'redux-persist'
 import storage from 'redux-persist/lib/storage'
 import socket from 'lib/socket'
@@ -20,13 +20,18 @@ import {
 
 const api = new HttpApi('')
 const basename = new URL(document.baseURI).pathname
+const appPath = (path: string) => basename.replace(/\/$/, '') + path
+
+interface SessionUser {
+  roomId?: number | null
+}
 
 export const receiveAccount = createAction<object>(ACCOUNT_RECEIVE)
 
 // ------------------------------------
 // Login
 // ------------------------------------
-export const login = createAsyncThunk(
+export const login = createAsyncThunk<unknown, object, { state: RootState }>(
   LOGIN,
   async (creds: object, thunkAPI) => {
     // calls api endpoint that should set an httpOnly cookie with
@@ -35,23 +40,7 @@ export const login = createAsyncThunk(
       body: creds,
     })
 
-    // signing in can cause additional reducers to be injected and
-    // trigger rehydration with stale data, so purge here first
-    Persistor.get().purge()
-
-    thunkAPI.dispatch(receiveAccount(user))
-    thunkAPI.dispatch(fetchPrefs())
-    thunkAPI.dispatch(connectSocket())
-    socket.open()
-
-    // redirect in query string?
-    const redirect = new URLSearchParams(window.location.search).get('redirect')
-
-    if (redirect) {
-      AppRouter.navigate(basename.replace(/\/$/, '') + redirect)
-    } else if (typeof user.roomId === 'number') {
-      AppRouter.navigate(basename.replace(/\/$/, '') + '/library')
-    }
+    startSession(user, thunkAPI.dispatch)
   },
 )
 
@@ -88,23 +77,7 @@ export const createAccount = createAsyncThunk<void, FormData, { state: RootState
       body: data,
     })
 
-    // signing in can cause additional reducers to be injected and
-    // trigger rehydration with stale data, so purge here first
-    Persistor.get().purge()
-
-    thunkAPI.dispatch(receiveAccount(user))
-    thunkAPI.dispatch(fetchPrefs())
-    thunkAPI.dispatch(connectSocket())
-    socket.open()
-
-    // redirect in query string?
-    const redirect = new URLSearchParams(window.location.search).get('redirect')
-
-    if (redirect) {
-      AppRouter.navigate(basename.replace(/\/$/, '') + redirect)
-    } else if (typeof user.roomId === 'number') {
-      AppRouter.navigate(basename.replace(/\/$/, '') + '/library')
-    }
+    startSession(user, thunkAPI.dispatch)
   },
 )
 
@@ -143,31 +116,29 @@ export const fetchAccount = createAsyncThunk(
 // ------------------------------------
 // Admin room switching
 // ------------------------------------
-export const joinRoomAsAdmin = createAsyncThunk(
+export const joinRoomAsAdmin = createAsyncThunk<
+  unknown,
+  number | { roomId: number, destination: 'library' | 'player' },
+  { state: RootState }
+>(
   'user/JOIN_ROOM_AS_ADMIN',
-  async (input: number | { roomId: number, destination: 'library' | 'player' }, thunkAPI) => {
+  async (input, thunkAPI) => {
     const roomId = typeof input === 'number' ? input : input.roomId
     const destination = typeof input === 'number' ? 'library' : input.destination
     const user = await api.post(`rooms/${roomId}/join`)
 
-    socket.close()
-    thunkAPI.dispatch(receiveAccount(user))
-    await thunkAPI.dispatch(connectSocket())
-    socket.open()
-    AppRouter.navigate(basename.replace(/\/$/, '') + `/${destination}`)
+    await replaceSession(user, thunkAPI.dispatch)
+    AppRouter.navigate(appPath(`/${destination}`))
   },
 )
 
-export const leaveRoomAsAdmin = createAsyncThunk(
+export const leaveRoomAsAdmin = createAsyncThunk<unknown, void, { state: RootState }>(
   'user/LEAVE_ROOM_AS_ADMIN',
   async (_, thunkAPI) => {
     const user = await api.post('rooms/leave')
 
-    socket.close()
-    thunkAPI.dispatch(receiveAccount(user))
-    await thunkAPI.dispatch(connectSocket())
-    socket.open()
-    AppRouter.navigate(basename.replace(/\/$/, '') + '/account')
+    await replaceSession(user, thunkAPI.dispatch)
+    AppRouter.navigate(appPath('/account'))
   },
 )
 
@@ -188,6 +159,28 @@ export const connectSocket = createAsyncThunk<void, void, { state: RootState }>(
     socket.io.opts.query = versions
   },
 )
+
+type SessionDispatch = ThunkDispatch<RootState, unknown, UnknownAction>
+
+function startSession (user: SessionUser, dispatch: SessionDispatch): void {
+  // New lazy reducers must not rehydrate data from the previous account.
+  void Persistor.get().purge()
+  dispatch(receiveAccount(user))
+  dispatch(fetchPrefs())
+  dispatch(connectSocket())
+  socket.open()
+
+  const redirect = new URLSearchParams(window.location.search).get('redirect')
+  if (redirect) AppRouter.navigate(appPath(redirect))
+  else if (typeof user.roomId === 'number') AppRouter.navigate(appPath('/library'))
+}
+
+async function replaceSession (user: SessionUser, dispatch: SessionDispatch): Promise<void> {
+  socket.close()
+  dispatch(receiveAccount(user))
+  await dispatch(connectSocket())
+  socket.open()
+}
 
 // ------------------------------------
 // Reducer

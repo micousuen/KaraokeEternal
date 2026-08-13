@@ -1,6 +1,6 @@
 import { createAction, createReducer } from '@reduxjs/toolkit'
 import { AppThunk } from 'store/store'
-import { CANCEL } from 'redux-throttle'
+import { THROTTLE_CANCEL } from 'store/throttleMiddleware'
 import getWebGLSupport from 'lib/getWebGLSupport'
 import {
   PLAYER_CMD_NEXT,
@@ -15,6 +15,7 @@ import {
   PLAYER_EMIT_LEAVE,
   PLAYER_EMIT_CLAIM,
   PLAYER_EMIT_STATUS,
+  PLAYER_EMIT_POSITION,
   PLAYER_ERROR,
   PLAYER_LOAD,
   PLAYER_PLAY,
@@ -67,6 +68,15 @@ export function playerStatus (status: Partial<PlayerState> = {}, deferEmit = fal
     // update "internal" state (player slice); status is partial
     dispatch(playerUpdate(status))
 
+    if (Object.keys(status).length === 1 && typeof status.position === 'number') {
+      dispatch({
+        type: PLAYER_EMIT_POSITION,
+        payload: { position: status.position },
+        meta: { throttle: { wait: 250, leading: false } },
+      })
+      return
+    }
+
     // emit full updated status (excluding "private" properties)
     const updated = { ...player, ...status }
     const emitStatus = Object.fromEntries(
@@ -92,7 +102,7 @@ export function playerStatus (status: Partial<PlayerState> = {}, deferEmit = fal
 // cancel any throttled/queued status emits
 export function playerStatusCancel () {
   return {
-    type: CANCEL,
+    type: THROTTLE_CANCEL,
     payload: {
       type: PLAYER_EMIT_STATUS,
     },

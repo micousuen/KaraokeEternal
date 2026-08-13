@@ -1,5 +1,4 @@
 import { createSelector } from '@reduxjs/toolkit'
-import { ensureState } from 'redux-optimistic-ui'
 import type { RootState } from 'store/store'
 import type { QueueItem } from 'shared/types'
 import getPlayerHistory from './getPlayerHistory'
@@ -28,7 +27,7 @@ const getQueueRows = createSelector(
     (state: RootState) => state.artists,
     (state: RootState) => state.songs,
     (state: RootState) => state.status,
-    (state: RootState) => ensureState(state.userStars).starredSongs,
+    (state: RootState) => state.userStars.starredSongs,
     (state: RootState) => state.starCounts,
     (state: RootState) => state.user.userId,
   ],

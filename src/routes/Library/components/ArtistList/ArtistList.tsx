@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react'
-import { ensureState } from 'redux-optimistic-ui'
 import { RootState } from 'store/store'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { scrollArtists, toggleArtistExpanded } from '../../modules/library'
 import getAlphaPickerMap from '../../selectors/getAlphaPickerMap'
 import getSongsStatus from '../../selectors/getSongsStatus'
+import getStarredSongSet from '../../selectors/getStarredSongSet'
 import PaddedList from 'components/PaddedList/PaddedList'
 import AlphaPicker from '../AlphaPicker/AlphaPicker'
 import ArtistItem from '../ArtistItem/ArtistItem'
@@ -21,6 +21,8 @@ interface CustomRowProps {
   dispatch: ReturnType<typeof useAppDispatch>
   artists: RootState['artists']
   expandedArtists: number[]
+  queuedSongs: ReadonlySet<number>
+  starredSongs: ReadonlySet<number>
 }
 
 // this is outside the ArtistList component to keep the reference as stable as possible,
@@ -32,13 +34,12 @@ const RowComponent = ({
   dispatch,
   artists,
   expandedArtists,
+  queuedSongs,
+  starredSongs,
 }: RowComponentProps<CustomRowProps>) => {
   const starredArtistCounts = useAppSelector(state => state.starCounts.artists)
-  const { starredSongs } = useAppSelector(state => ensureState(state.userStars))
-  const { upcoming, current } = useAppSelector(getSongsStatus)
 
   const artist = artists.entities[artists.result[index]]
-  if (current) upcoming.push(current)
 
   return (
     <ArtistItem
@@ -48,7 +49,7 @@ const RowComponent = ({
       name={artist.name}
       numStars={starredArtistCounts[artist.artistId] || 0}
       onArtistClick={() => dispatch(toggleArtistExpanded(artist.artistId))}
-      upcomingSongs={upcoming}
+      upcomingSongs={queuedSongs}
       starredSongs={starredSongs}
       style={style}
     />
@@ -63,6 +64,8 @@ const ArtistList = ({
   const scrollRow = useAppSelector(state => state.library.scrollRow)
   const alphaPickerMap = useAppSelector(getAlphaPickerMap)
   const artists = useAppSelector(state => state.artists)
+  const starredSongs = useAppSelector(getStarredSongSet)
+  const { queued: queuedSongs } = useAppSelector(getSongsStatus)
 
   const lastScrollRow = useRef(scrollRow)
   const list = useRef<ListImperativeAPI | null>(null)
@@ -114,7 +117,7 @@ const ArtistList = ({
     <div>
       <PaddedList
         rowComponent={RowComponent}
-        rowProps={{ dispatch, artists, expandedArtists }}
+        rowProps={{ dispatch, artists, expandedArtists, queuedSongs, starredSongs }}
         rowHeight={rowHeight}
         numRows={artists.result.length}
         onRowsRendered={handleRowsRendered}

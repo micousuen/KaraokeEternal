@@ -1,4 +1,6 @@
 import KoaRouter from '@koa/router'
+import { promisify } from 'node:util'
+import { brotliCompress, gzip } from 'node:zlib'
 import path from 'node:path'
 import Media from '../Media/Media.js'
 import Library from './Library.js'
@@ -8,6 +10,46 @@ import { getExt } from '../lib/util.js'
 import pushQueuesAndLibrary from '../lib/pushQueuesAndLibrary.js'
 import { LIBRARY_PUSH_SONG } from '../../shared/actionTypes.js'
 const router = new KoaRouter({ prefix: '/api' })
+const compressBrotli = promisify(brotliCompress)
+const compressGzip = promisify(gzip)
+let encodedLibrary: {
+  version: number
+  json: Buffer
+  br?: Promise<Buffer>
+  gzip?: Promise<Buffer>
+} | undefined
+
+router.get('/library', async (ctx) => {
+  const library = Library.get()
+  const etag = `"library-${library.version}"`
+  ctx.set('Cache-Control', 'private, no-cache')
+  ctx.set('ETag', etag)
+  ctx.set('Vary', 'Accept-Encoding')
+  if (ctx.get('If-None-Match') === etag) {
+    ctx.status = 304
+    return
+  }
+
+  if (!encodedLibrary || encodedLibrary.version !== library.version) {
+    encodedLibrary = {
+      version: library.version!,
+      json: Buffer.from(JSON.stringify(library)),
+    }
+  }
+  const acceptEncoding = ctx.acceptsEncodings('br', 'gzip', 'identity')
+  let body = encodedLibrary.json
+  if (acceptEncoding === 'br') {
+    encodedLibrary.br ||= compressBrotli(encodedLibrary.json)
+    body = await encodedLibrary.br
+    ctx.set('Content-Encoding', 'br')
+  } else if (acceptEncoding === 'gzip') {
+    encodedLibrary.gzip ||= compressGzip(encodedLibrary.json)
+    body = await encodedLibrary.gzip
+    ctx.set('Content-Encoding', 'gzip')
+  }
+  ctx.type = 'application/json'
+  ctx.body = body
+})
 
 // lists underlying media for a given song
 router.get('/song/:songId', async (ctx) => {

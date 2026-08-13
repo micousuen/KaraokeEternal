@@ -3,10 +3,11 @@ import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { fetchAccount } from 'store/modules/user'
 import About from '../../components/About/About'
 import ProfilePanel from '../../features/profile/ProfilePanel'
-import SettingsPanel from '../../features/settings/SettingsPanel'
-import RoomsPanel from '../../features/rooms/RoomsPanel'
-import UsersPanel from '../../features/users/UsersPanel'
-import ProcessingPanel from '../../features/processing/ProcessingPanel'
+
+const SettingsPanel = React.lazy(() => import('../../features/settings/SettingsPanel'))
+const RoomsPanel = React.lazy(() => import('../../features/rooms/RoomsPanel'))
+const UsersPanel = React.lazy(() => import('../../features/users/UsersPanel'))
+const ProcessingPanel = React.lazy(() => import('../../features/processing/ProcessingPanel'))
 
 const SignedInView = () => {
   const { isAdmin } = useAppSelector(state => state.user)

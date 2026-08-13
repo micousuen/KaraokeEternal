@@ -1,8 +1,8 @@
-import { Action, configureStore, ThunkAction, UnknownAction } from '@reduxjs/toolkit'
+import { configureStore, ThunkAction, UnknownAction } from '@reduxjs/toolkit'
 import rootReducer from './reducers'
 import socket from 'lib/socket'
 import createSocketMiddleware from './socketMiddleware'
-import createThrottle from 'redux-throttle'
+import createThrottleMiddleware from './throttleMiddleware'
 import {
   FLUSH,
   REHYDRATE,
@@ -19,20 +19,10 @@ window.addEventListener('resize', () => store.dispatch(windowResize({
   innerHeight: window.innerHeight,
 })))
 
-export interface OptimisticAction extends Action {
-  meta: {
-    isOptimistic?: boolean
-  }
-}
-
 // ======================================================
 // Middleware Configuration
 // ======================================================
-const throttle = createThrottle(1000, {
-  // https://lodash.com/docs#throttle
-  leading: true,
-  trailing: true,
-})
+const throttle = createThrottleMiddleware(1000)
 
 const socketMiddleware = createSocketMiddleware(socket, 'server/')
 

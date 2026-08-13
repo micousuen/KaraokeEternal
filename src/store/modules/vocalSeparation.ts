@@ -18,10 +18,9 @@ export interface VocalSeparationState {
   currentProgress: number | null
   currentStage: 'separating' | 'scripting' | null
   currentTasks: ProcessingTask[]
-  completedSongs: number
   averageSpeed: number | null
   lastError: string | null
-  recent: Array<{
+  completedThisRun: Array<{
     mediaId: number
     song: string
     status: 'processing' | 'succeeded' | 'failed'
@@ -33,7 +32,6 @@ export interface VocalSeparationState {
     error: string | null
   }>
   queued: Array<{ mediaId: number, song: string, tasks: ProcessingTask[] }>
-  completedThisRun: VocalSeparationState['recent']
 }
 
 interface ProcessingTask {
@@ -60,10 +58,8 @@ const initialState: VocalSeparationState = {
   currentProgress: null,
   currentStage: null,
   currentTasks: [],
-  completedSongs: 0,
   averageSpeed: null,
   lastError: null,
-  recent: [],
   queued: [],
   completedThisRun: [],
 }

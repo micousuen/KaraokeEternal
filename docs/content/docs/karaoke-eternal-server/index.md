@@ -204,7 +204,7 @@ The customized source build also supports these video transcoding environment va
 | --- | --- | --- |
 | `KES_PATH_FFMPEG` | Path to the FFmpeg executable | `ffmpeg` |
 | `KES_PATH_FFPROBE` | Path to the FFprobe executable used to enumerate audio tracks | `ffprobe` |
-| `KES_PATH_TRANSCODE` | Browser-compatible video and audio bundle cache directory | System temporary directory |
+| `KES_PATH_TRANSCODE` | Browser-compatible video and audio artifact cache directory | System temporary directory |
 | `KES_PRECACHE_COUNT` | Number of upcoming queue entries to prepare in the background; `0` disables pre-caching (maximum `100`) | `5` |
 | `KES_FILENAME_FORMAT` | Set to `artist-title-language` to parse `Singer - Song - Language` filenames | Empty (standard parser) |
 | `KES_SCAN_WORKERS` | Parallel metadata worker threads used by the media scanner (1–32) | `4` |

@@ -13,9 +13,9 @@ interface ArtistItemProps {
   name: string
   numStars: number
   onArtistClick: () => void
-  starredSongs: number[]
+  starredSongs: ReadonlySet<number>
   style?: object
-  upcomingSongs: number[]
+  upcomingSongs: ReadonlySet<number>
 }
 
 const ArtistItem = ({
@@ -28,8 +28,8 @@ const ArtistItem = ({
   style,
   upcomingSongs,
 }: ArtistItemProps): React.ReactElement => {
-  const isChildUpcoming = artistSongIds.some(songId => upcomingSongs.includes(songId))
-  const isChildStarred = artistSongIds.some(songId => starredSongs.includes(songId))
+  const isChildUpcoming = artistSongIds.some(songId => upcomingSongs.has(songId))
+  const isChildStarred = artistSongIds.some(songId => starredSongs.has(songId))
 
   return (
     <div style={style} translate='no'>

@@ -34,6 +34,7 @@ import {
   SERVER_WORKER_ERROR,
   VOCAL_SEPARATION_STATUS,
 } from '../shared/actionTypes.js'
+import { ADMIN_SOCKETS } from './lib/socketRooms.js'
 
 const log = getLogger('server')
 const { verify: jwtVerify } = jsonWebToken
@@ -66,11 +67,10 @@ async function serverWorker ({ env, startScanner, stopScanner, suppressWatcher, 
     io = new SocketIO(server, {
       path: urlPath + 'socket.io',
       serveClient: false,
+      maxHttpBufferSize: 128 * 1024,
     })
     setVocalSeparationStatusPublisher((payload) => {
-      for (const socket of io.of('/').sockets.values()) {
-        if (socket.user?.isAdmin) socket.emit('action', { type: VOCAL_SEPARATION_STATUS, payload })
-      }
+      io.to(ADMIN_SOCKETS).emit('action', { type: VOCAL_SEPARATION_STATUS, payload })
     })
 
     // attach socket.io handlers

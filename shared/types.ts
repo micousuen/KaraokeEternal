@@ -45,9 +45,24 @@ export interface QueueItem {
 
 export interface OptimisticQueueItem {
   isOptimistic: true
-  prevQueueId: number
+  optimisticId?: number
+  prevQueueId: number | null
   queueId: number
   songId: number
+}
+
+export interface QueueSnapshot {
+  entities: Record<number, QueueItem>
+  result: number[]
+  revision: number
+}
+
+export interface QueuePatch {
+  baseRevision: number
+  changed: Record<number, QueueItem>
+  removed: number[]
+  result: number[]
+  revision: number
 }
 
 export interface IRoomPrefs {
@@ -138,6 +153,18 @@ export interface PlaybackCoreStatus {
   rgTrackGain: number | null
   rgTrackPeak: number | null
   volume: number
+}
+
+export interface PlaybackVisualizerStatus {
+  isEnabled: boolean
+  isSupported: boolean
+  presetKey: string
+  presetName: string
+  sensitivity: number
+}
+
+export interface PlaybackStatus extends PlaybackCoreStatus {
+  visualizer: PlaybackVisualizerStatus
 }
 
 export function createInitialPlaybackStatus (): PlaybackCoreStatus {

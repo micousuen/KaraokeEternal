@@ -1,4 +1,3 @@
-import { ensureState } from 'redux-optimistic-ui'
 import { createSelector } from '@reduxjs/toolkit'
 import { Searcher } from 'fast-fuzzy'
 import { RootState } from 'store/store'
@@ -7,8 +6,8 @@ const getArtists = (state: RootState) => state.artists
 const getSongs = (state: RootState) => state.songs
 const getFilterStr = (state: RootState) => state.library.filterStr.trim().toLowerCase()
 const getFilterStarred = (state: RootState) => state.library.filterStarred
-const getStarredArtists = (state: RootState) => ensureState(state.userStars).starredArtists
-const getStarredSongs = (state: RootState) => ensureState(state.userStars).starredSongs
+const getStarredArtists = (state: RootState) => state.userStars.starredArtists
+const getStarredSongs = (state: RootState) => state.userStars.starredSongs
 
 const getArtistSearcher = createSelector(
   [getArtists],

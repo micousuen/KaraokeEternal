@@ -1,10 +1,8 @@
-import { createAction, createAsyncThunk, createReducer } from '@reduxjs/toolkit'
+import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import HttpApi from 'lib/HttpApi'
 import { User } from 'shared/types'
 import {
   USERS_CREATE,
-  USERS_FILTER_ONLINE,
-  USERS_FILTER_ROOM_ID,
   USERS_REMOVE,
   USERS_REQUEST,
   USERS_UPDATE,
@@ -62,9 +60,6 @@ export const removeUser = createAsyncThunk(
   },
 )
 
-export const filterByOnline = createAction<boolean>(USERS_FILTER_ONLINE)
-export const filterByRoom = createAction<number>(USERS_FILTER_ROOM_ID)
-
 // ------------------------------------
 // Reducer
 // ------------------------------------
@@ -82,22 +77,24 @@ const initialState: UsersState = {
   filterRoomId: null,
 }
 
-const usersReducer = createReducer(initialState, (builder) => {
-  builder
-    .addCase(fetchUsers.fulfilled, (state, { payload }) => ({
-      ...state,
-      ...payload,
-    }))
-    .addCase(filterByOnline, (state, { payload }) => ({
-      ...state,
-      filterOnline: payload,
-      filterRoomId: null,
-    }))
-    .addCase(filterByRoom, (state, { payload }) => ({
-      ...state,
-      filterOnline: false,
-      filterRoomId: payload,
-    }))
+const usersSlice = createSlice({
+  name: 'users',
+  initialState,
+  reducers: {
+    filterByOnline: (state, { payload }: PayloadAction<boolean>) => {
+      state.filterOnline = payload
+      state.filterRoomId = null
+    },
+    filterByRoom: (state, { payload }: PayloadAction<number>) => {
+      state.filterOnline = false
+      state.filterRoomId = payload
+    },
+  },
+  extraReducers: builder => builder.addCase(fetchUsers.fulfilled, (state, { payload }) => ({
+    ...state,
+    ...payload,
+  })),
 })
 
-export default usersReducer
+export const { filterByOnline, filterByRoom } = usersSlice.actions
+export default usersSlice.reducer

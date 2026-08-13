@@ -1,6 +1,6 @@
-import Rooms from '../Rooms/Rooms.js'
 import { _ERROR } from '../../shared/actionTypes.js'
 import type { SocketAcknowledge } from '../../shared/socketProtocol.js'
+import { roomSockets } from './socketRooms.js'
 
 export function requireAdmin (socket, acknowledge?: SocketAcknowledge, requestType?: string): boolean {
   if (socket.user?.isAdmin) return true
@@ -16,7 +16,7 @@ export function emitAction (target, type: string, payload?: unknown): void {
 }
 
 export function emitToRoom (socket, type: string, payload?: unknown): void {
-  emitAction(socket.server.to(Rooms.prefix(socket.user.roomId)), type, payload)
+  emitAction(socket.server.to(roomSockets(socket.user.roomId)), type, payload)
 }
 
 export function relayToRoom (type: string) {

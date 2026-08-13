@@ -46,10 +46,8 @@ export interface VocalSeparationStatus {
   currentProgress: number | null
   currentStage: 'separating' | 'scripting' | null
   currentTasks: ProcessingTask[]
-  completedSongs: number
   averageSpeed: number | null
   lastError: string | null
-  recent: SeparationHistoryItem[]
   queued: Array<{ mediaId: number, song: string, tasks: ProcessingTask[] }>
   completedThisRun: SeparationHistoryItem[]
 }
@@ -75,12 +73,13 @@ let currentStage: 'separating' | 'scripting' | undefined
 let separationFinished = false
 let currentInstrumentalProgress: number | undefined
 let currentScriptingProgress: number | undefined
-let completedSongs = 0
 const completedThisRun = new Set<number>()
 let processedAudioSeconds = 0
 let processingSeconds = 0
 let lastError: string | null = null
 let publishStatus: ((status: VocalSeparationStatus) => void) | undefined
+let cachedHistory: SeparationHistoryItem[] | undefined
+let pendingStatusPublish: ReturnType<typeof setTimeout> | undefined
 
 // Remove job data abandoned by an unclean shutdown. Model files live elsewhere.
 const startupCleanup = fsPromises.rm(tempRoot, { recursive: true, force: true }).catch((err) => {
@@ -130,7 +129,7 @@ export function resumeVocalSeparation (): void {
 }
 
 export function getVocalSeparationStatus (): VocalSeparationStatus {
-  const historyItems = history.getAll()
+  const historyItems = cachedHistory ?? refreshHistory()
   return {
     enabled: config.enabled,
     isPaused: paused,
@@ -142,16 +141,14 @@ export function getVocalSeparationStatus (): VocalSeparationStatus {
     currentProgress: currentProgress ?? null,
     currentStage: currentStage || null,
     currentTasks: currentJob ? tasksForJob(currentJob, true) : [],
-    completedSongs,
     averageSpeed: processingSeconds > 0 ? processedAudioSeconds / processingSeconds : null,
     lastError,
-    recent: historyItems,
     queued: jobs.list().map(job => ({
       mediaId: job.mediaId,
       song: path.basename(job.source, path.extname(job.source)),
       tasks: tasksForJob(job),
     })),
-    completedThisRun: historyItems.filter(item => completedThisRun.has(item.mediaId)),
+    completedThisRun: historyItems,
   }
 }
 
@@ -178,21 +175,24 @@ async function drain (): Promise<void> {
       currentScriptingProgress = !job.runSeparation && job.needsScript ? 0 : undefined
       lastError = null
       history.markStarted(job, config.model)
+      refreshHistory()
       emitStatus()
       try {
         const audioSeconds = await separate(job)
         const elapsedSeconds = (Date.now() - currentStartedAt) / 1000
-        completedSongs++
         completedThisRun.add(job.mediaId)
         processedAudioSeconds += audioSeconds
         processingSeconds += elapsedSeconds
         history.markFinished(job, 'succeeded', audioSeconds, elapsedSeconds, null)
+        refreshHistory()
         job.onComplete?.()
         job.sourceReplaced = false
       } catch (err) {
         lastError = errorMessage(err, processingStage(err) || currentStage)
         const elapsedSeconds = currentStartedAt ? (Date.now() - currentStartedAt) / 1000 : 0
         history.markFinished(job, 'failed', null, elapsedSeconds, lastError)
+        completedThisRun.add(job.mediaId)
+        refreshHistory()
         // The instrumental replacement may have succeeded before scripting
         // failed. Re-analyze that changed source even though the overall job failed.
         if (job.sourceReplaced) job.onComplete?.()
@@ -485,7 +485,7 @@ async function execFile (
 function setProgress (progress: number): void {
   if (currentProgress !== undefined && progress <= currentProgress) return
   currentProgress = progress
-  emitStatus()
+  emitStatus(false)
 }
 
 function setInstrumentalProgress (progress: number): void {
@@ -495,7 +495,7 @@ function setInstrumentalProgress (progress: number): void {
     currentStage = 'separating'
     currentProgress = progress
   }
-  emitStatus()
+  emitStatus(false)
 }
 
 function setScriptingProgress (progress: number): void {
@@ -503,7 +503,7 @@ function setScriptingProgress (progress: number): void {
   currentScriptingProgress = progress
   currentStage = 'scripting'
   currentProgress = progress
-  emitStatus()
+  emitStatus(false)
 }
 
 function markProcessingStage (err: unknown, stage: 'separating' | 'scripting'): Error {
@@ -518,8 +518,27 @@ function processingStage (err: unknown): 'separating' | 'scripting' | undefined 
     : undefined
 }
 
-function emitStatus (): void {
-  publishStatus?.(getVocalSeparationStatus())
+function refreshHistory (): SeparationHistoryItem[] {
+  cachedHistory = completedThisRun.size === 0
+    ? []
+    : history.getAll().filter(item => completedThisRun.has(item.mediaId))
+  return cachedHistory
+}
+
+function emitStatus (immediate = true): void {
+  if (!publishStatus) return
+  if (immediate) {
+    if (pendingStatusPublish) clearTimeout(pendingStatusPublish)
+    pendingStatusPublish = undefined
+    publishStatus(getVocalSeparationStatus())
+    return
+  }
+  if (pendingStatusPublish) return
+  pendingStatusPublish = setTimeout(() => {
+    pendingStatusPublish = undefined
+    publishStatus?.(getVocalSeparationStatus())
+  }, 100)
+  pendingStatusPublish.unref?.()
 }
 
 async function audioTrackCount (filename: string): Promise<number> {

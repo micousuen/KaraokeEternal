@@ -1,7 +1,7 @@
 import KoaRouter from '@koa/router'
-import Queue from '../Queue/Queue.js'
-import Rooms from '../Rooms/Rooms.js'
-import { QUEUE_PUSH, YOUTUBE_JOBS_PUSH } from '../../shared/actionTypes.js'
+import { YOUTUBE_JOBS_PUSH } from '../../shared/actionTypes.js'
+import { publishQueue } from '../Queue/QueuePublisher.js'
+import { roomSockets } from '../lib/socketRooms.js'
 import { createYouTubeJob, getRoomYouTubeJobs, getYouTubeJob } from './YouTube.js'
 
 interface RequestWithBody {
@@ -21,7 +21,7 @@ router.post('/', (ctx) => {
 
   try {
     const roomId = ctx.user.roomId
-    const room = Rooms.prefix(roomId)
+    const room = roomSockets(roomId)
     const pushJobs = () => ctx.io.to(room).emit('action', {
       type: YOUTUBE_JOBS_PUSH,
       payload: getRoomYouTubeJobs(roomId),
@@ -37,10 +37,7 @@ router.post('/', (ctx) => {
       providerUrl: ctx.env.KES_YOUTUBE_POT_PROVIDER_URL,
       startScanner: ctx.startScanner,
       pushJobs,
-      pushQueue: () => ctx.io.to(room).emit('action', {
-        type: QUEUE_PUSH,
-        payload: Queue.get(roomId),
-      }),
+      pushQueue: () => publishQueue(ctx.io, roomId),
     })
     ctx.status = 202
     ctx.body = job

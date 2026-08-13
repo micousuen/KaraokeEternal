@@ -1,12 +1,11 @@
 import { createSelector } from '@reduxjs/toolkit'
-import { ensureState } from 'redux-optimistic-ui'
 import type { RootState } from 'store/store'
 import type { QueueItem } from 'shared/types'
 
 const getActiveQueue = createSelector(
   [
-    (state: RootState) => ensureState(state.queue).result,
-    (state: RootState) => ensureState(state.queue).entities,
+    (state: RootState) => state.queue.result,
+    (state: RootState) => state.queue.entities,
     (state: RootState) => state.status.history,
   ],
   (result, entities, history) => {

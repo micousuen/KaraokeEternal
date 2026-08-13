@@ -1,6 +1,7 @@
 import Library from './Library.js'
-import { STAR_SONG, SONG_STARRED, UNSTAR_SONG, SONG_UNSTARRED, _SUCCESS } from '../../shared/actionTypes.js'
+import { STAR_SONG, UNSTAR_SONG, STAR_COUNT_CHANGED, USER_STAR_CHANGED, _SUCCESS } from '../../shared/actionTypes.js'
 import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
+import { userSockets } from '../lib/socketRooms.js'
 
 const ACTION_HANDLERS = {
   [STAR_SONG]: (sock, { payload }, acknowledge) => {
@@ -11,12 +12,14 @@ const ACTION_HANDLERS = {
 
     // tell all clients (some users may be in multiple rooms)
     if (changes) {
+      const version = Library.getStarCounts().version
       sock.server.emit('action', {
-        type: SONG_STARRED,
-        payload: {
-          userId: sock.user.userId,
-          songId: payload.songId,
-        },
+        type: STAR_COUNT_CHANGED,
+        payload: { songId: payload.songId, delta: 1, version },
+      })
+      sock.server.to(userSockets(sock.user.userId)).emit('action', {
+        type: USER_STAR_CHANGED,
+        payload: { songId: payload.songId, starred: true },
       })
     }
   },
@@ -27,13 +30,15 @@ const ACTION_HANDLERS = {
     acknowledge({ type: UNSTAR_SONG + _SUCCESS })
 
     if (changes) {
+      const version = Library.getStarCounts().version
       // tell all clients (some users may be in multiple rooms)
       sock.server.emit('action', {
-        type: SONG_UNSTARRED,
-        payload: {
-          userId: sock.user.userId,
-          songId: payload.songId,
-        },
+        type: STAR_COUNT_CHANGED,
+        payload: { songId: payload.songId, delta: -1, version },
+      })
+      sock.server.to(userSockets(sock.user.userId)).emit('action', {
+        type: USER_STAR_CHANGED,
+        payload: { songId: payload.songId, starred: false },
       })
     }
   },

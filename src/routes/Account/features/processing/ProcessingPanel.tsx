@@ -45,7 +45,7 @@ const ProcessingPanel = () => {
           </button>
           <button className={styles.summaryButton} type='button' onClick={() => setOpenList('completed')}>
             <span>Completed this run</span>
-            <strong>{status.completedSongs}</strong>
+            <strong>{status.completedThisRun.length}</strong>
           </button>
           <div>
             <span>Average speed</span>
@@ -133,10 +133,10 @@ const ProcessingPanel = () => {
           </Modal>
         )}
         {openList === 'completed' && (
-          <Modal title={`Processing results (${status.recent.length})`} onClose={() => setOpenList(null)} scrollable className={styles.listModal}>
+          <Modal title={`Completed this run (${status.completedThisRun.length})`} onClose={() => setOpenList(null)} scrollable className={styles.listModal}>
             <div className={styles.songList}>
-              {status.recent.length === 0 && <p>No processing results recorded yet.</p>}
-              {status.recent.map(item => (
+              {status.completedThisRun.length === 0 && <p>No songs completed during this server run.</p>}
+              {status.completedThisRun.map(item => (
                 <div key={item.mediaId} className={styles.resultItem}>
                   <div className={styles.resultSummary} title={item.song}>
                     <span>{item.song}</span>

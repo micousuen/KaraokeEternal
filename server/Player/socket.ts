@@ -1,5 +1,3 @@
-import Rooms from '../Rooms/Rooms.js'
-
 import {
   PLAYER_CMD_NEXT,
   PLAYER_CMD_OPTIONS,
@@ -19,37 +17,37 @@ import {
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
   PLAYER_EMIT_STATUS,
+  PLAYER_EMIT_POSITION,
   PLAYER_EMIT_CLAIM,
   PLAYER_EMIT_LEAVE,
   PLAYER_STATUS,
+  PLAYER_POSITION,
   PLAYER_LEAVE,
-  QUEUE_PUSH,
 } from '../../shared/actionTypes.js'
 import Queue from '../Queue/Queue.js'
-import { emitToRoom, relayToRoom } from '../lib/socketActions.js'
+import { emitToRoom, relayToRoom, requireAdmin } from '../lib/socketActions.js'
 import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
+import type { PlaybackStatus } from '../../shared/types.js'
+import { publishQueue } from '../Queue/QueuePublisher.js'
+import { roomSockets } from '../lib/socketRooms.js'
+import {
+  claimPlayer,
+  getPlayerStatus,
+  releasePlayer,
+  updatePlayerPosition,
+  updatePlayerStatus,
+} from './PlayerRegistry.js'
 
 // ------------------------------------
 // Action Handlers
 // ------------------------------------
 const ACTION_HANDLERS = {
   [PLAYER_EMIT_CLAIM]: (sock) => {
+    requireAdmin(sock)
     // Taking over is explicit and only happens when a player screen opens.
     // Routine playback/status updates must never transfer ownership.
-    sock._isSuperseded = false
-
-    for (const existing of sock.server.of('/').sockets.values()) {
-      if (
-        existing.id !== sock.id
-        && existing.user?.roomId === sock.user.roomId
-        && existing._lastPlayerStatus
-        && !existing._isSuperseded
-      ) {
-        existing._isSuperseded = true
-        existing._lastPlayerStatus = null
-        existing.emit('action', { type: PLAYER_CMD_TAKEOVER })
-      }
-    }
+    const previousId = claimPlayer(sock.user.roomId, sock.id)
+    if (previousId) sock.server.sockets.sockets.get(previousId)?.emit('action', { type: PLAYER_CMD_TAKEOVER })
   },
   [PLAYER_REQ_OPTIONS]: relayToRoom(PLAYER_CMD_OPTIONS),
   [PLAYER_REQ_NEXT]: relayToRoom(PLAYER_CMD_NEXT),
@@ -71,39 +69,68 @@ const ACTION_HANDLERS = {
   [PLAYER_REQ_SEEK]: relayToRoom(PLAYER_CMD_SEEK),
   [PLAYER_REQ_VOLUME]: relayToRoom(PLAYER_CMD_VOLUME),
   [PLAYER_EMIT_STATUS]: (sock, { payload }) => {
-    if (sock._isSuperseded) return
+    requireAdmin(sock)
+    const previous = getPlayerStatus(sock.user.roomId)
+    const status = pickPlayerStatus(payload)
+    if (!updatePlayerStatus(sock.user.roomId, sock.id, status)) return
 
-    const history = Array.isArray(payload.history)
-      ? payload.history.filter(queueId => Number.isInteger(queueId))
-      : []
+    const history = status.history
+    const previousHistory = new Set(previous?.history || [])
+    const newlyPlayed = history.filter(queueId => !previousHistory.has(queueId))
 
-    if (Queue.markPlayed(sock.user.roomId, history)) {
-      sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-        type: QUEUE_PUSH,
-        payload: Queue.get(sock.user.roomId),
-      })
-    }
+    if (Queue.markPlayed(sock.user.roomId, newlyPlayed)) publishQueue(sock.server, sock.user.roomId)
 
-    // so we can tell the room when players leave and
-    // relay last known player status on client join
-    sock._lastPlayerStatus = payload
-
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
+    sock.to(roomSockets(sock.user.roomId)).emit('action', {
       type: PLAYER_STATUS,
+      payload: status,
+    })
+  },
+  [PLAYER_EMIT_POSITION]: (sock, { payload }) => {
+    requireAdmin(sock)
+    if (!updatePlayerPosition(sock.user.roomId, sock.id, payload.position)) return
+    sock.to(roomSockets(sock.user.roomId)).volatile.emit('action', {
+      type: PLAYER_POSITION,
       payload,
     })
   },
   [PLAYER_EMIT_LEAVE]: (sock) => {
-    sock._lastPlayerStatus = null
-
-    // any players left in room?
-    if (!Rooms.isPlayerPresent(sock.server, sock.user.roomId)) {
-      sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
+    if (releasePlayer(sock.user.roomId, sock.id)) {
+      sock.server.to(roomSockets(sock.user.roomId)).emit('action', {
         type: PLAYER_LEAVE,
         payload: { socketId: sock.id },
       })
     }
   },
 } satisfies SocketHandlerMap
+
+function pickPlayerStatus (status: PlaybackStatus): PlaybackStatus {
+  return {
+    audioTrack: status.audioTrack,
+    audioTrackCount: status.audioTrackCount,
+    duration: status.duration,
+    errorMessage: status.errorMessage,
+    history: status.history,
+    isAtQueueEnd: status.isAtQueueEnd,
+    isErrored: status.isErrored,
+    isPlaying: status.isPlaying,
+    isVideoKeyingEnabled: status.isVideoKeyingEnabled,
+    isWebGLSupported: status.isWebGLSupported,
+    videoAlpha: status.videoAlpha,
+    showScript: status.showScript,
+    nextUserId: status.nextUserId,
+    position: status.position,
+    queueId: status.queueId,
+    rgTrackGain: status.rgTrackGain,
+    rgTrackPeak: status.rgTrackPeak,
+    volume: status.volume,
+    visualizer: {
+      isEnabled: status.visualizer.isEnabled,
+      isSupported: status.visualizer.isSupported,
+      presetKey: status.visualizer.presetKey,
+      presetName: status.visualizer.presetName,
+      sensitivity: status.visualizer.sensitivity,
+    },
+  }
+}
 
 export default ACTION_HANDLERS

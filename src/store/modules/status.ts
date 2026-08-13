@@ -10,6 +10,7 @@ import {
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
   PLAYER_STATUS,
+  PLAYER_POSITION,
   PLAYER_LEAVE,
 } from 'shared/actionTypes'
 import { createInitialPlaybackStatus, type PlaybackCoreStatus, type PlaybackOptions } from 'shared/types'
@@ -24,6 +25,7 @@ export const requestPriority = createAction(PLAYER_REQ_PRIORITY, (queueId: numbe
   payload: { queueId },
 }))
 const playerStatus = createAction<object>(PLAYER_STATUS)
+const playerPosition = createAction<{ position: number }>(PLAYER_POSITION)
 const playerLeave = createAction(PLAYER_LEAVE)
 
 export const requestReplay = createAction(PLAYER_REQ_REPLAY, (queueId: number) => ({
@@ -85,6 +87,10 @@ const statusReducer = createReducer(initialState, (builder) => {
       history: sameHistory(state.history, 'history' in payload ? payload.history : undefined),
       isPlayerPresent: true,
     }))
+    .addCase(playerPosition, (state, { payload }) => {
+      state.position = payload.position
+      state.isPlayerPresent = true
+    })
 })
 
 function sameHistory (current: number[], incoming: unknown): number[] {

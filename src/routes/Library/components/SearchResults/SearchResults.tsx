@@ -1,10 +1,10 @@
 import React, { useRef } from 'react'
-import { ensureState } from 'redux-optimistic-ui'
 import { RootState } from 'store/store'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { toggleArtistResultExpanded } from '../../modules/library'
 import getSearchResults from '../../selectors/getSearchResults'
 import getSongsStatus from '../../selectors/getSongsStatus'
+import getStarredSongSet from '../../selectors/getStarredSongSet'
 import PaddedList from 'components/PaddedList/PaddedList'
 import ArtistItem from '../ArtistItem/ArtistItem'
 import SongList from '../SongList/SongList'
@@ -24,12 +24,13 @@ interface SearchResultsProps {
 interface CustomRowProps {
   artists: RootState['artists']
   dispatch: ReturnType<typeof useAppDispatch>
-  expandedArtists: number[]
   filterKeywords: string[]
   filterStarred: boolean
   artistsResult: number[]
   songsResult: number[]
   expandedArtistResults: number[]
+  queuedSongs: ReadonlySet<number>
+  starredSongs: ReadonlySet<number>
 }
 
 // this is outside the SearchResults component to keep the reference as stable as possible,
@@ -45,10 +46,9 @@ const RowComponent = ({
   artistsResult,
   songsResult,
   expandedArtistResults,
+  queuedSongs,
+  starredSongs,
 }: RowComponentProps<CustomRowProps>) => {
-  const { starredSongs } = useAppSelector(state => ensureState(state.userStars))
-  const { upcoming } = useAppSelector(getSongsStatus)
-
   // # artist results heading
   if (index === 0) {
     return (
@@ -76,7 +76,7 @@ const RowComponent = ({
         name={artist.name}
         numStars={0}
         onArtistClick={() => dispatch(toggleArtistResultExpanded(artistId))}
-        upcomingSongs={upcoming}
+        upcomingSongs={queuedSongs}
         starredSongs={starredSongs}
         style={style}
       />
@@ -96,10 +96,11 @@ const RowComponent = ({
   }
 
   // song results
+  const songId = songsResult[index - artistsResult.length - 2]
   return (
-    <div style={style} key='songs'>
+    <div style={style} key={songId}>
       <SongList
-        songIds={songsResult}
+        songIds={[songId]}
         showArtist
         filterKeywords={filterKeywords}
       />
@@ -113,6 +114,8 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
   const expandedArtistResults = useAppSelector(state => state.library.expandedArtistResults)
   const { filterStr, filterStarred } = useAppSelector(state => state.library)
   const { artistsResult, songsResult } = useAppSelector(getSearchResults)
+  const starredSongs = useAppSelector(getStarredSongSet)
+  const { queued: queuedSongs } = useAppSelector(getSongsStatus)
 
   const listRef = useRef<ListImperativeAPI | null>(null)
   const filterKeywords = filterStr.trim() ? filterStr.trim().toLowerCase().split(' ') : []
@@ -137,7 +140,7 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     if (index === artistsResult.length + 1) return ROW_HEIGHT_RESULT_HEADING
 
     // song results
-    return songsResult.length * ROW_HEIGHT_SONG_WITH_ARTIST
+    return ROW_HEIGHT_SONG_WITH_ARTIST
   }
 
   const handleRef = (ref: ListImperativeAPI) => {
@@ -158,9 +161,11 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
         artistsResult,
         songsResult,
         expandedArtistResults,
+        queuedSongs,
+        starredSongs,
       }}
       rowHeight={rowHeight}
-      numRows={artistsResult.length + 3}
+      numRows={artistsResult.length + songsResult.length + 2}
       paddingTop={ui.headerHeight}
       paddingRight={4}
       paddingBottom={ui.footerHeight}

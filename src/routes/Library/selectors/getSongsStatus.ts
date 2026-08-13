@@ -1,33 +1,32 @@
 import { RootState } from 'store/store'
 import { createSelector, type Selector } from '@reduxjs/toolkit'
-import { ensureState } from 'redux-optimistic-ui'
 
-const getQueue = (state: RootState) => ensureState(state.queue)
+const getQueue = (state: RootState) => state.queue
 const getCurrentQueueId = (state: RootState) => state.status.isAtQueueEnd ? undefined : state.status.queueId
 const getPlayerHistory = (state: RootState) => state.status.history
 
 type SongsStatus = {
-  played: number[]
-  upcoming: number[]
+  played: ReadonlySet<number>
+  queued: ReadonlySet<number>
   current: number | undefined
 }
 
 const getSongsStatus: Selector<RootState, SongsStatus> = createSelector(
   [getQueue, getCurrentQueueId, getPlayerHistory],
   (queue, curId, history): SongsStatus => {
-    const played: number[] = []
-    const upcoming: number[] = []
+    const played = new Set<number>()
+    const queued = new Set<number>()
 
     queue.result.forEach((queueId) => {
       const queueItem = queue.entities[queueId]
       if (('isPlayed' in queueItem && queueItem.isPlayed) || history.includes(queueId)) {
-        played.push(queueItem.songId)
-      } else if (queueId !== curId) {
-        upcoming.push(queueItem.songId)
+        played.add(queueItem.songId)
+      } else {
+        queued.add(queueItem.songId)
       }
     })
 
-    return { played, upcoming, current: queue.entities[curId]?.songId }
+    return { played, queued, current: queue.entities[curId]?.songId }
   },
 )
 

@@ -44,7 +44,7 @@ describe('socket authorization', () => {
 
     prefsHandlers[PREFS_SET](socket, { payload: { key: 'example', data: true } }, vi.fn())
 
-    expect(server.to).toHaveBeenCalledWith(['admin'])
+    expect(server.to).toHaveBeenCalledWith('ADMINS')
     expect(targetedEmit).toHaveBeenCalledWith('action', {
       type: PREFS_PUSH,
       payload: { private: 'settings' },

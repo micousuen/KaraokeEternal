@@ -2,14 +2,14 @@ import { promisify } from 'util'
 import fs from 'fs'
 import { db } from '../lib/Database.js'
 import sql from 'sqlate'
-import jsonWebToken from 'jsonwebtoken'
 import crypto from '../lib/crypto.js'
 import KoaRouter from '@koa/router'
-import Prefs from '../Prefs/Prefs.js'
-import Queue from '../Queue/Queue.js'
 import Rooms from '../Rooms/Rooms.js'
 import User from '../User/User.js'
-import { QUEUE_PUSH } from '../../shared/actionTypes.js'
+import { publishAllQueues } from '../Queue/QueuePublisher.js'
+import adminRouter from './adminRouter.js'
+import { createUserContext, setUserCookie } from './UserContext.js'
+import sessionRouter from './sessionRouter.js'
 import {
   USERNAME_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
@@ -32,166 +32,6 @@ interface RequestWithBody {
 const router = new KoaRouter({ prefix: '/api' })
 const readFile = promisify(fs.readFile)
 const deleteFile = promisify(fs.unlink)
-const { sign: jwtSign } = jsonWebToken
-
-// Takes the "raw" object returned by the User class and massages it
-// into the shape used by the client (state.user) and in server-side
-// routers. Should be used to generate the JWT.
-const createUserCtx = (user, roomId) => {
-  return {
-    dateCreated: user.dateCreated,
-    dateUpdated: user.dateUpdated,
-    isAdmin: user.role === 'admin',
-    isGuest: user.role === 'guest',
-    name: user.name,
-    roomId: parseInt(roomId, 10) || null,
-    userId: user.userId,
-    username: user.username,
-  }
-}
-
-// login
-router.post('/login', async (ctx) => {
-  const req = ctx.request as unknown as RequestWithBody
-  const roomId = parseInt(req.body.roomId, 10) || null
-  let user
-
-  try {
-    user = await User.validate(req.body as any)
-
-    if (roomId) {
-      await Rooms.validate(roomId, req.body.roomPassword, {
-        validatePassword: true,
-      })
-    } else if (user.role !== 'admin') {
-      ctx.throw(401, 'An admin account is required outside a room invite')
-    }
-  } catch (err) {
-    ctx.throw(401, err.message)
-  }
-
-  if (crypto.isLegacy(user.password)) {
-    const newHash = await crypto.hash(req.body.password)
-    const query = sql`
-      UPDATE users
-      SET password = ${newHash}, dateUpdated = ${Math.floor(Date.now() / 1000)}
-      WHERE userId = ${user.userId}
-    `
-    db.run(String(query), query.parameters)
-  }
-
-  const userCtx = createUserCtx(user, roomId)
-
-  // create JWT
-  const token = jwtSign(userCtx, ctx.jwtKey)
-
-  // set JWT as an httpOnly cookie
-  ctx.cookies.set('keToken', token, {
-    httpOnly: true,
-    sameSite: 'lax',
-  })
-
-  ctx.body = userCtx
-})
-
-// logout
-router.get('/logout', (ctx) => {
-  // @todo force socket room leave
-  ctx.cookies.set('keToken', '')
-  ctx.status = 200
-  ctx.body = {}
-})
-
-// get own account (helps sync account changes across devices)
-router.get('/user', (ctx) => {
-  if (typeof ctx.user.userId !== 'number') {
-    ctx.throw(401)
-  }
-
-  // include credentials since their username may have changed
-  const user = User.getById(ctx.user.userId, true)
-
-  if (!user) {
-    ctx.throw(404)
-  }
-
-  let roomId = ctx.user.roomId
-  if (typeof roomId === 'number' && !Rooms.get(roomId, { status: [] }).entities[roomId]) {
-    if (!ctx.user.isAdmin) ctx.throw(401, 'Room no longer exists')
-    roomId = null
-  }
-
-  const userCtx = createUserCtx(user, roomId)
-  if (roomId !== ctx.user.roomId) {
-    ctx.cookies.set('keToken', jwtSign(userCtx, ctx.jwtKey), {
-      httpOnly: true,
-      sameSite: 'lax',
-    })
-  }
-
-  ctx.body = userCtx
-})
-
-// list all users (admin only)
-router.get('/users', async (ctx) => {
-  if (!ctx.user.isAdmin) {
-    ctx.throw(401)
-  }
-
-  const userRooms = {} // { userId: [roomId, roomId, ...]}
-  const sockets = await ctx.io.fetchSockets()
-
-  for (const s of sockets) {
-    if (s.user && typeof s.user.roomId === 'number') {
-      if (userRooms[s.user.userId]) {
-        userRooms[s.user.userId].push(s.user.roomId)
-      } else {
-        userRooms[s.user.userId] = [s.user.roomId]
-      }
-    }
-  }
-
-  // get all users
-  const users = User.get()
-
-  users.result.forEach((userId) => {
-    users.entities[userId].rooms = userRooms[userId] || []
-  })
-
-  ctx.body = users
-})
-
-// delete a user (admin only)
-router.delete('/user/:userId', async (ctx) => {
-  const targetId = parseInt(ctx.params.userId, 10)
-
-  if (!ctx.user.isAdmin || targetId === ctx.user.userId) {
-    ctx.throw(403)
-  }
-
-  User.remove(targetId)
-
-  // disconnect their socket session(s)
-  const sockets = await ctx.io.fetchSockets()
-
-  for (const s of sockets) {
-    if (s?.user.userId === targetId) {
-      s.disconnect()
-    }
-  }
-
-  // emit (potentially) updated queues to each room
-  for (const { room, roomId } of Rooms.getActive(ctx.io)) {
-    ctx.io.to(room).emit('action', {
-      type: QUEUE_PUSH,
-      payload: Queue.get(roomId),
-    })
-  }
-
-  // success
-  ctx.status = 200
-  ctx.body = {}
-})
 
 // update a user account
 router.put('/user/:userId', async (ctx) => {
@@ -308,12 +148,7 @@ router.put('/user/:userId', async (ctx) => {
 
   // emit (potentially) updated queues to each room
   // @todo: only update rooms the user is in
-  for (const { room, roomId } of Rooms.getActive(ctx.io)) {
-    ctx.io.to(room).emit('action', {
-      type: QUEUE_PUSH,
-      payload: Queue.get(roomId),
-    })
-  }
+  publishAllQueues(ctx.io)
 
   // updating another account? we're done
   if (targetId !== user.userId) {
@@ -341,17 +176,9 @@ router.put('/user/:userId', async (ctx) => {
     }
   }
 
-  const userCtx = createUserCtx(updatedUser, ctx.user.roomId || null)
-
-  // create JWT
-  // @todo: this should not extend the JWT expiry date
-  const token = jwtSign(userCtx, ctx.jwtKey)
-
-  // set JWT as an httpOnly cookie
-  ctx.cookies.set('keToken', token, {
-    sameSite: 'lax',
-    httpOnly: true,
-  })
+  const userCtx = createUserContext(updatedUser, ctx.user.roomId || null)
+  // @todo: updating an account should not extend the JWT expiry date.
+  setUserCookie(ctx, userCtx)
 
   ctx.body = userCtx
 })
@@ -413,62 +240,9 @@ router.post('/user', async (ctx) => {
       throw new Error('User not found')
     }
 
-    const userCtx = createUserCtx(user, req.body.roomId || null)
+    const userCtx = createUserContext(user, req.body.roomId || null)
+    setUserCookie(ctx, userCtx)
 
-    // create JWT
-    const token = jwtSign(userCtx, ctx.jwtKey)
-
-    // set JWT as an httpOnly cookie
-    ctx.cookies.set('keToken', token, {
-      sameSite: 'lax',
-      httpOnly: true,
-    })
-
-    ctx.body = userCtx
-  } catch (err) {
-    ctx.throw(403, err.message)
-  }
-})
-
-// first-time setup
-router.post('/setup', async (ctx) => {
-  const prefs: any = Prefs.get()
-  let image
-
-  // must be first run
-  if (prefs.isFirstRun !== true) {
-    ctx.throw(403)
-  }
-
-  try {
-    // create admin user
-    const req = ctx.request as unknown as RequestWithBody
-    const userId = await User.create({ ...req.body, image } as any, 'admin')
-    const user = User.getById(userId, true)
-
-    if (!user) {
-      throw new Error('User not found')
-    }
-
-    // create JWT
-    const userCtx = createUserCtx(user, null)
-    const token = jwtSign(userCtx, ctx.jwtKey)
-
-    // set JWT as an httpOnly cookie
-    ctx.cookies.set('keToken', token, {
-      sameSite: 'lax',
-      httpOnly: true,
-    })
-
-    // unset isFirstRun
-    const query = sql`
-      UPDATE prefs
-      SET data = 'false'
-      WHERE key = 'isFirstRun'
-    `
-    db.run(String(query))
-
-    // success
     ctx.body = userCtx
   } catch (err) {
     ctx.throw(403, err.message)
@@ -501,5 +275,8 @@ router.get('/user/:userId/image', (ctx) => {
   ctx.type = 'image/jpeg'
   ctx.body = Buffer.from(user.image)
 })
+
+router.use(sessionRouter.routes(), sessionRouter.allowedMethods())
+router.use(adminRouter.routes(), adminRouter.allowedMethods())
 
 export default router

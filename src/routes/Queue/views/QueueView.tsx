@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react'
 import { useAppSelector } from 'store/hooks'
-import { ensureState } from 'redux-optimistic-ui'
 import { Link } from 'react-router'
 import getRoundRobinQueue from '../selectors/getRoundRobinQueue'
 import QueueList from '../components/QueueList/QueueList'
@@ -13,7 +12,7 @@ const QUEUE_ITEM_HEIGHT = 92
 const QueueView = () => {
   const { innerWidth, innerHeight, headerHeight, footerHeight } = useAppSelector(state => state.ui)
   const isInRoom = useAppSelector(state => !!state.user.roomId)
-  const isLoading = useAppSelector(state => ensureState(state.queue).isLoading)
+  const isLoading = useAppSelector(state => state.queue.isLoading)
   const queue = useAppSelector(getRoundRobinQueue)
   const queueId = useAppSelector(state => state.status.queueId)
   const hasYouTubeJobs = useAppSelector(state => state.youtubeJobs.result.length > 0)

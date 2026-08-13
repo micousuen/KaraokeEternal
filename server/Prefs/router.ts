@@ -6,9 +6,8 @@ import getWindowsDrives from '../lib/getWindowsDrives.js'
 import Prefs from './Prefs.js'
 import Media from '../Media/Media.js'
 import pushQueuesAndLibrary from '../lib/pushQueuesAndLibrary.js'
-import Rooms from '../Rooms/Rooms.js'
-import Queue from '../Queue/Queue.js'
-import { PREFS_PATHS_CHANGED, QUEUE_PUSH } from '../../shared/actionTypes.js'
+import { PREFS_PATHS_CHANGED } from '../../shared/actionTypes.js'
+import { publishAllQueues } from '../Queue/QueuePublisher.js'
 import type { Prefs as PrefsType } from '../../shared/types.js'
 
 interface RequestWithBody {
@@ -84,12 +83,7 @@ router.put('/path/:pathId', (ctx) => {
 
   // need to push updated queue items?
   if ('isVideoKeyingEnabled' in (ctx.request as unknown as RequestWithBody).body) {
-    for (const { room, roomId } of Rooms.getActive(ctx.io)) {
-      ctx.io.to(room).emit('action', {
-        type: QUEUE_PUSH,
-        payload: Queue.get(roomId),
-      })
-    }
+    publishAllQueues(ctx.io)
   }
 })
 

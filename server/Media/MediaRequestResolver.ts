@@ -6,7 +6,13 @@ import Media from './Media.js'
 import Prefs from '../Prefs/Prefs.js'
 import fileTypes from './fileTypes.js'
 import { ensureAudioTrackAnalysis } from './AudioTrackAnalysis.js'
-import { getBrowserAudio, getBrowserMedia, getSourceAudio, getSourceMediaInfo } from './Transcoder.js'
+import {
+  getBrowserAudioTrack,
+  getBrowserCombined,
+  getBrowserVideo,
+  getSourceAudio,
+  getSourceMediaInfo,
+} from './Transcoder.js'
 
 const log = getLogger('MediaRequestResolver')
 export type ResolvedMediaRequest = {
@@ -81,36 +87,56 @@ export async function resolveMediaRequest (
     const audioTrack = getPhysicalAudioTrack(parseTrack(query.audioTrack), analysis.audioTrackCount, analysis.ktvTrack)
     const format = audioTrack === null ? undefined : sourceInfo.audioTracks[audioTrack]
     if (!format) throw new MediaRequestError(404, 'Source audio track not found')
-    const sourceAudio = await getSourceAudio(file, mediaId, audioTrack, format)
+    const sourceAudioTracks = sourceInfo.audioTracks.map((trackFormat, track) => (
+      trackFormat.extension && trackFormat.mimeType
+        ? getSourceAudio(file, mediaId, track, trackFormat)
+        : null
+    ))
+    const sourceAudio = await sourceAudioTracks[audioTrack]
+    // Keep switching tracks instant, but do not make the current track wait
+    // for the other stream-copy jobs to finish.
+    void Promise.allSettled(sourceAudioTracks.filter((track): track is Promise<Awaited<ReturnType<typeof getSourceAudio>>> => track !== null))
     const stats = await fsPromises.stat(sourceAudio.file)
     return fileResponse(sourceAudio.file, sourceAudio.mimeType, stats.size, 'no-store')
   }
 
   if (type === 'video' || type === 'videoAudio' || type === 'videoCombined') {
-    const [bundle, analyzed] = await Promise.all([
-      type === 'videoAudio' ? getBrowserAudio(file, mediaId) : getBrowserMedia(file, mediaId),
+    if (type === 'video') {
+      const video = await getBrowserVideo(file, mediaId)
+      const stats = await fsPromises.stat(video)
+      return fileResponse(video, 'video/mp4', stats.size, 'no-store')
+    }
+
+    const [sourceInfo, analyzed] = await Promise.all([
+      getSourceMediaInfo(file),
       tryTrackAnalysis(mediaId, file),
     ])
-    const analysis = analyzed || { audioTrackCount: bundle.audio.length, ktvTrack: null }
+    const analysis = analyzed || { audioTrackCount: sourceInfo.audioTrackCount, ktvTrack: null }
+    const track = getPhysicalAudioTrack(parseTrack(query.audioTrack), analysis.audioTrackCount, analysis.ktvTrack)
+    if (track === null) throw new MediaRequestError(404, 'Audio track not found')
 
     if (type === 'videoCombined') {
-      const track = getPhysicalAudioTrack(parseTrack(query.audioTrack), analysis.audioTrackCount, analysis.ktvTrack)
-      const combined = track === null ? undefined : bundle.combined[track]
-      if (!combined) throw new MediaRequestError(404, 'Combined audio track not found')
+      const combinedTracks = Array.from(
+        { length: sourceInfo.audioTrackCount },
+        (_, audioTrack) => getBrowserCombined(file, mediaId, audioTrack),
+      )
+      const combined = await combinedTracks[track]
+      // Both muxed variants share the same prepared H.264 video and AAC jobs.
+      // Finish the alternate track in the background for immediate switching.
+      void Promise.allSettled(combinedTracks)
       const stats = await fsPromises.stat(combined)
       return fileResponse(combined, 'video/mp4', stats.size, 'no-store')
     }
-    if (type === 'videoAudio') {
-      const track = getPhysicalAudioTrack(parseTrack(query.audioTrack), analysis.audioTrackCount, analysis.ktvTrack)
-      const files = query.audioFormat === 'aac' ? bundle.audioAac : bundle.audio
-      const audio = track === null ? undefined : files[track]
-      if (!audio) throw new MediaRequestError(404, 'Audio track not found')
-      const stats = await fsPromises.stat(audio)
-      return fileResponse(audio, fileTypes[getExt(audio)]?.mimeType || 'audio/mpeg', stats.size, 'no-store')
-    }
-    if (!bundle.video) throw new MediaRequestError(500, 'Browser video not found')
-    const stats = await fsPromises.stat(bundle.video)
-    return fileResponse(bundle.video, 'video/mp4', stats.size, 'no-store')
+
+    const audioFormat = query.audioFormat === 'aac' ? 'aac' : 'mp3'
+    const audioTracks = Array.from(
+      { length: sourceInfo.audioTrackCount },
+      (_, audioTrack) => getBrowserAudioTrack(file, mediaId, audioTrack, audioFormat),
+    )
+    const audio = await audioTracks[track]
+    void Promise.allSettled(audioTracks)
+    const stats = await fsPromises.stat(audio.file)
+    return fileResponse(audio.file, audio.mimeType, stats.size, 'no-store')
   }
 
   if (!mimeType) throw new MediaRequestError(404, `Unknown MIME type: ${file}`)

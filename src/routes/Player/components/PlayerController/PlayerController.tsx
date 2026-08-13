@@ -10,6 +10,7 @@ import type { QueueItem } from 'shared/types'
 import ScriptOverlay from '../ScriptOverlay/ScriptOverlay'
 import { advanceStatus, findNextUserId, replayStatus, selectPlaybackItems } from '../../lib/playbackQueue'
 import useMediaPrecache from '../../hooks/useMediaPrecache'
+import socket from 'lib/socket'
 
 interface PlayerControllerProps {
   width: number
@@ -42,8 +43,16 @@ const PlayerController = (props: PlayerControllerProps) => {
   // Claim ownership once when this player screen opens. Playback status
   // updates (including Play Next) do not affect ownership.
   useEffect(() => {
-    dispatch(playerClaim())
-  }, [dispatch])
+    const claim = () => {
+      dispatch(playerClaim())
+      handleStatus()
+    }
+    claim()
+    socket.on('connect', claim)
+    return () => {
+      socket.off('connect', claim)
+    }
+  }, [dispatch, handleStatus])
 
   const handleLoadNext = useCallback(() => {
     handleStatus(advanceStatus(player, queueItem, nextQueueItem))

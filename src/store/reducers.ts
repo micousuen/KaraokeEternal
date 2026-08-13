@@ -1,5 +1,4 @@
 import { combineSlices } from '@reduxjs/toolkit'
-import { optimistic } from 'redux-optimistic-ui'
 
 import artists from 'routes/Library/modules/artists'
 import library from 'routes/Library/modules/library'
@@ -23,7 +22,7 @@ const combinedReducer = combineSlices({
   artists,
   library,
   prefs,
-  queue: optimistic(queue),
+  queue,
   rooms,
   songs,
   songInfo,
@@ -31,7 +30,7 @@ const combinedReducer = combineSlices({
   status,
   ui,
   user,
-  userStars: optimistic(userStars),
+  userStars,
   youtubeJobs,
   vocalSeparation,
   users,

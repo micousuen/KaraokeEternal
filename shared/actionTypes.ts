@@ -10,17 +10,22 @@ export const TOGGLE_ARTIST_RESULT_EXPANDED = 'library/TOGGLE_ARTIST_RESULT_EXPAN
 export const SCROLL_ARTISTS = 'library/SCROLL_ARTISTS'
 export const SONG_STARRED = 'library/SONG_STARRED'
 export const SONG_UNSTARRED = 'library/SONG_UNSTARRED'
+export const STAR_COUNT_CHANGED = 'library/STAR_COUNT_CHANGED'
+export const USER_STAR_CHANGED = 'user/STAR_CHANGED'
 export const STAR_COUNTS_PUSH = 'library/STAR_COUNTS_PUSH'
 export const YOUTUBE_JOBS_PUSH = 'youtube/JOBS_PUSH'
 export const LIBRARY_PUSH = 'library/PUSH'
 export const LIBRARY_PUSH_SONG = 'library/PUSH_SONG'
 export const LIBRARY_SCAN_BATCH = 'library/SCAN_BATCH'
+export const LIBRARY_INVALIDATE = 'library/INVALIDATE'
 
 // Queue
 export const QUEUE_ADD = 'server/QUEUE_ADD'
 export const QUEUE_MOVE = 'server/QUEUE_MOVE'
 export const QUEUE_SHUFFLE = 'server/QUEUE_SHUFFLE'
 export const QUEUE_PUSH = 'queue/PUSH'
+export const QUEUE_PATCH = 'queue/PATCH'
+export const QUEUE_SYNC = 'server/QUEUE_SYNC'
 export const QUEUE_REMOVE = 'server/QUEUE_REMOVE'
 
 // Player internal
@@ -47,10 +52,12 @@ export const PLAYER_REQ_SEEK = 'server/PLAYER_REQ_SEEK'
 export const PLAYER_REQ_VOLUME = 'server/PLAYER_REQ_VOLUME'
 export const PLAYER_EMIT_CLAIM = 'server/PLAYER_EMIT_CLAIM'
 export const PLAYER_EMIT_STATUS = 'server/PLAYER_EMIT_STATUS'
+export const PLAYER_EMIT_POSITION = 'server/PLAYER_EMIT_POSITION'
 export const PLAYER_EMIT_LEAVE = 'server/PLAYER_EMIT_LEAVE'
 
 // Player events
 export const PLAYER_STATUS = 'status/PLAYER_STATUS'
+export const PLAYER_POSITION = 'status/PLAYER_POSITION'
 export const PLAYER_ERROR = 'status/PLAYER_ERROR'
 export const PLAYER_LEAVE = 'status/PLAYER_LEAVE'
 export const PLAYER_LOAD = 'status/PLAYER_LOAD'
@@ -91,18 +98,9 @@ export const PREFS_REQ_SCANNER_STOP = 'prefs/REQ_SCANNER_STOP'
 
 // User management
 export const USERS_CREATE = 'users/CREATE'
-export const USERS_FILTER_ONLINE = 'users/FILTER_ONLINE'
-export const USERS_FILTER_ROOM_ID = 'users/FILTER_ROOM_ID'
 export const USERS_REMOVE = 'users/REMOVE'
 export const USERS_REQUEST = 'users/REQUEST'
 export const USERS_UPDATE = 'users/UPDATE'
-
-// UI
-export const HEADER_HEIGHT_CHANGE = 'ui/HEADER_HEIGHT_CHANGE'
-export const FOOTER_HEIGHT_CHANGE = 'ui/FOOTER_HEIGHT_CHANGE'
-export const SHOW_ERROR_MESSAGE = 'ui/SHOW_ERROR_MESSAGE'
-export const CLEAR_ERROR_MESSAGE = 'ui/CLEAR_ERROR_MESSAGE'
-export const UI_WINDOW_RESIZE = 'ui/WINDOW_RESIZE'
 
 // Song Info
 export const SONG_INFO_REQUEST = 'songInfo/SONG_INFO_REQUEST'

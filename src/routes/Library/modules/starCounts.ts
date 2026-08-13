@@ -3,11 +3,13 @@ import {
   SONG_STARRED,
   SONG_UNSTARRED,
   STAR_COUNTS_PUSH,
+  STAR_COUNT_CHANGED,
 } from 'shared/actionTypes'
 
 const songStarred = createAction<{ songId: number }>(SONG_STARRED)
 const songUnstarred = createAction<{ songId: number }>(SONG_UNSTARRED)
 const starCountsPush = createAction<StarCountsState>(STAR_COUNTS_PUSH)
+const starCountChanged = createAction<{ songId: number, delta: -1 | 1, version: number }>(STAR_COUNT_CHANGED)
 
 // ------------------------------------
 // Reducer
@@ -35,6 +37,10 @@ const starCountsReducer = createReducer(initialState, (builder) => {
     .addCase(starCountsPush, (_, { payload }) => ({
       ...payload,
     }))
+    .addCase(starCountChanged, (state, { payload }) => {
+      state.songs[payload.songId] = Math.max((state.songs[payload.songId] || 0) + payload.delta, 0)
+      state.version = payload.version
+    })
 })
 
 export default starCountsReducer

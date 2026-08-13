@@ -1,5 +1,4 @@
 import { createSelector } from '@reduxjs/toolkit'
-import { ensureState } from 'redux-optimistic-ui'
 import type { RootState } from 'store/store'
 import type { QueueItem } from 'shared/types'
 
@@ -8,8 +7,8 @@ import type { QueueItem } from 'shared/types'
 // consume it directly rather than applying a second client-side reordering.
 const getRoundRobinQueue = createSelector(
   [
-    (state: RootState) => ensureState(state.queue).result,
-    (state: RootState) => ensureState(state.queue).entities,
+    (state: RootState) => state.queue.result,
+    (state: RootState) => state.queue.entities,
   ],
   (result, entities) => ({
     result: result as number[],

@@ -1,33 +1,7 @@
-import { AnyAction, createAction, createReducer } from '@reduxjs/toolkit'
-import {
-  CLEAR_ERROR_MESSAGE,
-  FOOTER_HEIGHT_CHANGE,
-  HEADER_HEIGHT_CHANGE,
-  SHOW_ERROR_MESSAGE,
-  UI_WINDOW_RESIZE,
-} from 'shared/actionTypes'
+import { AnyAction, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
 const MAX_CONTENT_WIDTH = 768
 let scrollLockTimer: ReturnType<typeof setTimeout> | null
-
-// ------------------------------------
-// Actions
-// ------------------------------------
-export const clearErrorMessage = createAction(CLEAR_ERROR_MESSAGE)
-export const showErrorMessage = createAction<string>(SHOW_ERROR_MESSAGE)
-
-export const setHeaderHeight = createAction<number>(HEADER_HEIGHT_CHANGE)
-export const setFooterHeight = createAction<number>(FOOTER_HEIGHT_CHANGE)
-
-export const windowResize = createAction(UI_WINDOW_RESIZE, window => ({
-  payload: window,
-  meta: {
-    throttle: {
-      wait: 200,
-      leading: false,
-    },
-  },
-}))
 
 // does not dispatch anything (only affects the DOM)
 export const lockScrolling = (lock: boolean) => {
@@ -66,33 +40,50 @@ const initialState: UIState = {
   contentWidth: Math.min(window.innerWidth, MAX_CONTENT_WIDTH),
 }
 
-const uiReducer = createReducer(initialState, (builder) => {
-  builder
-    .addCase(setHeaderHeight, (state, { payload }) => {
+const uiSlice = createSlice({
+  name: 'ui',
+  initialState,
+  reducers: {
+    setHeaderHeight: (state, { payload }: PayloadAction<number>) => {
       state.headerHeight = payload ?? 0
-    })
-    .addCase(setFooterHeight, (state, { payload }) => {
+    },
+    setFooterHeight: (state, { payload }: PayloadAction<number>) => {
       state.footerHeight = payload ?? 0
-    })
-    .addCase(showErrorMessage, (state, { payload }) => {
+    },
+    showErrorMessage: (state, { payload }: PayloadAction<string>) => {
       state.isErrored = true
       state.errorMessage = payload
-    })
-    .addCase(clearErrorMessage, (state) => {
+    },
+    clearErrorMessage: (state) => {
       state.isErrored = false
-    })
-    .addCase(windowResize, (state, { payload }) => {
-      state.innerWidth = payload.innerWidth
-      state.innerHeight = payload.innerHeight
-      state.contentWidth = Math.min(payload.innerWidth, MAX_CONTENT_WIDTH)
-    })
-    .addMatcher(
-      (action): action is AnyAction => !!action.error,
-      (state, { error }) => {
-        state.isErrored = true
-        state.errorMessage = error.message ?? error
+    },
+    windowResize: {
+      reducer: (state, { payload }: PayloadAction<{ innerWidth: number, innerHeight: number }>) => {
+        state.innerWidth = payload.innerWidth
+        state.innerHeight = payload.innerHeight
+        state.contentWidth = Math.min(payload.innerWidth, MAX_CONTENT_WIDTH)
       },
-    )
+      prepare: (window: { innerWidth: number, innerHeight: number }) => ({
+        payload: window,
+        meta: { throttle: { wait: 200, leading: false } },
+      }),
+    },
+  },
+  extraReducers: builder => builder.addMatcher(
+    (action): action is AnyAction => !!action.error,
+    (state, { error }) => {
+      state.isErrored = true
+      state.errorMessage = error.message ?? error
+    },
+  ),
 })
 
-export default uiReducer
+export const {
+  clearErrorMessage,
+  setFooterHeight,
+  setHeaderHeight,
+  showErrorMessage,
+  windowResize,
+} = uiSlice.actions
+
+export default uiSlice.reducer

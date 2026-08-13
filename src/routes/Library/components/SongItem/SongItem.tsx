@@ -14,8 +14,6 @@ import styles from './SongItem.css'
 import RenameSongModal from './RenameSongModal'
 import RegenerateSongModal, { type RegenerateOutput } from './RegenerateSongModal'
 
-let ignoreMouseup = false
-
 interface SongItemProps {
   songId: number
   artist?: string
@@ -61,6 +59,7 @@ const SongItem = ({
   const [actionMenu, setActionMenu] = useState<{ x: number, y: number } | null>(null)
   const actionMenuRef = useRef<HTMLDivElement>(null)
   const longPressActiveRef = useRef(false)
+  const ignoreMouseupRef = useRef(false)
   const canManage = isAdmin
 
   useEffect(() => {
@@ -100,8 +99,8 @@ const SongItem = ({
       longPressActiveRef.current = false
       return
     }
-    if (ignoreMouseup) {
-      ignoreMouseup = false
+    if (ignoreMouseupRef.current) {
+      ignoreMouseupRef.current = false
       return
     }
     if (isUpcoming) return
@@ -133,11 +132,11 @@ const SongItem = ({
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: ({ event }) => {
-      ignoreMouseup = event.type === 'mouseup'
+      ignoreMouseupRef.current = event.type === 'mouseup'
       setExpanded(isAdmin)
     },
     onSwipedRight: ({ event }) => {
-      ignoreMouseup = event.type === 'mouseup'
+      ignoreMouseupRef.current = event.type === 'mouseup'
       setExpanded(false)
     },
     preventScrollOnSwipe: true,

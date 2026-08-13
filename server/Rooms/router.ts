@@ -5,6 +5,8 @@ import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
 import Rooms from '../Rooms/Rooms.js'
 import { ValidationError } from '../lib/Errors.js'
+import { roomAdminSockets } from '../lib/socketRooms.js'
+import { forgetQueue } from '../Queue/QueuePublisher.js'
 
 interface RequestWithBody {
   body: Record<string, unknown>
@@ -43,7 +45,7 @@ router.get(['/', '/:roomId'], (ctx) => {
 
   res.result.forEach((roomId) => {
     if (ctx.user.isAdmin) {
-      res.entities[roomId].numUsers = Rooms.countActiveUsers(ctx.io, roomId)
+      res.entities[roomId].numUsers = Rooms.countActiveUsers(roomId)
     } else {
       // only pass the 'roles' prefs key
       res.entities[roomId].prefs = res.entities[roomId].prefs?.roles ? { roles: res.entities[roomId].prefs.roles } : {}
@@ -111,16 +113,10 @@ router.put('/:roomId', async (ctx) => {
 
   log.verbose('%s updated a room (roomId: %s)', ctx.user.name, roomId)
 
-  const sockets = await ctx.io.in(Rooms.prefix(roomId)).fetchSockets()
-
-  for (const s of sockets) {
-    if (s?.user.isAdmin) {
-      ctx.io.to(s.id).emit('action', {
-        type: ROOM_PREFS_PUSH,
-        payload: Rooms.get(roomId),
-      })
-    }
-  }
+  ctx.io.to(roomAdminSockets(roomId)).emit('action', {
+    type: ROOM_PREFS_PUSH,
+    payload: Rooms.get(roomId),
+  })
 
   // send updated room list
   ctx.body = Rooms.get(null, { status: [] })
@@ -144,6 +140,7 @@ router.delete('/:roomId', (ctx) => {
     WHERE roomId = ${roomId}
   `
   db.run(String(queueQuery), queueQuery.parameters)
+  forgetQueue(roomId)
 
   // remove room
   const roomQuery = sql`
