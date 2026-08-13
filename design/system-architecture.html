@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Eternal — System Architecture</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b1015;
+      --panel: #121a22;
+      --panel-2: #17222d;
+      --text: #e8eef5;
+      --muted: #aebdca;
+      --line: #304353;
+      --accent: #68b9ff;
+      --accent-soft: rgba(104, 185, 255, 0.13);
+      --green: #70d6a5;
+      --green-soft: rgba(112, 214, 165, 0.12);
+      --orange: #ffbf72;
+      --orange-soft: rgba(255, 191, 114, 0.12);
+      --purple: #c6a3ff;
+      --purple-soft: rgba(198, 163, 255, 0.12);
+      --red: #ff8a92;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1220px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 80px; }
+    header, section {
+      margin-bottom: 24px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 3.5rem); }
+    h2 { margin: 0 0 16px; color: var(--accent); }
+    h3 { margin: 22px 0 8px; }
+    p { max-width: 88ch; }
+    a, code { color: var(--accent); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .meta, .muted { color: var(--muted); }
+    .summary {
+      font-size: 1.15rem;
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 7px 20px;
+      padding-left: 20px;
+    }
+    .diagram-frame {
+      overflow-x: auto;
+      margin: 18px 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #0a0f14;
+    }
+    .diagram { min-width: 880px; }
+    .caption { margin: 10px 0 0; color: var(--muted); font-size: 0.92rem; }
+    .flow {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      gap: 10px;
+    }
+    .column { display: flex; flex-direction: column; justify-content: center; gap: 10px; min-width: 170px; }
+    .node {
+      min-width: 150px;
+      padding: 12px 14px;
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      background: var(--accent-soft);
+      text-align: center;
+    }
+    .node strong { display: block; margin-bottom: 4px; }
+    .node small { display: block; color: var(--muted); line-height: 1.35; }
+    .client { border-color: var(--green); background: var(--green-soft); }
+    .process { border-color: var(--accent); background: var(--accent-soft); }
+    .worker { border-color: var(--purple); background: var(--purple-soft); }
+    .store { border-color: var(--orange); background: var(--orange-soft); }
+    .external { border-style: dashed; border-color: var(--muted); background: rgba(255, 255, 255, 0.035); }
+    .decision { border-color: var(--orange); background: var(--orange-soft); border-radius: 28px; }
+    .arrow {
+      display: flex;
+      min-width: 42px;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-weight: 700;
+      text-align: center;
+      white-space: pre-line;
+    }
+    .arrow strong { color: var(--accent); font-size: 1.4rem; }
+    .lanes { display: grid; gap: 10px; }
+    .lane {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      align-items: stretch;
+      gap: 10px;
+    }
+    .lane-label {
+      display: grid;
+      place-items: center;
+      padding: 10px;
+      border-radius: 8px;
+      background: var(--panel-2);
+      color: var(--muted);
+      text-align: center;
+      font-weight: 650;
+    }
+    .lane-content { display: flex; align-items: center; gap: 8px; }
+    .lane-content .node { flex: 1; min-width: 125px; }
+    .branch-grid {
+      display: grid;
+      grid-template-columns: 190px 70px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    .branch-targets { display: grid; gap: 10px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0; color: var(--muted); }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      border: 1px solid currentColor;
+      border-radius: 3px;
+      vertical-align: -1px;
+      background: currentColor;
+      opacity: 0.55;
+    }
+    .legend .l-client { color: var(--green); }
+    .legend .l-process { color: var(--accent); }
+    .legend .l-worker { color: var(--purple); }
+    .legend .l-store { color: var(--orange); }
+    .legend .l-external { color: var(--muted); }
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+    .fact { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+    .fact strong { display: block; color: var(--accent); margin-bottom: 4px; }
+    .matrix { width: 100%; border-collapse: collapse; min-width: 760px; }
+    .matrix th, .matrix td { padding: 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .matrix th { background: var(--panel-2); color: var(--accent); }
+    .yes { color: var(--green); font-weight: 700; }
+    .no { color: var(--muted); }
+    .conditional { color: var(--orange); font-weight: 700; }
+    @media (max-width: 640px) {
+      main { width: min(100% - 16px, 1220px); padding-top: 16px; }
+      header, section { padding: 16px; border-radius: 10px; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg: #fff; --panel: #fff; --panel-2: #f3f6f8; --text: #111; --muted: #444; --line: #aaa; --accent: #075b9d; }
+      main { width: 100%; padding: 0; }
+      header, section { break-inside: avoid; }
+      .diagram-frame { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>System Architecture</h1>
+    <p class="meta">Karaoke Eternal · high-level design with section diagrams · updated 2026-08-13</p>
+    <p class="summary">
+      At the highest level, Karaoke Eternal is one self-hosted Node.js service, one browser application used in different roles,
+      one SQLite database, and a set of bounded background workers around a media library on disk.
+    </p>
+    <p>Companion document: <a href="runtime-configuration.html">Runtime Configuration Design</a>.</p>
+  </header>
+
+  <section id="overview">
+    <h2>1. System context</h2>
+    <p>Phones select and queue songs; an administrator manages the room and library; one browser claims the room's active-player role and renders audio/video. All use the same React application and connect to the same server.</p>
+    <div class="legend">
+      <span class="l-client">Browser/client</span><span class="l-process">Server process</span><span class="l-worker">Worker</span><span class="l-store">Persistent storage</span><span class="l-external">External executable/service</span>
+    </div>
+    <div class="diagram-frame" role="img" aria-label="System context diagram">
+      <div class="diagram flow">
+        <div class="column">
+          <div class="node client"><strong>Guest phones</strong><small>Browse · star · queue · control</small></div>
+          <div class="node client"><strong>Admin browser</strong><small>Rooms · users · media · processing</small></div>
+          <div class="node client"><strong>Player browser</strong><small>Fullscreen playback · lyrics · status</small></div>
+        </div>
+        <div class="arrow"><strong>⇄</strong><br>HTTPS + Socket.IO</div>
+        <div class="node process"><strong>Karaoke Eternal server</strong><small>Koa HTTP API · realtime coordination · orchestration</small></div>
+        <div class="arrow"><strong>⇄</strong></div>
+        <div class="column">
+          <div class="node store"><strong>SQLite</strong><small>Library · users · rooms · queues · analysis</small></div>
+          <div class="node store"><strong>Media filesystem</strong><small>Videos · audio · SRT sidecars · downloads</small></div>
+          <div class="node worker"><strong>Background processing</strong><small>Scan · classify · separate · transcode · script</small></div>
+        </div>
+      </div>
+      <p class="caption">The player is not a separate native application; it is a claimed browser role within the same SPA.</p>
+    </div>
+    <div class="facts">
+      <div class="fact"><strong>Deployment shape</strong>Single-host first. SQLite and in-memory realtime registries assume one active server process.</div>
+      <div class="fact"><strong>Source of truth</strong>SQLite and the media filesystem are durable. Redux, socket presence, player claims, queues of work, and caches are reconstructed runtime state.</div>
+      <div class="fact"><strong>Latency strategy</strong>Serve library identity quickly, defer expensive analysis, and prepare only media formats the browser cannot play directly.</div>
+    </div>
+  </section>
+
+  <section id="topology">
+    <h2>2. Runtime process topology</h2>
+    <p>The main process owns orchestration and the writeable database connection. Expensive or blocking work is isolated in child processes, worker threads, or external executables.</p>
+    <div class="diagram-frame" role="img" aria-label="Runtime process topology">
+      <div class="diagram branch-grid">
+        <div class="node process"><strong>Main Node process</strong><small>Lifecycle · write DB · IPC · child supervision</small></div>
+        <div class="arrow"><strong>→</strong><br>starts</div>
+        <div class="branch-targets">
+          <div class="node process"><strong>Web/server worker</strong><small>Koa · Socket.IO · API · queues · playback registry</small></div>
+          <div class="node worker"><strong>Scanner child</strong><small>Read-only DB · filename discovery · metadata pool · IPC writes</small></div>
+          <div class="node worker"><strong>Watcher child</strong><small>Filesystem events → scan requests</small></div>
+          <div class="node worker"><strong>Worker threads</strong><small>Library snapshots · metadata · classifier · VACUUM</small></div>
+          <div class="node external"><strong>External processes</strong><small>FFmpeg · FFprobe · yt-dlp · audio-separator · Python/WhisperX</small></div>
+        </div>
+      </div>
+      <p class="caption">IPC serializes scanner-originated database mutations through the main server-side handlers. Shutdown closes sockets and the database and terminates supervised children.</p>
+    </div>
+  </section>
+
+  <section id="browser">
+    <h2>3. Browser application design</h2>
+    <p>One React SPA changes its visible capabilities based on route, account, room, and player claim. Redux is the local integration layer for HTTP responses, socket actions, optimistic queue operations, and persisted preferences.</p>
+    <div class="diagram-frame" role="img" aria-label="Browser application design">
+      <div class="diagram lanes">
+        <div class="lane"><div class="lane-label">Views</div><div class="lane-content"><div class="node client">Library</div><div class="node client">Queue</div><div class="node client">Account/Admin</div><div class="node client">Player</div></div></div>
+        <div class="lane"><div class="lane-label">Shared UI</div><div class="lane-content"><div class="node client">Header controls</div><div class="node client">Song info/actions</div><div class="node client">Modals/forms</div><div class="node client">Responsive layout</div></div></div>
+        <div class="lane"><div class="lane-label">State</div><div class="lane-content"><div class="node process">Redux slices</div><div class="node process">Thunk actions</div><div class="node process">Throttle middleware</div><div class="node process">Socket middleware</div></div></div>
+        <div class="lane"><div class="lane-label">Transport</div><div class="lane-content"><div class="node external">HTTP API</div><div class="node external">Socket.IO</div><div class="node external">Media range requests</div><div class="node external">Local persistence</div></div></div>
+      </div>
+      <p class="caption">Large library snapshots travel over compressed HTTP. Small realtime changes, queue patches, player status, presence, and processing status travel over Socket.IO.</p>
+    </div>
+  </section>
+
+  <section id="realtime">
+    <h2>4. Realtime synchronization and queue consistency</h2>
+    <p>Socket requests are divided by meaning: durable state-changing commands are acknowledged and retried with request IDs; high-frequency position, seek, and volume traffic is volatile. Queue writes are serialized independently per room.</p>
+    <div class="diagram-frame" role="img" aria-label="Durable socket mutation sequence">
+      <div class="diagram flow">
+        <div class="node client"><strong>Client action</strong><small>requestId + observed queue revision</small></div>
+        <div class="arrow"><strong>→</strong><br>acknowledged</div>
+        <div class="node process"><strong>Validate + rate limit</strong><small>Schema · authorization · idempotency</small></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node process"><strong>Per-room operation lane</strong><small>Arrival order is linearized</small></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node decision"><strong>Revision matches?</strong><small>First arrival wins</small></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="column">
+          <div class="node store"><strong>Commit + publish patch</strong><small>New queue revision</small></div>
+          <div class="node client"><strong>Reject + resync</strong><small>Conflict returns current snapshot</small></div>
+        </div>
+      </div>
+      <p class="caption">“Play Next” is one atomic server operation: revision check, move, and player priority update either all happen or none happen.</p>
+    </div>
+    <div class="diagram-frame" role="img" aria-label="Player synchronization">
+      <div class="diagram flow">
+        <div class="node client"><strong>Player browser</strong><small>Claims one room</small></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node process"><strong>Player registry</strong><small>One active socket + last full status per room</small></div>
+        <div class="arrow"><strong>⇄</strong></div>
+        <div class="column">
+          <div class="node client"><strong>Room controllers</strong><small>Reliable play/pause/next/options</small></div>
+          <div class="node client"><strong>Status displays</strong><small>Reliable snapshots · volatile position</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="library">
+    <h2>5. Library discovery and two-phase analysis</h2>
+    <p>The scanner favors time-to-library. It identifies songs from filenames first, then hands off duration, ReplayGain, stream inspection, and vocal-track classification to background analysis. File size and modification time make slow results reusable across restarts.</p>
+    <div class="diagram-frame" role="img" aria-label="Two-phase library scan">
+      <div class="diagram lanes">
+        <div class="lane"><div class="lane-label">Trigger</div><div class="lane-content"><div class="node worker">Startup/manual scan</div><div class="arrow">or</div><div class="node worker">Watcher event</div><div class="arrow"><strong>→</strong></div><div class="node worker">Scanner child</div></div></div>
+        <div class="lane"><div class="lane-label">Fast phase</div><div class="lane-content"><div class="node process">Enumerate files</div><div class="arrow">→</div><div class="node process">Parse filename</div><div class="arrow">→</div><div class="node process">IPC upsert identity</div><div class="arrow">→</div><div class="node client">Visible library batch</div></div></div>
+        <div class="lane"><div class="lane-label">Fallback</div><div class="lane-content"><div class="node decision">Filename insufficient?</div><div class="arrow">→</div><div class="node worker">Read embedded metadata</div><div class="arrow">→</div><div class="node process">Artist/song identity</div></div></div>
+        <div class="lane"><div class="lane-label">Slow phase</div><div class="lane-content"><div class="node worker">Duration + ReplayGain</div><div class="arrow">+</div><div class="node worker">Streams + KTV classifier</div><div class="arrow">→</div><div class="node store">Analysis tables + media row</div></div></div>
+      </div>
+      <p class="caption">Unchanged files reuse analysis when source size and mtime match. Modified files are automatically re-analyzed.</p>
+    </div>
+    <div class="diagram-frame" role="img" aria-label="Library snapshot publication">
+      <div class="diagram flow">
+        <div class="node store"><strong>SQLite changes</strong></div><div class="arrow">→</div>
+        <div class="node process"><strong>Monotonic version</strong><small>Socket invalidation only</small></div><div class="arrow">→</div>
+        <div class="node worker"><strong>Snapshot worker</strong><small>Read-only DB build</small></div><div class="arrow">→</div>
+        <div class="node process"><strong>HTTP cache</strong><small>JSON · ETag · Brotli/Gzip</small></div><div class="arrow">→</div>
+        <div class="node client"><strong>Redux library</strong><small>Refetches if a newer invalidation arrived in flight</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="playback">
+    <h2>6. Playback and browser-format adaptation</h2>
+    <p>The server probes the source and combines that with formats reported by the player. Compatible streams are served directly or stream-copied. Unsupported video becomes H.264; unsupported audio becomes browser-native audio. Players that cannot combine separate streams receive two combined video variants for fast track switching.</p>
+    <div class="diagram-frame" role="img" aria-label="Playback media resolution">
+      <div class="diagram flow">
+        <div class="node client"><strong>Player loads queue item</strong><small>Supported MIME/codec set</small></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node process"><strong>videoInfo</strong><small>Probe source + classified track mapping</small></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node decision"><strong>Browser supports source?</strong></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="column">
+          <div class="node store"><strong>Direct source</strong><small>Range-stream video/audio</small></div>
+          <div class="node worker"><strong>Prepared fallback</strong><small>H.264 video · AAC/MP3 audio · combined MP4</small></div>
+        </div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node client"><strong>Playback controller</strong><small>Original/instrumental switch · script overlay</small></div>
+      </div>
+    </div>
+    <div class="diagram-frame" role="img" aria-label="Transcode scheduling and cache">
+      <div class="diagram lanes">
+        <div class="lane"><div class="lane-label">Priority 1</div><div class="lane-content"><div class="node client">Requested playback artifact</div><div class="arrow">→</div><div class="node worker">Bounded FFmpeg slots</div></div></div>
+        <div class="lane"><div class="lane-label">Priority 2</div><div class="lane-content"><div class="node process">Alternate audio/combined variant</div><div class="arrow">→</div><div class="node worker">Waiting queue</div></div></div>
+        <div class="lane"><div class="lane-label">Priority 3</div><div class="lane-content"><div class="node process">Upcoming-song pre-cache</div><div class="arrow">→</div><div class="node worker">Replaceable speculative queue</div></div></div>
+        <div class="lane"><div class="lane-label">Result</div><div class="lane-content"><div class="node store">Fingerprint cache</div><div class="arrow">→</div><div class="node process">Deduplicate identical requests</div><div class="arrow">→</div><div class="node process">LRU size pruning</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="processing-policy">
+    <h2>7. Automatic media-processing policy</h2>
+    <p>Processing starts only when it produces a user-visible output. Separation is a preparation step for scripting or instrumental generation, never a standalone automatic task.</p>
+    <div class="diagram-frame" role="img" aria-label="Automatic processing policy matrix">
+      <div class="diagram">
+        <table class="matrix">
+          <thead><tr><th>Source</th><th>Classify vocal track</th><th>Separate vocal</th><th>Generate instrumental A2</th><th>Generate SRT</th></tr></thead>
+          <tbody>
+            <tr><td>Existing library, two tracks</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+            <tr><td>Existing library, one track</td><td class="yes">Yes (A1)</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+            <tr><td>Managed YouTube download, one track</td><td class="yes">Yes (A1)</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+            <tr><td>Managed YouTube download, two tracks</td><td class="yes">Yes</td><td class="yes">Yes, classified vocal track</td><td class="no">No, A2 already exists</td><td class="yes">Yes</td></tr>
+            <tr><td>Admin force-regenerate</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="conditional">Requested output only</td><td class="conditional">Requested output only</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">If a dual-track classifier cannot decide during automatic processing, the job is skipped instead of guessing A1. Forced regeneration may explicitly fall back to A1.</p>
+    </div>
+  </section>
+
+  <section id="separation">
+    <h2>8. Separation, instrumental generation, and scripting</h2>
+    <p>The expensive stem split runs once. After the vocal stem exists, instrumental construction and WhisperX scripting can proceed concurrently because both only read shared temporary output.</p>
+    <div class="diagram-frame" role="img" aria-label="Vocal separation and scripting pipeline">
+      <div class="diagram flow">
+        <div class="node store"><strong>Classified vocal track</strong></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node process"><strong>Normalize input</strong><small>44.1 kHz stereo PCM WAV</small></div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="node external"><strong>audio-separator / Demucs</strong><small>Vocal + non-vocal stems</small></div>
+        <div class="arrow"><strong>⇉</strong><br>parallel</div>
+        <div class="column">
+          <div class="node worker"><strong>Instrumental branch</strong><small>Mix non-vocal stems + 10% vocal · AAC · remux A2 · transcode unsupported video codecs</small></div>
+          <div class="node worker"><strong>Scripting branch</strong><small>16 kHz mono WAV · persistent WhisperX · Silero VAD · alignment · SRT post-processing</small></div>
+        </div>
+        <div class="arrow"><strong>→</strong></div>
+        <div class="column">
+          <div class="node store"><strong>Updated media file</strong><small>Original + instrumental tracks</small></div>
+          <div class="node store"><strong>SRT + language</strong><small>Sidecar file + song database field</small></div>
+        </div>
+      </div>
+      <p class="caption">The persistent WhisperX Python worker mounts ASR/VAD/alignment models on demand and can be mounted, unmounted, paused, or resumed from the admin UI.</p>
+    </div>
+    <div class="diagram-frame" role="img" aria-label="Subtitle post-processing">
+      <div class="diagram flow">
+        <div class="node worker"><strong>WhisperX words</strong><small>Word-level aligned timestamps</small></div><div class="arrow">→</div>
+        <div class="node process"><strong>Punctuation-aware phrases</strong><small>Prefer sentence · comma · ! · ? boundaries</small></div><div class="arrow">→</div>
+        <div class="node process"><strong>Readable width</strong><small>36 Latin · approximately half CJK · configurable minimum</small></div><div class="arrow">→</div>
+        <div class="node process"><strong>Timed two-line cues</strong><small>Rolling replacement layout</small></div><div class="arrow">→</div>
+        <div class="node client"><strong>Theme-highlighted active line</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="persistence">
+    <h2>9. Persistence and data ownership</h2>
+    <p>SQLite stores identity and analysis metadata; large media bytes remain on disk. Generated SRT files live beside their source so library moves and rescans naturally preserve the association.</p>
+    <div class="diagram-frame" role="img" aria-label="Persistence model">
+      <div class="diagram lanes">
+        <div class="lane"><div class="lane-label">Identity</div><div class="lane-content"><div class="node store">artists</div><div class="arrow">1 → many</div><div class="node store">songs</div><div class="arrow">1 → many</div><div class="node store">media</div><div class="arrow">many → 1</div><div class="node store">paths</div></div></div>
+        <div class="lane"><div class="lane-label">Rooms</div><div class="lane-content"><div class="node store">rooms</div><div class="arrow">1 → many</div><div class="node store">queue linked list</div><div class="arrow">many → 1</div><div class="node store">users + roles</div></div></div>
+        <div class="lane"><div class="lane-label">Personalization</div><div class="lane-content"><div class="node store">artistStars</div><div class="node store">songStars</div><div class="node store">prefs</div></div></div>
+        <div class="lane"><div class="lane-label">Analysis</div><div class="lane-content"><div class="node store">audioTrackAnalysis</div><div class="node store">mediaMetadataAnalysis</div><div class="node store">vocalSeparationHistory</div></div></div>
+        <div class="lane"><div class="lane-label">Filesystem</div><div class="lane-content"><div class="node store">Source media</div><div class="node store">SRT sidecars</div><div class="node store">Managed downloads</div><div class="node store">Transcode/model caches</div></div></div>
+      </div>
+      <p class="caption">Analysis rows carry source size and modification time, making “already analyzed” durable while still detecting replacements.</p>
+    </div>
+  </section>
+
+  <section id="security">
+    <h2>10. Authentication, authorization, and isolation</h2>
+    <p>Authentication is cookie-based, but signed claims are never treated as permanently authoritative. The server reconciles every API request and new socket against current database state.</p>
+    <div class="diagram-frame" role="img" aria-label="Authentication and socket room flow">
+      <div class="diagram flow">
+        <div class="node client"><strong>Login</strong><small>Username/password + optional room secret</small></div><div class="arrow">→</div>
+        <div class="node process"><strong>Rate-limited Argon2</strong><small>Failure backoff + concurrency cap</small></div><div class="arrow">→</div>
+        <div class="node store"><strong>User + role + room</strong><small>SQLite validation</small></div><div class="arrow">→</div>
+        <div class="node client"><strong>HTTP-only JWT cookie</strong><small>SameSite=Lax · expiring · Secure on HTTPS</small></div><div class="arrow">→</div>
+        <div class="node process"><strong>Per-request revalidation</strong><small>Deleted/changed accounts and rooms rejected</small></div><div class="arrow">→</div>
+        <div class="column">
+          <div class="node process"><strong>User socket room</strong></div>
+          <div class="node process"><strong>Room socket group</strong></div>
+          <div class="node process"><strong>Admin groups</strong></div>
+        </div>
+      </div>
+    </div>
+    <div class="facts">
+      <div class="fact"><strong>Authorization boundary</strong>Admin-only preferences, user management, room management, media regeneration, and model controls are checked server-side.</div>
+      <div class="fact"><strong>Room isolation</strong>Queue, player commands, YouTube jobs, and status broadcasts are scoped to Socket.IO room identities.</div>
+      <div class="fact"><strong>Guest lifecycle</strong>Guest accounts older than the retention window are deleted with queue and star data; registered roles are preserved.</div>
+    </div>
+  </section>
+
+  <section id="resource-control">
+    <h2>11. Resource control and failure containment</h2>
+    <p>Each expensive subsystem has an explicit concurrency, queue, cache, or timeout boundary so one malformed file or burst of clients cannot permanently stall the service.</p>
+    <div class="diagram-frame" role="img" aria-label="Resource control lanes">
+      <div class="diagram lanes">
+        <div class="lane"><div class="lane-label">HTTP media</div><div class="lane-content"><div class="node process">Per-user request window</div><div class="arrow">→</div><div class="node process">Queue limit</div><div class="arrow">→</div><div class="node worker">Bounded FFmpeg slots</div></div></div>
+        <div class="lane"><div class="lane-label">Scanner</div><div class="lane-content"><div class="node worker">Bounded metadata pool</div><div class="arrow">→</div><div class="node process">Batched IPC</div><div class="arrow">→</div><div class="node worker">Background analysis queues</div></div></div>
+        <div class="lane"><div class="lane-label">Processing</div><div class="lane-content"><div class="node process">Deduplicate mediaId</div><div class="arrow">→</div><div class="node worker">Serial preparation queue</div><div class="arrow">→</div><div class="node worker">Parallel finishing branches</div></div></div>
+        <div class="lane"><div class="lane-label">Processes</div><div class="lane-content"><div class="node process">Stage timeout</div><div class="arrow">→</div><div class="node external">SIGTERM</div><div class="arrow">→</div><div class="node external">SIGKILL escalation</div></div></div>
+        <div class="lane"><div class="lane-label">Storage</div><div class="lane-content"><div class="node store">Fingerprint reuse</div><div class="arrow">→</div><div class="node store">LRU cache cap</div><div class="arrow">→</div><div class="node worker">Delayed VACUUM worker</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="youtube-flow">
+    <h2>12. YouTube import flow</h2>
+    <p>Imports are managed jobs associated with the requesting user and room. Download origin is persisted so later policy can distinguish managed downloads from existing library media.</p>
+    <div class="diagram-frame" role="img" aria-label="YouTube import lifecycle">
+      <div class="diagram flow">
+        <div class="node client"><strong>Submit URL</strong></div><div class="arrow">→</div>
+        <div class="node process"><strong>Validate + create job</strong><small>At most two active downloads</small></div><div class="arrow">→</div>
+        <div class="node external"><strong>yt-dlp</strong><small>Primary format → alternate client → HLS fallback</small></div><div class="arrow">→</div>
+        <div class="node store"><strong>Managed download path</strong><small>Origin marker retained in DB</small></div><div class="arrow">→</div>
+        <div class="node worker"><strong>Fast scan + slow analysis</strong></div><div class="arrow">→</div>
+        <div class="node process"><strong>Processing policy</strong><small>Classify · separate · instrumental/script as required</small></div><div class="arrow">→</div>
+        <div class="node store"><strong>Add song to room queue</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="design-boundaries">
+    <h2>13. Intentional boundaries</h2>
+    <div class="facts">
+      <div class="fact"><strong>Single server instance</strong>Player claims, socket presence, request idempotency, queue operation lanes, and in-memory job registries are process-local. Horizontal scaling requires shared coordination before multiple server instances are safe.</div>
+      <div class="fact"><strong>Filesystem is part of the model</strong>The database identifies media, but source bytes and SRT sidecars remain authoritative on disk. Paths must be stable and writable for generated outputs.</div>
+      <div class="fact"><strong>Browser capability wins</strong>The server avoids universal pre-transcoding. It adapts only when a player reports that a source stream or separate-stream playback is unsupported.</div>
+      <div class="fact"><strong>Background work is recoverable</strong>Processing queues are runtime state. Durable analysis markers and generated files prevent unnecessary repetition after restart, while incomplete work can be safely scheduled again.</div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

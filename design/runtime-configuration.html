@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Eternal — Runtime Configuration Design</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b1015;
+      --panel: #121a22;
+      --panel-alt: #17222d;
+      --text: #e7edf4;
+      --muted: #aebdca;
+      --line: #2c3d4c;
+      --accent: #68b9ff;
+      --accent-soft: rgba(104, 185, 255, 0.12);
+      --warning: #ffd479;
+      --code: #d8edff;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 80px; }
+    header, section {
+      margin-bottom: 24px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 3.5rem); }
+    h2 { margin: 0 0 16px; color: var(--accent); }
+    h3 { margin: 24px 0 10px; }
+    p { max-width: 85ch; }
+    a { color: var(--accent); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { color: var(--code); }
+    pre {
+      overflow-x: auto;
+      padding: 16px;
+      border-radius: 10px;
+      background: #080c10;
+      color: var(--code);
+    }
+    .meta, .note {
+      color: var(--muted);
+    }
+    .callout {
+      margin: 16px 0;
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+    .warning { border-left-color: var(--warning); }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px 20px;
+      padding-left: 20px;
+    }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 800px; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--panel-alt); color: var(--accent); position: sticky; top: 0; }
+    td:first-child { white-space: nowrap; }
+    tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+    .unit { white-space: nowrap; color: var(--muted); }
+    ul { padding-left: 22px; }
+    @media (max-width: 640px) {
+      main { width: min(100% - 16px, 1180px); padding-top: 16px; }
+      header, section { padding: 16px; border-radius: 10px; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg: #fff; --panel: #fff; --panel-alt: #f4f7f9; --text: #111; --muted: #444; --line: #bbb; --accent: #075b9d; --code: #123; }
+      main { width: 100%; padding: 0; }
+      header, section { break-inside: avoid; box-shadow: none; }
+      th { position: static; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Runtime Configuration Design</h1>
+    <p class="meta">Karaoke Eternal · implementation status: current · updated 2026-08-13</p>
+    <p><a href="system-architecture.html">System Architecture Design</a></p>
+    <p>
+      This document is the design inventory for runtime configuration. It covers server startup,
+      authentication, guest retention, media delivery, transcoding, background processing,
+      WhisperX, vocal separation, audio-track classification, and maintenance.
+    </p>
+  </header>
+
+  <section id="principles">
+    <h2>Configuration rules</h2>
+    <ul>
+      <li>Environment variables are read when the owning module or process starts. Restart the server after changing them.</li>
+      <li>For options exposed by both CLI and environment, an explicit CLI option wins.</li>
+      <li>Invalid numeric values generally fall back to the documented default; a few bounded values are clamped as noted.</li>
+      <li>Durations ending in <code>_MS</code> use milliseconds. <code>KES_SESSION_MAX_AGE_SECONDS</code> uses seconds.</li>
+      <li>YAML processing configuration is validated strictly. Invalid values stop that configuration from loading.</li>
+      <li>Sensitive paths and provider URLs should be supplied through deployment secrets or environment files, not committed.</li>
+    </ul>
+    <div class="callout warning">
+      Existing cookies issued before expiring sessions were introduced do not contain an expiration claim and require one new sign-in.
+    </div>
+    <h3>Contents</h3>
+    <ul class="toc">
+      <li><a href="#security">Security and account lifecycle</a></li>
+      <li><a href="#capacity">Media capacity and caching</a></li>
+      <li><a href="#timeouts">Process deadlines</a></li>
+      <li><a href="#server">Server and scanner</a></li>
+      <li><a href="#paths">Executable and configuration paths</a></li>
+      <li><a href="#youtube">YouTube integration</a></li>
+      <li><a href="#separation">Vocal separation and scripting YAML</a></li>
+      <li><a href="#detector">Audio-track classifier YAML</a></li>
+      <li><a href="#examples">Deployment examples</a></li>
+    </ul>
+  </section>
+
+  <section id="security">
+    <h2>Security and account lifecycle</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Unit</th><th>Design and operational effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>KES_SESSION_MAX_AGE_SECONDS</code></td><td><code>604800</code></td><td class="unit">seconds (7 days)</td><td>Maximum signed-login lifetime. Every HTTP request and socket connection also revalidates the current user, role, account revision, and room, so deletion or authorization changes revoke a session immediately.</td></tr>
+          <tr><td><code>KES_LOGIN_MAX_CONCURRENT</code></td><td><code>4</code></td><td class="unit">operations</td><td>Maximum simultaneous password verification operations server-wide. Additional attempts receive HTTP 429, protecting CPU and memory from excessive Argon2 work.</td></tr>
+          <tr><td><code>KES_LOGIN_MAX_FAILURES</code></td><td><code>5</code></td><td class="unit">attempts</td><td>Failures allowed for one IP-address/username pair before backoff. The fifth failure establishes the first delay; a request made during that delay is rejected.</td></tr>
+          <tr><td><code>KES_LOGIN_FAILURE_WINDOW_MS</code></td><td><code>900000</code></td><td class="unit">15 minutes</td><td>Inactive failure records older than this window expire.</td></tr>
+          <tr><td><code>KES_LOGIN_BACKOFF_MS</code></td><td><code>1000</code></td><td class="unit">milliseconds</td><td>Initial delay after reaching the failure threshold. Repeated failures double the delay. With the default, delays rise from 1 second to a maximum effective delay of 256 seconds and never exceed the five-minute safety ceiling.</td></tr>
+          <tr><td><code>KES_GUEST_RETENTION_DAYS</code></td><td><code>7</code></td><td class="unit">days</td><td>Deletes accounts whose current role is <code>guest</code> once their creation age crosses the cutoff. Promoted/registered users are not affected. Associated queue entries and stars are deleted, and remaining guest sockets are disconnected.</td></tr>
+          <tr><td><code>KES_GUEST_CLEANUP_INTERVAL_MS</code></td><td><code>21600000</code></td><td class="unit">6 hours</td><td>Frequency of expired-guest checks. Cleanup also runs once at server startup, so actual removal occurs at startup or within one interval after the retention cutoff.</td></tr>
+          <tr><td><code>KES_ROTATE_KEY</code></td><td><code>false</code></td><td class="unit">boolean</td><td>Rotates the JWT signing key at startup and invalidates all existing login cookies. Accepted true values are <code>1</code> and <code>true</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="capacity">
+    <h2>Media capacity, delivery, and caching</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Unit</th><th>Design and operational effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>KES_PRECACHE_COUNT</code></td><td><code>5</code></td><td class="unit">queue items</td><td>Upcoming items submitted for speculative preparation. <code>0</code> disables pre-caching; values are clamped to 0–100.</td></tr>
+          <tr><td><code>KES_TRANSCODE_CONCURRENCY</code></td><td><code>2</code></td><td class="unit">FFmpeg jobs</td><td>Maximum browser-media FFmpeg jobs running simultaneously. Playback jobs are selected before alternate-track and pre-cache jobs.</td></tr>
+          <tr><td><code>KES_TRANSCODE_QUEUE_LIMIT</code></td><td><code>50</code></td><td class="unit">waiting jobs</td><td>Hard backlog limit. A playback request may evict one queued background job; requests are rejected with HTTP 503 when no capacity remains.</td></tr>
+          <tr><td><code>KES_MEDIA_REQUESTS_PER_MINUTE</code></td><td><code>240</code></td><td class="unit">requests/user/minute</td><td>Per-signed-in-user limit for media and pre-cache endpoints. Protects the scheduler without interfering with normal range requests and audio switching.</td></tr>
+          <tr><td><code>KES_TRANSCODE_MAX_SIZE_GB</code></td><td><code>8</code></td><td class="unit">GiB</td><td>Maximum completed artifact-cache size. Least-recently-used cache directories are pruned first. Values below 1 are raised to 1.</td></tr>
+          <tr><td><code>KES_TRANSCODE_PRESET</code></td><td><code>veryfast</code></td><td class="unit">FFmpeg preset</td><td>x264 speed/compression tradeoff. Slower presets reduce output size but delay initial playback and consume more CPU.</td></tr>
+          <tr><td><code>KES_TRANSCODE_CRF</code></td><td><code>20</code></td><td class="unit">CRF</td><td>H.264 quality target. Lower values increase quality and file size; higher values reduce both.</td></tr>
+          <tr><td><code>KES_TRANSCODE_AUDIO_BITRATE</code></td><td><code>192k</code></td><td class="unit">bit rate</td><td>AAC/MP3 rate used for browser-compatible fallback audio.</td></tr>
+          <tr><td><code>KES_DATABASE_MAINTENANCE_DELAY_MS</code></td><td><code>60000</code></td><td class="unit">milliseconds</td><td>Delay before coalesced database compaction begins in a worker after cleanup. <code>0</code> schedules it immediately. The worker keeps SQLite VACUUM work off the Node event loop.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      Scheduler priority is fixed by design: requested playback → alternate-track preparation → speculative queue pre-cache.
+      Identical artifact requests share one job, and FFprobe results are cached by source fingerprint.
+    </div>
+  </section>
+
+  <section id="timeouts">
+    <h2>Process and worker deadlines</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Applies to</th><th>Failure behavior</th></tr></thead>
+        <tbody>
+          <tr><td><code>KES_TRANSCODE_TIMEOUT_MS</code></td><td><code>600000</code> (10 min)</td><td>One browser-media FFmpeg artifact</td><td>The artifact fails and its partial file is removed.</td></tr>
+          <tr><td><code>KES_FFPROBE_TIMEOUT_MS</code></td><td><code>30000</code> (30 sec)</td><td>Codec, duration, and stream probes</td><td>The request or processing stage fails instead of holding a queue indefinitely.</td></tr>
+          <tr><td><code>KES_MEDIA_PROCESS_TIMEOUT_MS</code></td><td><code>600000</code> (10 min)</td><td>FFmpeg steps used by separation and scripting</td><td>The active media-processing stage fails and temporary work is cleaned.</td></tr>
+          <tr><td><code>KES_SEPARATOR_TIMEOUT_MS</code></td><td><code>1800000</code> (30 min)</td><td>One audio-separator/Demucs invocation</td><td>The separation task fails and the queue advances.</td></tr>
+          <tr><td><code>KES_AUDIO_CLASSIFIER_TIMEOUT_MS</code></td><td><code>120000</code> (2 min)</td><td>Dual-audio vocal/instrumental classifier worker</td><td>The worker terminates; callers may fall back to physical track order.</td></tr>
+          <tr><td><code>KES_METADATA_TIMEOUT_MS</code></td><td><code>120000</code> (2 min)</td><td>Slow technical metadata worker</td><td>The worker terminates and the next background metadata job can run.</td></tr>
+          <tr><td><code>KES_WHISPERX_TIMEOUT_MS</code></td><td><code>600000</code> (10 min)</td><td>Each WhisperX worker request, including mount/transcribe commands</td><td>The pending request fails; the worker can be restarted for later work.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Timed-out child processes receive SIGTERM, followed by SIGKILL after the process-runner grace period if they do not exit.</p>
+  </section>
+
+  <section id="server">
+    <h2>Server, scanner, logging, and identity</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Purpose and constraints</th></tr></thead>
+        <tbody>
+          <tr><td><code>KES_PATH_DATA</code></td><td>Platform application-data directory</td><td>Database, signing key, and persistent server data. CLI equivalent: <code>--data</code>.</td></tr>
+          <tr><td><code>KES_PORT</code></td><td><code>0</code> (automatic)</td><td>HTTP port. CLI equivalents: <code>-p</code> / <code>--port</code>.</td></tr>
+          <tr><td><code>KES_URL_PATH</code></td><td><code>/</code></td><td>Base path for HTTP, API, assets, and Socket.IO. Must begin with <code>/</code>. CLI equivalent: <code>--urlPath</code>.</td></tr>
+          <tr><td><code>KES_SCAN</code></td><td>unset</td><td>Startup scan target: <code>all</code> or a comma-separated set of path IDs. CLI equivalent: <code>--scan</code>.</td></tr>
+          <tr><td><code>KES_SCAN_WORKERS</code></td><td><code>4</code></td><td>Parallel fast metadata scanner workers, clamped to 1–32.</td></tr>
+          <tr><td><code>KES_FILENAME_FORMAT</code></td><td>empty</td><td>Set to <code>artist-title-language</code> to parse a language suffix from filenames.</td></tr>
+          <tr><td><code>KES_SERVER_CONSOLE_LEVEL</code></td><td><code>4</code> production</td><td>Server console verbosity: 0 off, 1 error, 2 warn, 3 info, 4 verbose, 5 debug.</td></tr>
+          <tr><td><code>KES_SERVER_LOG_LEVEL</code></td><td><code>3</code> production</td><td>Server file-log verbosity using the same 0–5 scale.</td></tr>
+          <tr><td><code>KES_SCANNER_CONSOLE_LEVEL</code></td><td><code>4</code> production</td><td>Scanner/watcher console verbosity using the same 0–5 scale.</td></tr>
+          <tr><td><code>KES_SCANNER_LOG_LEVEL</code></td><td><code>3</code> production</td><td>Scanner/watcher file-log verbosity using the same 0–5 scale.</td></tr>
+          <tr><td><code>KES_CONSOLE_COLORS</code></td><td>logger default</td><td><code>0</code> or <code>false</code> disables styled console output; other non-empty values enable it.</td></tr>
+          <tr><td><code>PUID</code></td><td>unset</td><td>Unix user ID applied to the server and child processes in container-style deployments.</td></tr>
+          <tr><td><code>PGID</code></td><td>unset</td><td>Unix group ID applied before PUID.</td></tr>
+          <tr><td><code>NODE_ENV</code></td><td>deployment-defined</td><td>Selects development middleware and development logging defaults. Production deployments should use <code>production</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="paths">
+    <h2>Executable, model, cache, and configuration paths</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>KES_PATH_DOWNLOADS</code></td><td><code>/media/downloads</code></td><td>Managed YouTube downloads and the <code>.karaoke-eternal-models</code> model cache.</td></tr>
+          <tr><td><code>KES_PATH_TRANSCODE</code></td><td>OS temporary directory/<code>karaoke-eternal-transcode</code></td><td>Fingerprint-versioned browser-media artifact cache.</td></tr>
+          <tr><td><code>KES_PATH_FFMPEG</code></td><td><code>ffmpeg</code></td><td>FFmpeg executable.</td></tr>
+          <tr><td><code>KES_PATH_FFPROBE</code></td><td><code>ffprobe</code></td><td>FFprobe executable.</td></tr>
+          <tr><td><code>KES_PATH_AUDIO_SEPARATOR</code></td><td><code>audio-separator</code></td><td>audio-separator executable used for Demucs inference.</td></tr>
+          <tr><td><code>KES_PATH_PYTHON</code></td><td><code>python</code></td><td>Python executable used for the persistent WhisperX worker.</td></tr>
+          <tr><td><code>KES_PATH_WHISPERX_WORKER</code></td><td><code>/opt/processing/whisperx_worker.py</code></td><td>WhisperX JSON-line worker entry point.</td></tr>
+          <tr><td><code>KES_PATH_VOCAL_SEPARATION_CONFIG</code></td><td><code>config/vocal-separation.yaml</code></td><td>Separation, instrumental-mixing, WhisperX, VAD, and subtitle-layout configuration.</td></tr>
+          <tr><td><code>KES_PATH_KTV_DETECTOR_CONFIG</code></td><td><code>config/ktv-detector.yaml</code></td><td>Dual-audio vocal/instrumental classification configuration.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="youtube">
+    <h2>YouTube integration</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>KES_YOUTUBE_MAX_DURATION</code></td><td><code>300</code> seconds</td><td>Maximum accepted download duration. Minimum effective value is one second.</td></tr>
+          <tr><td><code>KES_YOUTUBE_POT_PROVIDER_URL</code></td><td>unset</td><td>Optional proof-of-origin token provider URL passed to the YouTube download integration.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="separation">
+    <h2>Vocal separation and scripting YAML</h2>
+    <p>Loaded from <code>KES_PATH_VOCAL_SEPARATION_CONFIG</code>. Defaults below match <code>config/vocal-separation.yaml</code>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>YAML key</th><th>Default</th><th>Meaning and validation</th></tr></thead>
+        <tbody>
+          <tr><td><code>enabled</code></td><td><code>true</code></td><td>Master switch for automatic vocal separation.</td></tr>
+          <tr><td><code>model</code></td><td><code>htdemucs.yaml</code></td><td>audio-separator model filename. The regular, non-fine-tuned HTDemucs model is the speed/quality default.</td></tr>
+          <tr><td><code>segmentSeconds</code></td><td><code>7.8</code></td><td>Demucs segment duration.</td></tr>
+          <tr><td><code>overlap</code></td><td><code>0.25</code></td><td>Overlap between separation segments.</td></tr>
+          <tr><td><code>shifts</code></td><td><code>0</code></td><td>Integer shift count; higher values increase runtime.</td></tr>
+          <tr><td><code>outputBitrate</code></td><td><code>192k</code></td><td>AAC bitrate for the generated instrumental track.</td></tr>
+          <tr><td><code>instrumentalVocalMix</code></td><td><code>0.1</code></td><td>Separated vocal blended into the instrumental, constrained to 0–1.</td></tr>
+          <tr><td><code>scripting.enabled</code></td><td><code>true</code></td><td>Enables SRT generation where media-processing policy requires it.</td></tr>
+          <tr><td><code>scripting.model</code></td><td><code>large-v3</code></td><td>Whisper model mounted by the persistent worker.</td></tr>
+          <tr><td><code>scripting.language</code></td><td>unset</td><td>Unset means automatic language detection. A configured value forces that language.</td></tr>
+          <tr><td><code>scripting.vadOnset</code></td><td><code>0.15</code></td><td>Silero voice threshold, strictly between 0 and 1. Lower values retain quieter sung vocals but may increase false lyric lines.</td></tr>
+          <tr><td><code>scripting.vadChunkSeconds</code></td><td><code>15</code></td><td>VAD/transcription chunk duration, constrained to 5–30 seconds.</td></tr>
+          <tr><td><code>scripting.beamSize</code></td><td><code>8</code></td><td>Positive integer decoding beam size. Higher values cost more CPU.</td></tr>
+          <tr><td><code>scripting.maxLineWidth</code></td><td><code>36</code></td><td>Preferred Latin-script subtitle width. Chinese and Cantonese use approximately half this width.</td></tr>
+          <tr><td><code>scripting.maxLineCount</code></td><td><code>2</code></td><td>Maximum composed subtitle lines per cue.</td></tr>
+          <tr><td><code>scripting.minLineWidth</code></td><td><code>12</code></td><td>Minimum preferred phrase length before retaining text after punctuation; Chinese and Cantonese use approximately half.</td></tr>
+          <tr><td><code>scripting.initialPrompt</code></td><td>unset</td><td>Optional Whisper prompt. Keeping it unset avoids prompt text being hallucinated as lyrics.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="detector">
+    <h2>Dual-audio track classifier YAML</h2>
+    <p>Loaded from <code>KES_PATH_KTV_DETECTOR_CONFIG</code>. Defaults below match <code>config/ktv-detector.yaml</code>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>YAML key</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>windowSeconds</code></td><td><code>5</code></td><td>Duration sampled per spectral analysis window.</td></tr>
+          <tr><td><code>smoothingFrames</code></td><td><code>1</code></td><td>Temporal smoothing radius applied to spectral frames.</td></tr>
+          <tr><td><code>lagFrames</code></td><td><code>4</code></td><td>Frame distance used to measure vocal-band complexity changes.</td></tr>
+          <tr><td><code>vocalLowHz</code></td><td><code>300</code></td><td>Lower frequency bound for vocal evidence.</td></tr>
+          <tr><td><code>vocalHighHz</code></td><td><code>3000</code></td><td>Upper frequency bound for vocal evidence.</td></tr>
+          <tr><td><code>minimumAgreement</code></td><td><code>0.55</code></td><td>Minimum proportion of windows agreeing on which track contains vocals.</td></tr>
+          <tr><td><code>minimumComplexity</code></td><td><code>0.003</code></td><td>Minimum relative vocal-complexity evidence before assigning tracks; below this, classification remains unknown and physical A1 ordering is retained.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="examples">
+    <h2>Deployment examples</h2>
+    <h3>Balanced home server</h3>
+    <pre><code>KES_SESSION_MAX_AGE_SECONDS=604800
+KES_LOGIN_MAX_FAILURES=5
+KES_GUEST_RETENTION_DAYS=7
+KES_TRANSCODE_CONCURRENCY=2
+KES_TRANSCODE_QUEUE_LIMIT=50
+KES_PRECACHE_COUNT=5
+KES_WHISPERX_TIMEOUT_MS=600000</code></pre>
+
+    <h3>Low-power CPU</h3>
+    <pre><code>KES_TRANSCODE_CONCURRENCY=1
+KES_TRANSCODE_QUEUE_LIMIT=20
+KES_PRECACHE_COUNT=2
+KES_SCAN_WORKERS=2
+KES_TRANSCODE_PRESET=veryfast</code></pre>
+
+    <h3>Operational guidance</h3>
+    <ul>
+      <li>Raise concurrency only after measuring CPU, memory, thermals, and playback startup latency.</li>
+      <li>Keep playback timeouts long enough for the largest supported media on the slowest deployed CPU.</li>
+      <li>Reducing guest retention removes guest queue history and stars sooner; converting a guest to a registered role preserves the account.</li>
+      <li>When exposed outside a trusted LAN, use HTTPS, keep login limits enabled, and place provider URLs and credentials in deployment secrets.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
