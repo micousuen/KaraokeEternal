@@ -3,26 +3,27 @@ import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { formatDateTime } from 'lib/dateTime'
 import Panel from 'components/Panel/Panel'
 import Button from 'components/Button/Button'
-import EditRoom from './EditRoom/EditRoom'
-import { closeRoomEditor, fetchRooms, openRoomEditor } from 'store/modules/rooms'
+import AdminTable from '../../components/AdminTable/AdminTable'
+import RoomEditor from './RoomEditor'
+import { fetchRooms } from 'store/modules/rooms'
 import { joinRoomAsAdmin } from 'store/modules/user'
-import { filterByRoom } from '../../modules/users'
-import getRoomList from '../../selectors/getRoomList'
-import styles from './Rooms.css'
+import { filterByRoom } from '../users/model'
+import getRoomList from './selectors'
+import styles from './RoomsPanel.css'
+import type { Room } from 'shared/types'
 
-const Rooms = () => {
-  const [editorRoom, setEditorRoom] = useState(null)
+const RoomsPanel = () => {
+  const [editorRoom, setEditorRoom] = useState<Room | null | undefined>(undefined)
 
-  const { isEditorOpen } = useAppSelector(state => state.rooms)
   const rooms = useAppSelector(getRoomList)
 
   const dispatch = useAppDispatch()
-  const handleClose = () => dispatch(closeRoomEditor())
+  const handleClose = () => setEditorRoom(undefined)
   const handleFilterUsers = (e: React.MouseEvent<HTMLElement>) => dispatch(filterByRoom(parseInt(e.currentTarget.dataset.roomId)))
-  const handleOpen = (e: React.MouseEvent<HTMLElement>) => {
+  const handleEdit = (e: React.MouseEvent<HTMLElement>) => {
     setEditorRoom(rooms.entities[parseInt(e.currentTarget.dataset.roomId || '0')])
-    dispatch(openRoomEditor())
   }
+  const handleCreate = () => setEditorRoom(null)
   const handleJoin = (roomId: number, destination: 'library' | 'player') => {
     dispatch(joinRoomAsAdmin({ roomId, destination }))
   }
@@ -37,7 +38,7 @@ const Rooms = () => {
       <tr key={String(roomId)}>
         <td translate='no'>
           <div className={styles.roomCell}>
-            <a className={styles.roomName} data-room-id={roomId} onClick={handleOpen}>{room.name}</a>
+            <a className={styles.roomName} data-room-id={roomId} onClick={handleEdit}>{room.name}</a>
             <div className={styles.roomActions}>
               <Button className={styles.roomButton} variant='primary' onClick={() => handleJoin(roomId, 'library')}>
                 Join Room
@@ -65,7 +66,7 @@ const Rooms = () => {
   return (
     <Panel title='Rooms'>
       <>
-        <table className={styles.table}>
+        <AdminTable className={styles.roomTable}>
           <thead>
             <tr>
               <th>Name</th>
@@ -76,17 +77,17 @@ const Rooms = () => {
           <tbody>
             {rows}
           </tbody>
-        </table>
+        </AdminTable>
 
         <br />
-        <Button onClick={handleOpen} variant='primary'>
+        <Button onClick={handleCreate} variant='primary'>
           Create Room
         </Button>
 
-        {isEditorOpen && <EditRoom onClose={handleClose} room={editorRoom} />}
+        {editorRoom !== undefined && <RoomEditor onClose={handleClose} room={editorRoom ?? undefined} />}
       </>
     </Panel>
   )
 }
 
-export default Rooms
+export default RoomsPanel

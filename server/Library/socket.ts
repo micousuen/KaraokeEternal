@@ -1,5 +1,6 @@
 import Library from './Library.js'
 import { STAR_SONG, SONG_STARRED, UNSTAR_SONG, SONG_UNSTARRED, _SUCCESS } from '../../shared/actionTypes.js'
+import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
 
 const ACTION_HANDLERS = {
   [STAR_SONG]: (sock, { payload }, acknowledge) => {
@@ -36,6 +37,6 @@ const ACTION_HANDLERS = {
       })
     }
   },
-}
+} satisfies SocketHandlerMap
 
 export default ACTION_HANDLERS

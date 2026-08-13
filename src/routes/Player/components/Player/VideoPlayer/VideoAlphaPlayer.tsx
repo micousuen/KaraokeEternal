@@ -1,16 +1,12 @@
 import React from 'react'
 import GLChroma from 'gl-chromakey'
-import { VideoPlaybackController, type VideoPlaybackProps } from './VideoPlaybackController'
+import { updatePlaybackController, VideoPlaybackController, type VideoPlaybackUpdateProps } from './VideoPlaybackController'
 import styles from './VideoPlayer.css'
 
 const BACKDROP_PADDING = 10
 const BORDER_RADIUS = parseInt(getComputedStyle(document.body).getPropertyValue('--border-radius'))
 
-interface VideoAlphaPlayerProps extends VideoPlaybackProps {
-  mediaKey: number
-  mediaReplayKey?: number
-  mediaSeekKey?: number
-  seekPosition: number
+interface VideoAlphaPlayerProps extends VideoPlaybackUpdateProps {
   videoAlpha: number
   width: number
   height: number
@@ -62,23 +58,7 @@ class VideoAlphaPlayer extends React.Component<VideoAlphaPlayerProps> {
   }
 
   componentDidUpdate (prevProps: VideoAlphaPlayerProps) {
-    if (prevProps.mediaKey !== this.props.mediaKey) {
-      this.controller.updateSources()
-      return
-    }
-    if (prevProps.audioTrack !== this.props.audioTrack) {
-      this.controller.updateAudioSource(this.audio.currentTime || 0)
-      return
-    }
-    if (prevProps.mediaReplayKey !== this.props.mediaReplayKey) {
-      this.controller.setCurrentTime(0)
-      return
-    }
-    if (prevProps.mediaSeekKey !== this.props.mediaSeekKey) {
-      this.controller.setCurrentTime(this.props.seekPosition)
-      return
-    }
-    if (prevProps.isPlaying !== this.props.isPlaying) this.controller.updateIsPlaying()
+    if (updatePlaybackController(this.controller, prevProps, this.props, this.audio.currentTime || 0)) return
 
     if (!this.props.isPlaying && (
       prevProps.width !== this.props.width

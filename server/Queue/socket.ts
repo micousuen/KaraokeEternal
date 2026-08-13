@@ -1,6 +1,8 @@
 import Queue from './Queue.js'
 import Rooms from '../Rooms/Rooms.js'
 import { PLAYER_CMD_PRIORITY, QUEUE_ADD, QUEUE_MOVE, QUEUE_REMOVE, QUEUE_SHUFFLE, QUEUE_PUSH } from '../../shared/actionTypes.js'
+import { emitToRoom } from '../lib/socketActions.js'
+import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
 
 // ------------------------------------
 // Action Handlers
@@ -28,10 +30,7 @@ const ACTION_HANDLERS = {
     acknowledge({ type: QUEUE_ADD + '_SUCCESS' })
 
     // to all in room
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: QUEUE_PUSH,
-      payload: Queue.get(sock.user.roomId),
-    })
+    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
   },
   [QUEUE_MOVE]: async (sock, { payload }, acknowledge) => {
     const { queueId, prevQueueId } = payload
@@ -55,10 +54,7 @@ const ACTION_HANDLERS = {
     acknowledge({ type: QUEUE_MOVE + '_SUCCESS' })
 
     // tell room
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: QUEUE_PUSH,
-      payload: Queue.get(sock.user.roomId),
-    })
+    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
   },
   [QUEUE_SHUFFLE]: async (sock, { payload }, acknowledge) => {
     await Rooms.validate(sock.user.roomId, null, { validatePassword: false })
@@ -66,15 +62,8 @@ const ACTION_HANDLERS = {
 
     acknowledge({ type: QUEUE_SHUFFLE + '_SUCCESS' })
 
-    const room = Rooms.prefix(sock.user.roomId)
-    sock.server.to(room).emit('action', {
-      type: PLAYER_CMD_PRIORITY,
-      payload: { queueId: null },
-    })
-    sock.server.to(room).emit('action', {
-      type: QUEUE_PUSH,
-      payload: Queue.get(sock.user.roomId),
-    })
+    emitToRoom(sock, PLAYER_CMD_PRIORITY, { queueId: null })
+    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
   },
   [QUEUE_REMOVE]: (sock, { payload }, acknowledge) => {
     const { queueId } = payload
@@ -95,11 +84,8 @@ const ACTION_HANDLERS = {
     acknowledge({ type: QUEUE_REMOVE + '_SUCCESS' })
 
     // tell room
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: QUEUE_PUSH,
-      payload: Queue.get(sock.user.roomId),
-    })
+    emitToRoom(sock, QUEUE_PUSH, Queue.get(sock.user.roomId))
   },
-}
+} satisfies SocketHandlerMap
 
 export default ACTION_HANDLERS

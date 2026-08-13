@@ -19,7 +19,6 @@ import {
   PLAYER_LOAD,
   PLAYER_PLAY,
   PLAYER_UPDATE,
-  REDUX_SLICE_INJECT_NOOP,
 } from 'shared/actionTypes'
 import { createInitialPlaybackStatus, type PlaybackCoreStatus } from 'shared/types'
 
@@ -210,5 +209,3 @@ declare module 'store/reducers' {
     player: typeof initialState
   }
 }
-
-export const sliceInjectNoOp = createAction(REDUX_SLICE_INJECT_NOOP)

@@ -57,7 +57,7 @@ describe('socket authorization', () => {
     const server = { in: vi.fn() }
     const socket = { user: { isAdmin: false }, server }
 
-    await roomsHandlers[ROOM_PREFS_PUSH_REQUEST](socket, { payload: { roomId: 1 } }, acknowledge)
+    await roomsHandlers[ROOM_PREFS_PUSH_REQUEST](socket, { payload: { roomId: 1, prefs: {} as never } }, acknowledge)
 
     expect(acknowledge).toHaveBeenCalledWith({
       type: ROOM_PREFS_PUSH_REQUEST + _ERROR,

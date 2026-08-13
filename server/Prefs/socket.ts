@@ -1,17 +1,14 @@
 import getLogger from '../lib/Log.js'
 import Library from '../Library/Library.js'
 import Prefs from './Prefs.js'
-import { LIBRARY_PUSH, PREFS_PATH_SET_PRIORITY, PREFS_PUSH, PREFS_SET, _ERROR } from '../../shared/actionTypes.js'
+import { LIBRARY_PUSH, PREFS_PATH_SET_PRIORITY, PREFS_PUSH, PREFS_SET } from '../../shared/actionTypes.js'
+import { emitAction, requireAdmin } from '../lib/socketActions.js'
+import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
 const log = getLogger(`server[${process.pid}]`)
 
 const ACTION_HANDLERS = {
   [PREFS_SET]: (sock, { payload }, acknowledge) => {
-    if (!sock.user.isAdmin) {
-      return acknowledge({
-        type: PREFS_SET + _ERROR,
-        error: 'Unauthorized',
-      })
-    }
+    if (!requireAdmin(sock, acknowledge, PREFS_SET)) return
 
     Prefs.set(payload.key, payload.data)
     log.info('%s (%s) set pref %s = %s', sock.user.name, sock.id, payload.key, payload.data)
@@ -19,12 +16,7 @@ const ACTION_HANDLERS = {
     pushPrefs(sock)
   },
   [PREFS_PATH_SET_PRIORITY]: (sock, { payload }, acknowledge) => {
-    if (!sock.user.isAdmin) {
-      return acknowledge({
-        type: PREFS_PATH_SET_PRIORITY + _ERROR,
-        error: 'Unauthorized',
-      })
-    }
+    if (!requireAdmin(sock, acknowledge, PREFS_PATH_SET_PRIORITY)) return
 
     Prefs.setPathPriority(payload)
     log.info('%s re-prioritized media folders; pushing library to all', sock.user.name)
@@ -39,7 +31,7 @@ const ACTION_HANDLERS = {
       payload: Library.get(),
     })
   },
-}
+} satisfies SocketHandlerMap
 
 // helper to push prefs to admins
 const pushPrefs = (sock) => {
@@ -52,10 +44,7 @@ const pushPrefs = (sock) => {
   }
 
   if (admins.length) {
-    sock.server.to(admins).emit('action', {
-      type: PREFS_PUSH,
-      payload: Prefs.get(),
-    })
+    emitAction(sock.server.to(admins), PREFS_PUSH, Prefs.get())
   }
 }
 

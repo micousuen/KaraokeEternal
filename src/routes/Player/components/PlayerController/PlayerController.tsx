@@ -7,11 +7,9 @@ import getActiveQueue from 'routes/Queue/selectors/getActiveQueue'
 import { playerClaim, playerLeave, playerError, playerLoad, playerPlay, playerStatus, type PlayerState } from '../../modules/player'
 import getRoomPrefs from '../../selectors/getRoomPrefs'
 import type { QueueItem } from 'shared/types'
-import HttpApi from 'lib/HttpApi'
 import ScriptOverlay from '../ScriptOverlay/ScriptOverlay'
-import { getSupportedMediaTypes } from '../../lib/mediaSupport'
-
-const mediaApi = new HttpApi('media')
+import { advanceStatus, findNextUserId, replayStatus, selectPlaybackItems } from '../../lib/playbackQueue'
+import useMediaPrecache from '../../hooks/useMediaPrecache'
 
 interface PlayerControllerProps {
   width: number
@@ -24,12 +22,7 @@ const PlayerController = (props: PlayerControllerProps) => {
   const playerVisualizer = useAppSelector(state => state.playerVisualizer)
   const prefs = useAppSelector(state => state.prefs)
   const roomPrefs = useAppSelector(getRoomPrefs)
-  const queueItem = queue.result.includes(player.queueId) ? queue.entities[player.queueId] : undefined
-  const regularNextQueueItem = queue.entities[queue.result[queue.result.indexOf(player.queueId) + 1]]
-  const priorityQueueItem = queue.entities[player._priorityQueueId]
-  const nextQueueItem = priorityQueueItem && priorityQueueItem.queueId !== player.queueId
-    ? priorityQueueItem
-    : regularNextQueueItem
+  const { current: queueItem, next: nextQueueItem, priority: priorityQueueItem } = selectPlaybackItems(queue, player)
 
   const dispatch = useAppDispatch()
   const handleStatus = useCallback((status?: Partial<PlayerState>) => dispatch(playerStatus(status)), [dispatch])
@@ -43,28 +36,8 @@ const PlayerController = (props: PlayerControllerProps) => {
   const handleReplay = useCallback((queueId: number) => {
     const nextItem = queue.entities[queueId]
     if (!nextItem) return
-
-    const history = [...player.history]
-
-    if (queueId !== player.queueId) {
-      // reset history up to and including the replaying queueId
-      const idx = history.lastIndexOf(queueId)
-      if (idx !== -1) history.splice(idx)
-    }
-
-    handleStatus({
-      audioTrackCount: 0,
-      duration: 0,
-      history,
-      isAtQueueEnd: false,
-      isPlaying: true,
-      isVideoKeyingEnabled: nextItem.isVideoKeyingEnabled,
-      position: 0,
-      queueId: nextItem.queueId,
-      nextUserId: null,
-      _isReplayingQueueId: null,
-    })
-  }, [handleStatus, player.history, player.queueId, queue.entities])
+    handleStatus(replayStatus(player, nextItem))
+  }, [handleStatus, player, queue.entities])
 
   // Claim ownership once when this player screen opens. Playback status
   // updates (including Play Next) do not affect ownership.
@@ -73,49 +46,14 @@ const PlayerController = (props: PlayerControllerProps) => {
   }, [dispatch])
 
   const handleLoadNext = useCallback(() => {
-    const history = [...player.history]
-
-    // add current item to history (once)
-    if (queueItem && history.lastIndexOf(queueItem.queueId) === -1) {
-      history.push(queueItem.queueId)
-    }
-
-    // queue exhausted?
-    if (!nextQueueItem) {
-      handleStatus({
-        history,
-        isAtQueueEnd: true,
-        _isPlayingNext: false,
-      })
-
-      return
-    }
-
-    // play next
-    handleStatus({
-      audioTrackCount: 0,
-      duration: 0,
-      history,
-      isAtQueueEnd: false,
-      isPlaying: true,
-      isVideoKeyingEnabled: nextQueueItem.isVideoKeyingEnabled,
-      position: 0,
-      queueId: nextQueueItem.queueId,
-      nextUserId: null,
-      _isPlayingNext: false,
-      _priorityQueueId: null,
-    })
-  }, [handleStatus, nextQueueItem, player.history, queueItem])
+    handleStatus(advanceStatus(player, queueItem, nextQueueItem))
+  }, [handleStatus, nextQueueItem, player, queueItem])
 
   // "lock in" the next user that isn't the currently up user, if possible
   useEffect(() => {
     if (!player.nextUserId || queueItem?.userId === nextQueueItem?.userId) {
-      for (let i = queue.result.indexOf(queueItem?.queueId) + 1; i < queue.result.length; i++) {
-        if (queueItem?.userId !== queue.entities[queue.result[i]].userId) {
-          handleStatus({ nextUserId: queue.entities[queue.result[i]].userId })
-          return
-        }
-      }
+      const nextUserId = findNextUserId(queue, queueItem)
+      if (nextUserId !== null) handleStatus({ nextUserId })
     }
   }, [handleStatus, nextQueueItem, player.nextUserId, queue, queueItem])
 
@@ -162,24 +100,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     }
   }, [handleStatus, player.isErrored, player.isPlaying])
 
-  // Once a song starts, send the remaining round-robin playback order. The
-  // server applies KES_PRECACHE_COUNT and ignores media needing no conversion.
-  useEffect(() => {
-    if (!player.isPlaying || !queueItem) return
-
-    const currentIndex = queue.result.indexOf(queueItem.queueId)
-    const upcoming = queue.result
-      .slice(currentIndex + 1)
-      .map(queueId => queue.entities[queueId])
-    const ordered = priorityQueueItem && priorityQueueItem.queueId !== queueItem.queueId
-      ? [priorityQueueItem, ...upcoming.filter(item => item.queueId !== priorityQueueItem.queueId)]
-      : upcoming
-    const mediaIds = ordered.map(item => item.mediaId)
-
-    if (mediaIds.length) {
-      void mediaApi.post('/precache', { body: { mediaIds, ...getSupportedMediaTypes() } }).catch((): void => {})
-    }
-  }, [player.isPlaying, player._priorityQueueId, priorityQueueItem, queue, queueItem])
+  useMediaPrecache(queue, queueItem, priorityQueueItem, player.isPlaying)
 
   return (
     <>

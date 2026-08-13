@@ -4,8 +4,6 @@ import type { IRoomPrefs, Room } from 'shared/types'
 import {
   ROOMS_RECEIVE,
   ROOMS_REQUEST,
-  ROOM_EDITOR_OPEN,
-  ROOM_EDITOR_CLOSE,
   ROOM_UPDATE,
   ROOM_CREATE,
   ROOM_REMOVE,
@@ -48,7 +46,7 @@ export const createRoom = createAsyncThunk(
     })
 
     thunkAPI.dispatch(receiveRooms(response))
-    thunkAPI.dispatch(closeRoomEditor())
+    return response
   },
 )
 
@@ -66,7 +64,7 @@ export const updateRoom = createAsyncThunk(
     })
 
     thunkAPI.dispatch(receiveRooms(response))
-    thunkAPI.dispatch(closeRoomEditor())
+    return response
   },
 )
 
@@ -76,12 +74,10 @@ export const removeRoom = createAsyncThunk(
     const response = await api.delete(`/${roomId}`)
 
     thunkAPI.dispatch(receiveRooms(response))
-    thunkAPI.dispatch(closeRoomEditor())
+    return response
   },
 )
 
-export const openRoomEditor = createAction(ROOM_EDITOR_OPEN)
-export const closeRoomEditor = createAction(ROOM_EDITOR_CLOSE)
 const roomPrefsPush = createAction<{ roomId: number, prefs: IRoomPrefs }>(ROOM_PREFS_PUSH)
 
 export function requestPrefsPush (roomId: number, prefs: IRoomPrefs): AppThunk {
@@ -108,13 +104,11 @@ export function requestPrefsPush (roomId: number, prefs: IRoomPrefs): AppThunk {
 interface RoomsState {
   result: number[]
   entities: Record<number, Room>
-  isEditorOpen: boolean
 }
 
 const initialState: RoomsState = {
   result: [],
   entities: {},
-  isEditorOpen: false,
 }
 
 const roomsReducer = createReducer(initialState, (builder) => {
@@ -128,12 +122,6 @@ const roomsReducer = createReducer(initialState, (builder) => {
       ...state,
       ...payload,
     }))
-    .addCase(openRoomEditor, (state) => {
-      state.isEditorOpen = true
-    })
-    .addCase(closeRoomEditor, (state) => {
-      state.isEditorOpen = false
-    })
     .addCase(roomPrefsPush, (state, { payload }) => {
       const roomId = payload.roomId
 

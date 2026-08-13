@@ -1,0 +1,46 @@
+.container {
+  --image-width: 104px;
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 6.5rem;
+  margin: var(--space-s) 0;
+  overflow: hidden;
+  background-color: hsl(var(--hue-blue), 40%, 6%);
+  line-height: normal;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  margin: 0.5rem 0 0.5rem var(--space-s);
+  overflow: hidden;
+}
+
+.imageContainer {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: var(--image-width);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+.imageContainer img {
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-width: 600px) {
+  .container {
+    --image-width: 52px;
+
+    height: 4.25rem;
+    margin: var(--space-xs) 0;
+  }
+
+  .content {
+    margin: var(--space-xs) 0 var(--space-xs) var(--space-xs);
+  }
+}

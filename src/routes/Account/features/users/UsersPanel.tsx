@@ -1,33 +1,34 @@
 import React, { useEffect, useState } from 'react'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
-import { closeUserEditor, fetchUsers, filterByOnline, filterByRoom, openUserEditor, type UserWithRoomsAndRole } from '../../modules/users'
+import { fetchUsers, filterByOnline, filterByRoom, type UserWithRoomsAndRole } from './model'
 import { formatDateTime } from 'lib/dateTime'
 import Panel from 'components/Panel/Panel'
 import Button from 'components/Button/Button'
-import EditUser from './EditUser/EditUser'
-import getUsers from '../../selectors/getUsers'
-import styles from './Users.css'
+import AdminTable from '../../components/AdminTable/AdminTable'
+import UserEditor from './UserEditor'
+import getUsers from './selectors'
+import styles from './UsersPanel.css'
 
-const Users = () => {
-  const [editorUser, setEditorUser] = useState<UserWithRoomsAndRole | null>(null)
+const UsersPanel = () => {
+  const [editorUser, setEditorUser] = useState<UserWithRoomsAndRole | null | undefined>(undefined)
 
   const curUserId = useAppSelector(state => state.user.userId)
-  const { isEditorOpen, filterOnline, filterRoomId } = useAppSelector(state => state.users)
+  const { filterOnline, filterRoomId } = useAppSelector(state => state.users)
   const rooms = useAppSelector(state => state.rooms)
   const users = useAppSelector(getUsers)
 
   const dispatch = useAppDispatch()
-  const handleClose = () => dispatch(closeUserEditor())
+  const handleClose = () => setEditorUser(undefined)
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (e.target.value === 'all') dispatch(filterByOnline(false))
     else if (e.target.value === 'online') dispatch(filterByOnline(true))
     else dispatch(filterByRoom(parseInt(e.target.value, 10)))
   }
 
-  const handleOpen = (e: React.MouseEvent<HTMLElement>) => {
+  const handleEdit = (e: React.MouseEvent<HTMLElement>) => {
     setEditorUser(users.entities[parseInt(e.currentTarget.dataset.userId)])
-    dispatch(openUserEditor())
   }
+  const handleCreate = () => setEditorUser(null)
 
   // once per mount
   useEffect(() => {
@@ -50,7 +51,7 @@ const Users = () => {
         )}
         {userId !== curUserId && (
           <td>
-            <a data-user-id={userId} onClick={handleOpen}>{user.username}</a>
+            <a data-user-id={userId} onClick={handleEdit}>{user.username}</a>
             {' '}
             (
             {user.name}
@@ -83,7 +84,7 @@ const Users = () => {
       titleComponent={userFilter}
     >
       <>
-        <table className={styles.table}>
+        <AdminTable>
           <thead>
             <tr>
               <th>Username</th>
@@ -94,19 +95,19 @@ const Users = () => {
           <tbody>
             {rows}
           </tbody>
-        </table>
+        </AdminTable>
 
         <br />
-        <Button onClick={handleOpen} variant='primary'>
+        <Button onClick={handleCreate} variant='primary'>
           Create User
         </Button>
 
-        {isEditorOpen && (
-          <EditUser onClose={handleClose} user={editorUser} />
+        {editorUser !== undefined && (
+          <UserEditor onClose={handleClose} user={editorUser ?? undefined} />
         )}
       </>
     </Panel>
   )
 }
 
-export default Users
+export default UsersPanel

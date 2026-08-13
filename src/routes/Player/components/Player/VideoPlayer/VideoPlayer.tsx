@@ -1,14 +1,10 @@
 import React from 'react'
-import { VideoPlaybackController, type VideoPlaybackProps } from './VideoPlaybackController'
+import { updatePlaybackController, VideoPlaybackController, type VideoPlaybackUpdateProps } from './VideoPlaybackController'
 import styles from './VideoPlayer.css'
 
 const isWebOs = /Web0S|webOS|NetCast/i.test(navigator.userAgent)
 
-interface VideoPlayerProps extends VideoPlaybackProps {
-  mediaKey: number
-  mediaReplayKey?: number
-  mediaSeekKey?: number
-  seekPosition: number
+interface VideoPlayerProps extends VideoPlaybackUpdateProps {
   width: number
   height: number
   onAudioElement(audio: HTMLAudioElement): void
@@ -34,24 +30,8 @@ class VideoPlayer extends React.Component<VideoPlayerProps> {
 
   componentDidUpdate (prevProps: VideoPlayerProps) {
     if (!this.controller) return
-    if (prevProps.mediaKey !== this.props.mediaKey) {
-      this.controller.updateSources()
-      return
-    }
-    if (prevProps.audioTrack !== this.props.audioTrack) {
-      if (isWebOs) this.controller.updateCombinedSource(this.video.current?.currentTime || 0)
-      else this.controller.updateAudioSource(this.audio.current?.currentTime || 0)
-      return
-    }
-    if (prevProps.mediaReplayKey !== this.props.mediaReplayKey) {
-      this.controller.setCurrentTime(0)
-      return
-    }
-    if (prevProps.mediaSeekKey !== this.props.mediaSeekKey) {
-      this.controller.setCurrentTime(this.props.seekPosition)
-      return
-    }
-    if (prevProps.isPlaying !== this.props.isPlaying) this.controller.updateIsPlaying()
+    const position = isWebOs ? this.video.current?.currentTime : this.audio.current?.currentTime
+    updatePlaybackController(this.controller, prevProps, this.props, position || 0, isWebOs)
   }
 
   componentWillUnmount () {

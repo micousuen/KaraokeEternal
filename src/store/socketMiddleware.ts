@@ -2,6 +2,7 @@ import { Action, Middleware, UnknownAction } from '@reduxjs/toolkit'
 import { BEGIN, COMMIT, REVERT } from 'redux-optimistic-ui'
 import { Socket } from 'socket.io-client'
 import { OptimisticAction } from './store'
+import { isSocketRequestAction, type SocketResponseAction } from 'shared/socketProtocol'
 
 // optimistic actions need a transaction id to match BEGIN to COMMIT/REVERT
 let nextTransactionID = 1
@@ -13,7 +14,7 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
 
     return next => (action: Action | OptimisticAction) => {
       // dispatch normally if it's not a socket.io request
-      if (!action.type || !action.type.startsWith(prefix)) {
+      if (!isSocketRequestAction(action) || !action.type.startsWith(prefix)) {
         return next(action)
       }
 
@@ -21,7 +22,7 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
       const isOptimistic = hasMeta && (action.meta?.isOptimistic ?? false)
       const transactionID = isOptimistic ? nextTransactionID++ : undefined
 
-      socket.emit('action', action, (cbAction: UnknownAction) => {
+      socket.emit('action', action, (cbAction: SocketResponseAction | UnknownAction) => {
         // make sure callback response is an action
         if (typeof cbAction !== 'object' || typeof cbAction.type !== 'string') {
           return

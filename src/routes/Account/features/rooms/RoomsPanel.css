@@ -1,40 +1,3 @@
-.showAll {
-  cursor: pointer;
-}
-
-.table {
-  width: 100%;
-}
-
-.table > * {
-  outline: none;
-}
-
-.table th {
-  color: hsl(var(--hue-blue), 10%, 60%);
-  font-weight: normal;
-  text-align: left;
-}
-
-.table th:first-child {
-  width: 100%;
-}
-
-.table th:nth-child(2) {
-  min-width: 70px;
-}
-
-.table td {
-  height: 25px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.table td:first-child  {
-  text-overflow: ellipsis;
-  max-width: 0;
-}
-
 .roomCell {
   display: flex;
   align-items: center;
@@ -61,37 +24,37 @@
 }
 
 @media (max-width: 42em) {
-  .table {
+  .roomTable {
     table-layout: fixed;
   }
 
-  .table th:first-child {
+  .roomTable th:first-child {
     width: auto;
   }
 
-  .table th:nth-child(2) {
+  .roomTable th:nth-child(2) {
     width: 3rem;
     min-width: 0;
     text-align: center;
   }
 
-  .table th:nth-child(3),
-  .table td:nth-child(3) {
+  .roomTable th:nth-child(3),
+  .roomTable td:nth-child(3) {
     display: none;
   }
 
-  .table td {
+  .roomTable td {
     height: auto;
     padding: var(--space-xs) 0;
   }
 
-  .table td:first-child {
+  .roomTable td:first-child {
     max-width: none;
     overflow: visible;
     white-space: normal;
   }
 
-  .table td:nth-child(2) {
+  .roomTable td:nth-child(2) {
     text-align: center;
     vertical-align: top;
   }

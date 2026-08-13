@@ -1,24 +1,16 @@
 import React, { useEffect } from 'react'
-import combinedReducer from 'store/reducers'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { fetchAccount } from 'store/modules/user'
-import usersReducer, { sliceInjectNoOp } from '../../modules/users'
 import About from '../../components/About/About'
-import Account from '../../components/Account/Account'
-import Prefs from '../../components/Prefs/Prefs'
-import Rooms from '../../components/Rooms/Rooms'
-import Users from '../../components/Users/Users'
-import VocalSeparation from '../../components/VocalSeparation/VocalSeparation'
+import ProfilePanel from '../../features/profile/ProfilePanel'
+import SettingsPanel from '../../features/settings/SettingsPanel'
+import RoomsPanel from '../../features/rooms/RoomsPanel'
+import UsersPanel from '../../features/users/UsersPanel'
+import ProcessingPanel from '../../features/processing/ProcessingPanel'
 
 const SignedInView = () => {
   const { isAdmin } = useAppSelector(state => state.user)
-  const sliceExists = !!useAppSelector(state => state.users)
   const dispatch = useAppDispatch()
-
-  if (isAdmin && !sliceExists) {
-    combinedReducer.inject({ reducerPath: 'users', reducer: usersReducer })
-    dispatch(sliceInjectNoOp()) // update store with new slice
-  }
 
   // once per mount
   useEffect(() => {
@@ -28,18 +20,18 @@ const SignedInView = () => {
   return (
     <>
       {isAdmin
-        && <Rooms />}
+        && <RoomsPanel />}
 
       {isAdmin
-        && <Users />}
+        && <UsersPanel />}
 
       {isAdmin
-        && <Prefs />}
+        && <SettingsPanel />}
 
       {isAdmin
-        && <VocalSeparation />}
+        && <ProcessingPanel />}
 
-      <Account />
+      <ProfilePanel />
 
       <About />
     </>

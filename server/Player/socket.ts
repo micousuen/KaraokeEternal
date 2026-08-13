@@ -26,6 +26,8 @@ import {
   QUEUE_PUSH,
 } from '../../shared/actionTypes.js'
 import Queue from '../Queue/Queue.js'
+import { emitToRoom, relayToRoom } from '../lib/socketActions.js'
+import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
 
 // ------------------------------------
 // Action Handlers
@@ -49,64 +51,25 @@ const ACTION_HANDLERS = {
       }
     }
   },
-  [PLAYER_REQ_OPTIONS]: (sock, { payload }) => {
-    // @todo: emit to players only
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_OPTIONS,
-      payload,
-    })
-  },
-  [PLAYER_REQ_NEXT]: (sock) => {
-    // @todo: emit to players only
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_NEXT,
-    })
-  },
-  [PLAYER_REQ_PAUSE]: (sock) => {
-    // @todo: emit to players only
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_PAUSE,
-    })
-  },
-  [PLAYER_REQ_PLAY]: (sock) => {
-    // @todo: emit to players only
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_PLAY,
-    })
-  },
+  [PLAYER_REQ_OPTIONS]: relayToRoom(PLAYER_CMD_OPTIONS),
+  [PLAYER_REQ_NEXT]: relayToRoom(PLAYER_CMD_NEXT),
+  [PLAYER_REQ_PAUSE]: relayToRoom(PLAYER_CMD_PAUSE),
+  [PLAYER_REQ_PLAY]: relayToRoom(PLAYER_CMD_PLAY),
   [PLAYER_REQ_PRIORITY]: (sock, { payload }) => {
     const { queueId } = payload
     if (!Queue.isInRoom(queueId, sock.user.roomId)) throw new Error('Queue item is not in this room')
 
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_PRIORITY,
-      payload: { queueId },
-    })
+    emitToRoom(sock, PLAYER_CMD_PRIORITY, { queueId })
   },
   [PLAYER_REQ_REPLAY]: (sock, { payload }) => {
     if (!Queue.isInRoom(payload.queueId, sock.user.roomId)) {
       throw new Error('Queue item is not in this room')
     }
 
-    // @todo: emit to players only
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_REPLAY,
-      payload,
-    })
+    emitToRoom(sock, PLAYER_CMD_REPLAY, payload)
   },
-  [PLAYER_REQ_SEEK]: (sock, { payload }) => {
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_SEEK,
-      payload,
-    })
-  },
-  [PLAYER_REQ_VOLUME]: (sock, { payload }) => {
-    // @todo: emit to players only
-    sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {
-      type: PLAYER_CMD_VOLUME,
-      payload,
-    })
-  },
+  [PLAYER_REQ_SEEK]: relayToRoom(PLAYER_CMD_SEEK),
+  [PLAYER_REQ_VOLUME]: relayToRoom(PLAYER_CMD_VOLUME),
   [PLAYER_EMIT_STATUS]: (sock, { payload }) => {
     if (sock._isSuperseded) return
 
@@ -141,6 +104,6 @@ const ACTION_HANDLERS = {
       })
     }
   },
-}
+} satisfies SocketHandlerMap
 
 export default ACTION_HANDLERS

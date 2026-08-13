@@ -71,8 +71,6 @@ export const ROOMS_REQUEST = 'rooms/REQUEST'
 export const ROOM_UPDATE = 'rooms/UPDATE'
 export const ROOM_CREATE = 'rooms/CREATE'
 export const ROOM_REMOVE = 'rooms/REMOVE'
-export const ROOM_EDITOR_OPEN = 'rooms/EDITOR_OPEN'
-export const ROOM_EDITOR_CLOSE = 'rooms/EDITOR_CLOSE'
 export const ROOM_PREFS_PUSH = 'rooms/ROOM_PREFS_PUSH'
 export const ROOM_PREFS_PUSH_REQUEST = 'server/ROOM_PREFS_PUSH_REQUEST'
 
@@ -93,8 +91,6 @@ export const PREFS_REQ_SCANNER_STOP = 'prefs/REQ_SCANNER_STOP'
 
 // User management
 export const USERS_CREATE = 'users/CREATE'
-export const USERS_EDITOR_OPEN = 'users/EDITOR_OPEN'
-export const USERS_EDITOR_CLOSE = 'users/EDITOR_CLOSE'
 export const USERS_FILTER_ONLINE = 'users/FILTER_ONLINE'
 export const USERS_FILTER_ROOM_ID = 'users/FILTER_ROOM_ID'
 export const USERS_REMOVE = 'users/REMOVE'
@@ -141,4 +137,3 @@ export const PREFS_PATHS_CHANGED = 'serverWorker/PREFS_PATHS_CHANGED'
 // Misc
 export const _SUCCESS = '_SUCCESS'
 export const _ERROR = '_ERROR'
-export const REDUX_SLICE_INJECT_NOOP = 'app/REDUX_SLICE_INJECT_NOOP'

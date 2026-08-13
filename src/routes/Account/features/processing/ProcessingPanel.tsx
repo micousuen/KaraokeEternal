@@ -10,11 +10,11 @@ import {
   resumeVocalSeparation,
   unmountWhisperXModels,
 } from 'store/modules/vocalSeparation'
-import styles from './VocalSeparation.css'
+import styles from './ProcessingPanel.css'
 
 const formatSpeed = (speed: number | null) => speed === null ? 'Waiting for first result' : `${speed.toFixed(2)}× realtime`
 
-const VocalSeparation = () => {
+const ProcessingPanel = () => {
   const status = useAppSelector(state => state.vocalSeparation)
   const isScanning = useAppSelector(state => state.prefs.isScanning)
   const dispatch = useAppDispatch()
@@ -162,4 +162,4 @@ const VocalSeparation = () => {
   )
 }
 
-export default VocalSeparation
+export default ProcessingPanel

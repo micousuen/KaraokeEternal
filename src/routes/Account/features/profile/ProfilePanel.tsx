@@ -5,10 +5,10 @@ import { removeItem } from 'routes/Queue/modules/queue'
 import getUpcoming from 'routes/Queue/selectors/getUpcoming'
 import Panel from 'components/Panel/Panel'
 import Button from 'components/Button/Button'
-import AccountForm from '../AccountForm/AccountForm'
-import styles from './Account.css'
+import AccountForm from '../../components/AccountForm/AccountForm'
+import styles from './ProfilePanel.css'
 
-const Account = () => {
+const ProfilePanel = () => {
   const dispatch = useAppDispatch()
   const user = useAppSelector(state => state.user)
   const upcomingQueueIds = useAppSelector(state => getUpcoming(state, user.userId))
@@ -94,4 +94,4 @@ const Account = () => {
   )
 }
 
-export default Account
+export default ProfilePanel

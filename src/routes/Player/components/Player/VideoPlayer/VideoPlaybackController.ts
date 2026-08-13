@@ -11,6 +11,13 @@ export interface VideoPlaybackProps {
   onStatus(status: { position?: number, duration?: number, audioTrackCount?: number }): void
 }
 
+export interface VideoPlaybackUpdateProps extends VideoPlaybackProps {
+  mediaKey: number
+  mediaReplayKey?: number
+  mediaSeekKey?: number
+  seekPosition: number
+}
+
 interface ControllerOptions {
   combinedPlayback?: boolean
   onPlaybackStarted?: () => void
@@ -246,4 +253,33 @@ export function isPlayInterruption (error: unknown): boolean {
     error.name === 'AbortError'
     || /play\(\) request was interrupted|play request was interrupted/i.test(error.message)
   )
+}
+
+/** Apply prop transitions consistently for normal and chroma-keyed players. */
+export function updatePlaybackController (
+  controller: VideoPlaybackController,
+  previous: VideoPlaybackUpdateProps,
+  current: VideoPlaybackUpdateProps,
+  position: number,
+  combinedPlayback = false,
+): boolean {
+  if (previous.mediaKey !== current.mediaKey) {
+    controller.updateSources()
+    return true
+  }
+  if (previous.audioTrack !== current.audioTrack) {
+    if (combinedPlayback) controller.updateCombinedSource(position)
+    else controller.updateAudioSource(position)
+    return true
+  }
+  if (previous.mediaReplayKey !== current.mediaReplayKey) {
+    controller.setCurrentTime(0)
+    return true
+  }
+  if (previous.mediaSeekKey !== current.mediaSeekKey) {
+    controller.setCurrentTime(current.seekPosition)
+    return true
+  }
+  if (previous.isPlaying !== current.isPlaying) controller.updateIsPlaying()
+  return false
 }

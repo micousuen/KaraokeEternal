@@ -1,4 +1,4 @@
-import { AnyAction, createAction, createAsyncThunk, createReducer } from '@reduxjs/toolkit'
+import { AnyAction, createAction, createReducer } from '@reduxjs/toolkit'
 import {
   CLEAR_ERROR_MESSAGE,
   FOOTER_HEIGHT_CHANGE,
@@ -6,7 +6,6 @@ import {
   SHOW_ERROR_MESSAGE,
   UI_WINDOW_RESIZE,
 } from 'shared/actionTypes'
-import { RootState } from 'store/store'
 
 const MAX_CONTENT_WIDTH = 768
 let scrollLockTimer: ReturnType<typeof setTimeout> | null
@@ -17,21 +16,8 @@ let scrollLockTimer: ReturnType<typeof setTimeout> | null
 export const clearErrorMessage = createAction(CLEAR_ERROR_MESSAGE)
 export const showErrorMessage = createAction<string>(SHOW_ERROR_MESSAGE)
 
-export const setHeaderHeight = createAsyncThunk<void, number, { state: RootState }>('ui/SET_HEADER_HEIGHT', async (height: number, { dispatch, getState }) => {
-  if (getState().ui.headerHeight === height) return
-  dispatch({
-    type: HEADER_HEIGHT_CHANGE,
-    payload: height ?? 0, // height might be undefined if Header renders nothing
-  })
-})
-
-export const setFooterHeight = createAsyncThunk<void, number, { state: RootState }>('ui/SET_HEADER_HEIGHT', async (height: number, { dispatch, getState }) => {
-  if (getState().ui.footerHeight === height) return
-  dispatch({
-    type: FOOTER_HEIGHT_CHANGE,
-    payload: height ?? 0, // height might be undefined if Header renders nothing
-  })
-})
+export const setHeaderHeight = createAction<number>(HEADER_HEIGHT_CHANGE)
+export const setFooterHeight = createAction<number>(FOOTER_HEIGHT_CHANGE)
 
 export const windowResize = createAction(UI_WINDOW_RESIZE, window => ({
   payload: window,
@@ -56,8 +42,6 @@ export const lockScrolling = (lock: boolean) => {
     }, 200)
   }
 }
-const footerHeightChange = createAction<number>(FOOTER_HEIGHT_CHANGE)
-const headerHeightChange = createAction<number>(HEADER_HEIGHT_CHANGE)
 
 // ------------------------------------
 // Reducer
@@ -84,11 +68,11 @@ const initialState: UIState = {
 
 const uiReducer = createReducer(initialState, (builder) => {
   builder
-    .addCase(headerHeightChange, (state, { payload }) => {
-      state.headerHeight = payload
+    .addCase(setHeaderHeight, (state, { payload }) => {
+      state.headerHeight = payload ?? 0
     })
-    .addCase(footerHeightChange, (state, { payload }) => {
-      state.footerHeight = payload
+    .addCase(setFooterHeight, (state, { payload }) => {
+      state.footerHeight = payload ?? 0
     })
     .addCase(showErrorMessage, (state, { payload }) => {
       state.isErrored = true

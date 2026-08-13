@@ -1,27 +1,27 @@
 import React, { useEffect } from 'react'
 import screenfull from 'screenfull'
 import combinedReducer from 'store/reducers'
+import store from 'store/store'
 import { useAppSelector, useAppDispatch } from 'store/hooks'
 import Button from 'components/Button/Button'
-import playerReducer, { playerClaim, sliceInjectNoOp } from '../modules/player'
+import playerReducer, { playerClaim } from '../modules/player'
 import playerVisualizerReducer from '../modules/playerVisualizer'
 import PlayerController from '../components/PlayerController/PlayerController'
 import { fetchCurrentRoom } from 'store/modules/rooms'
 import styles from './PlayerView.css'
+
+combinedReducer.inject({ reducerPath: 'player', reducer: playerReducer })
+combinedReducer.inject({ reducerPath: 'playerVisualizer', reducer: playerVisualizerReducer })
+// replaceReducer dispatches Redux's init action so the injected state exists
+// before this route's first render.
+store.replaceReducer(combinedReducer)
 
 const PlayerView = () => {
   const { innerWidth, innerHeight, headerHeight, footerHeight } = useAppSelector(state => state.ui)
   const viewportHeight = innerHeight - headerHeight - footerHeight
   const dispatch = useAppDispatch()
 
-  // @todo: find better place for this?
-  if (!useAppSelector(state => state.player)) {
-    combinedReducer.inject({ reducerPath: 'player', reducer: playerReducer })
-    combinedReducer.inject({ reducerPath: 'playerVisualizer', reducer: playerVisualizerReducer })
-    dispatch(sliceInjectNoOp()) // update store with new slices
-  }
-
-  const isSuperseded = useAppSelector(state => state.player?._isSuperseded)
+  const isSuperseded = useAppSelector(state => state.player._isSuperseded)
 
   // once per mount
   useEffect(() => {

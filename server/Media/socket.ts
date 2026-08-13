@@ -11,10 +11,8 @@ import {
   resumeVocalSeparation,
   unmountWhisperXModels,
 } from './VocalSeparation.js'
-
-function requireAdmin (sock): void {
-  if (!sock.user?.isAdmin) throw new Error('Administrator access is required')
-}
+import { requireAdmin } from '../lib/socketActions.js'
+import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
 
 const handlers = {
   [VOCAL_SEPARATION_PAUSE]: (sock, _action, acknowledge) => {
@@ -37,6 +35,6 @@ const handlers = {
     await unmountWhisperXModels()
     acknowledge({ type: VOCAL_SEPARATION_MODELS_UNMOUNT + _SUCCESS })
   },
-}
+} satisfies SocketHandlerMap
 
 export default handlers

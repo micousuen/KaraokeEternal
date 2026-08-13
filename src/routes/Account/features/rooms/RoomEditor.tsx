@@ -5,17 +5,17 @@ import { joinRoomAsAdmin, leaveRoomAsAdmin } from 'store/modules/user'
 import { getFormData } from 'lib/util'
 import Button from 'components/Button/Button'
 import Modal from 'components/Modal/Modal'
-import UserPrefs from './UserPrefs/UserPrefs'
-import QRPrefs from './QRPrefs/QRPrefs'
+import UserPrefs from './UserPrefs'
+import QRPrefs from './QRPrefs'
 import type { Room, IRoomPrefs } from 'shared/types'
-import styles from './EditRoom.css'
+import styles from './RoomEditor.css'
 
-interface EditRoomProps {
+interface RoomEditorProps {
   room?: Room
   onClose: () => void
 }
 
-const EditRoom = ({ onClose, room }: EditRoomProps) => {
+const RoomEditor = ({ onClose, room }: RoomEditorProps) => {
   const formRef = useRef(null)
   const [prefs, setPrefs] = useState<IRoomPrefs>(room?.prefs || {} as IRoomPrefs)
   const [prevRoom, setPrevRoom] = useState(room)
@@ -34,15 +34,15 @@ const EditRoom = ({ onClose, room }: EditRoomProps) => {
     data.prefs = prefs
 
     if (room) {
-      dispatch(updateRoom({ roomId: room.roomId, data }))
+      void dispatch(updateRoom({ roomId: room.roomId, data })).unwrap().then(onClose).catch(() => {})
     } else {
-      dispatch(createRoom(data))
+      void dispatch(createRoom(data)).unwrap().then(onClose).catch(() => {})
     }
   }
 
   const handleRemoveClick = () => {
     if (room && currentRoomId !== room.roomId && confirm(`Remove room "${room.name}" and its queue?`)) {
-      dispatch(removeRoom(room.roomId))
+      void dispatch(removeRoom(room.roomId)).unwrap().then(onClose).catch(() => {})
     }
   }
 
@@ -126,4 +126,4 @@ const EditRoom = ({ onClose, room }: EditRoomProps) => {
   )
 }
 
-export default EditRoom
+export default RoomEditor
