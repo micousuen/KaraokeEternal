@@ -34,6 +34,8 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   usingSourceVideo = false
   usingSourceAudio = false
   sourceRequest = 0
+  videoReady = false
+  audioReady = false
 
   componentDidMount () {
     this.props.onAudioElement(isWebOs ? this.video.current as HTMLAudioElement : this.audio.current)
@@ -79,7 +81,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
           width={width}
           height={height}
           onError={this.handleVideoError}
-          onCanPlayThrough={isWebOs ? this.updateIsPlaying : undefined}
+          onCanPlay={this.handleVideoCanPlay}
           onEnded={isWebOs ? this.props.onEnd : undefined}
           onLoadStart={isWebOs ? this.props.onLoad : undefined}
           onLoadedMetadata={isWebOs ? this.handleVideoMetadata : undefined}
@@ -89,7 +91,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
         />
         <audio
           preload='auto'
-          onCanPlayThrough={this.updateIsPlaying}
+          onCanPlay={this.handleAudioCanPlay}
           onEnded={this.props.onEnd}
           onError={this.handleAudioError}
           onLoadStart={this.props.onLoad}
@@ -106,6 +108,10 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (!this.video.current || !this.audio.current) return
 
     this.pendingPosition = 0
+    this.videoReady = false
+    this.audioReady = false
+    this.video.current.pause()
+    this.audio.current.pause()
     if (isWebOs) {
       this.updateWebOsSource()
       void this.fetchSourceInfo().catch(err => this.props.onError(err.message))
@@ -119,6 +125,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
         this.sourceInfo = info
         this.usingSourceVideo = supportsSourceVideo(this.video.current, info)
         this.usingSourceAudio = supportsSourceAudio(this.audio.current, info.audioTracks[this.props.audioTrack])
+        this.videoReady = false
         this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceVideo ? 'sourceVideo' : 'video'}${mediaVersion}`
         this.video.current.load()
         this.updateAudioSource()
@@ -128,6 +135,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
         if (request !== this.sourceRequest || !this.video.current) return undefined
         this.usingSourceVideo = false
         this.usingSourceAudio = false
+        this.videoReady = false
         this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
         this.video.current.load()
         this.updateAudioSource()
@@ -147,6 +155,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   updateWebOsSource = (position = 0) => {
     if (!this.video.current) return
     this.video.current.pause()
+    this.videoReady = false
     this.pendingPosition = position
     this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=videoCombined&audioTrack=${this.props.audioTrack}${mediaVersion}`
     this.video.current.load()
@@ -157,6 +166,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
 
     this.video.current?.pause()
     this.audio.current.pause()
+    this.audioReady = false
     this.pendingPosition = position
     this.usingSourceAudio = preferSource && !!this.sourceInfo
       && supportsSourceAudio(this.audio.current, this.sourceInfo.audioTracks[this.props.audioTrack])
@@ -169,6 +179,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
 
     if (isWebOs) {
       if (this.props.isPlaying) {
+        if (!this.videoReady) return
         this.video.current.play().catch(err => this.props.onError(err.message))
       } else {
         this.video.current.pause()
@@ -177,6 +188,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     }
 
     if (this.props.isPlaying) {
+      if (!this.videoReady || !this.audioReady) return
       this.video.current.currentTime = this.audio.current.currentTime
       Promise.all([this.video.current.play(), this.audio.current.play()])
         .catch(err => this.props.onError(err.message))
@@ -211,9 +223,24 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (this.video.current) this.props.onStatus({ position: this.video.current.currentTime })
   }
 
+  handleVideoCanPlay = () => {
+    this.videoReady = true
+    this.updateIsPlaying()
+  }
+
+  handleAudioCanPlay = () => {
+    this.audioReady = true
+    this.updateIsPlaying()
+  }
+
   handleVideoError = () => {
     if (this.usingSourceVideo && this.video.current) {
+      const position = this.audio.current?.currentTime || this.video.current.currentTime || 0
       this.usingSourceVideo = false
+      this.videoReady = false
+      this.video.current.pause()
+      this.audio.current?.pause()
+      this.pendingPosition = position
       this.video.current.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
       this.video.current.load()
       return
@@ -225,6 +252,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   handleAudioError = () => {
     if (this.usingSourceAudio) {
       this.usingSourceAudio = false
+      this.audioReady = false
       this.updateAudioSource(this.audio.current?.currentTime || 0, false)
       return
     }

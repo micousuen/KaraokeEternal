@@ -39,6 +39,8 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   usingSourceVideo = false
   usingSourceAudio = false
   sourceRequest = 0
+  videoReady = false
+  audioReady = false
   chroma: GLChroma
   supportsFilters = CSS.supports('backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)') || CSS.supports('-webkit-backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
   state = {
@@ -49,7 +51,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   componentDidMount () {
     this.props.onAudioElement(this.audio)
-    this.audio.oncanplaythrough = this.updateIsPlaying
+    this.audio.oncanplay = this.handleAudioCanPlay
     this.audio.onended = this.handleEnded
     this.audio.onerror = this.handleAudioError
     this.audio.onloadstart = this.props.onLoad
@@ -59,6 +61,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.audio.preload = 'auto'
 
     this.video.onerror = this.handleVideoError
+    this.video.oncanplay = this.handleVideoCanPlay
     this.video.onloadedmetadata = this.handleLoadedMetadata
     this.video.muted = true
     this.video.preload = 'auto'
@@ -111,6 +114,8 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   componentWillUnmount () {
     this.audio.ontimeupdate = null
+    this.audio.oncanplay = null
+    this.video.oncanplay = null
     this.audio.pause()
     this.video.pause()
     this.stopChroma()
@@ -175,6 +180,10 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   updateSources = () => {
     this.stopChroma()
+    this.videoReady = false
+    this.audioReady = false
+    this.video.pause()
+    this.audio.pause()
     const request = ++this.sourceRequest
     void fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
       .then(async (response): Promise<SourceMediaInfo> => {
@@ -187,6 +196,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
         this.props.onStatus({ audioTrackCount: info.audioTrackCount })
         this.usingSourceVideo = supportsSourceVideo(this.video, info)
         this.usingSourceAudio = supportsSourceAudio(this.audio, info.audioTracks[this.props.audioTrack])
+        this.videoReady = false
         this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceVideo ? 'sourceVideo' : 'video'}${mediaVersion}`
         this.video.load()
         this.updateAudioSource()
@@ -196,6 +206,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
         if (request !== this.sourceRequest) return undefined
         this.usingSourceVideo = false
         this.usingSourceAudio = false
+        this.videoReady = false
         this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
         this.video.load()
         this.updateAudioSource()
@@ -207,6 +218,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   updateAudioSource = (position = 0, preferSource = true) => {
     this.video.pause()
     this.audio.pause()
+    this.audioReady = false
     this.pendingPosition = position
     this.usingSourceAudio = preferSource && !!this.sourceInfo
       && supportsSourceAudio(this.audio, this.sourceInfo.audioTracks[this.props.audioTrack])
@@ -216,6 +228,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   updateIsPlaying = () => {
     if (this.props.isPlaying) {
+      if (!this.videoReady || !this.audioReady) return
       this.video.currentTime = this.audio.currentTime
       Promise.all([this.video.play(), this.audio.play()])
         .catch(err => this.props.onError(err.message))
@@ -248,7 +261,12 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   handleVideoError = () => {
     if (this.usingSourceVideo) {
+      const position = this.audio.currentTime || this.video.currentTime || 0
       this.usingSourceVideo = false
+      this.videoReady = false
+      this.video.pause()
+      this.audio.pause()
+      this.pendingPosition = position
       this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
       this.video.load()
       return
@@ -260,6 +278,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   handleAudioError = () => {
     if (this.usingSourceAudio) {
       this.usingSourceAudio = false
+      this.audioReady = false
       this.updateAudioSource(this.audio.currentTime || 0, false)
       return
     }
@@ -272,6 +291,16 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     if (this.pendingPosition <= 0) return
     this.setCurrentTime(Math.min(this.pendingPosition, this.audio.duration))
     this.pendingPosition = 0
+  }
+
+  handleVideoCanPlay = () => {
+    this.videoReady = true
+    this.updateIsPlaying()
+  }
+
+  handleAudioCanPlay = () => {
+    this.audioReady = true
+    this.updateIsPlaying()
   }
 
   handlePlay = () => {
