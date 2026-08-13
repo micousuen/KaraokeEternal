@@ -8,9 +8,6 @@ const BACKDROP_PADDING = 10 // px at 1:1 scale
 const BORDER_RADIUS = parseInt(getComputedStyle(document.body).getPropertyValue('--border-radius'))
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
 const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
-const HARD_SYNC_THRESHOLD = 1
-const SOFT_SYNC_THRESHOLD = 0.08
-const MAX_SYNC_RATE_ADJUSTMENT = 0.03
 
 interface MP4AlphaPlayerProps {
   audioTrack: 0 | 1
@@ -189,7 +186,6 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.videoReady = false
     this.audioReady = false
     this.video.pause()
-    this.video.playbackRate = 1
     this.audio.pause()
     const request = ++this.sourceRequest
     void fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
@@ -225,7 +221,6 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   updateAudioSource = (position = 0, preferSource = true) => {
     this.stopChroma()
     this.video.pause()
-    this.video.playbackRate = 1
     this.audio.pause()
     this.playRequest++
     this.audioReady = false
@@ -239,7 +234,6 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   updateIsPlaying = () => {
     if (this.props.isPlaying) {
       if (!this.videoReady || !this.audioReady) return
-      this.video.playbackRate = 1
       this.video.currentTime = this.audio.currentTime
       const request = ++this.playRequest
       Promise.all([this.video.play(), this.audio.play()])
@@ -327,23 +321,13 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
 
   handleTimeUpdate = () => {
     const position = this.audio.currentTime
-    const drift = this.video.currentTime - position
-    if (Math.abs(drift) > HARD_SYNC_THRESHOLD) {
-      this.video.playbackRate = 1
+    if (Math.abs(this.video.currentTime - position) > 0.2) {
       this.video.currentTime = position
-    } else if (Math.abs(drift) > SOFT_SYNC_THRESHOLD) {
-      this.video.playbackRate = Math.max(
-        1 - MAX_SYNC_RATE_ADJUSTMENT,
-        Math.min(1 + MAX_SYNC_RATE_ADJUSTMENT, 1 - drift * 0.1),
-      )
-    } else if (this.video.playbackRate !== 1) {
-      this.video.playbackRate = 1
     }
     this.props.onStatus({ position })
   }
 
   setCurrentTime = (position: number) => {
-    this.video.playbackRate = 1
     this.video.currentTime = position
     this.audio.currentTime = position
   }

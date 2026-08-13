@@ -1,5 +1,5 @@
 import childProcess from 'node:child_process'
-import fs from 'node:fs'
+import fs, { type Stats } from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import path from 'node:path'
 import { parse } from 'yaml'
@@ -103,6 +103,9 @@ let currentJob: Job | undefined
 let currentStartedAt: number | undefined
 let currentProgress: number | undefined
 let currentStage: 'separating' | 'scripting' | undefined
+let separationFinished = false
+let currentInstrumentalProgress: number | undefined
+let currentScriptingProgress: number | undefined
 let completedSongs = 0
 const completedThisRun = new Set<number>()
 let processedAudioSeconds = 0
@@ -177,7 +180,7 @@ export function getVocalSeparationStatus (): VocalSeparationStatus {
     currentStartedAt: currentStartedAt || null,
     currentProgress: currentProgress ?? null,
     currentStage: currentStage || null,
-    currentTasks: currentJob ? tasksForJob(currentJob, currentStage, currentProgress) : [],
+    currentTasks: currentJob ? tasksForJob(currentJob, true) : [],
     completedSongs,
     averageSpeed: processingSeconds > 0 ? processedAudioSeconds / processingSeconds : null,
     lastError,
@@ -209,6 +212,9 @@ async function drain (): Promise<void> {
       currentStartedAt = Date.now()
       currentProgress = 0
       currentStage = job.runSeparation ? 'separating' : 'scripting'
+      separationFinished = !job.runSeparation
+      currentInstrumentalProgress = undefined
+      currentScriptingProgress = !job.runSeparation && job.needsScript ? 0 : undefined
       lastError = null
       markStarted(job)
       emitStatus()
@@ -223,7 +229,7 @@ async function drain (): Promise<void> {
         job.onComplete?.()
         job.sourceReplaced = false
       } catch (err) {
-        lastError = errorMessage(err, currentStage)
+        lastError = errorMessage(err, processingStage(err) || currentStage)
         const elapsedSeconds = currentStartedAt ? (Date.now() - currentStartedAt) / 1000 : 0
         markFinished(job, 'failed', null, elapsedSeconds, lastError)
         // The instrumental replacement may have succeeded before scripting
@@ -237,6 +243,9 @@ async function drain (): Promise<void> {
         currentStartedAt = undefined
         currentProgress = undefined
         currentStage = undefined
+        separationFinished = false
+        currentInstrumentalProgress = undefined
+        currentScriptingProgress = undefined
         emitStatus()
       }
     }
@@ -313,6 +322,7 @@ async function separate (job: Job): Promise<number> {
 
   try {
     let vocal: string | undefined
+    let stems: string[] = []
     if (job.runSeparation) {
       // Normalize input decoding through FFmpeg. audio-separator's librosa/audioread
       // fallback cannot reliably open every video container that FFmpeg supports.
@@ -322,7 +332,7 @@ async function separate (job: Job): Promise<number> {
         '-i', job.source, '-map', `0:a:${job.vocalTrack}`, '-vn', '-ac', '2', '-ar', '44100',
         '-c:a', 'pcm_s16le', separatorInput,
       ])
-      setProgress(2)
+      setProgress(3)
       await runSeparator([
         separatorInput,
         '--model_filename', config.model,
@@ -339,72 +349,32 @@ async function separate (job: Job): Promise<number> {
       if (!vocalName) throw new Error('HTDemucs produced no vocal stem')
       vocal = path.join(workDir, vocalName)
 
-      const stems = files
+      stems = files
         .filter(file => /_\((?!Vocals\))[^)]+\)_.*\.flac$/i.test(file))
         .map(file => path.join(workDir, file))
       if (job.generateInstrumental && !stems.length) throw new Error('HTDemucs produced no non-vocal stems')
-
-      if (job.generateInstrumental) {
-        if (!vocal) throw new Error('HTDemucs produced no vocal stem')
-        const instrumental = path.join(workDir, 'instrumental.m4a')
-        const mixInputs = [...stems, vocal]
-        const mixWeights = [...stems.map(() => '1'), String(config.instrumentalVocalMix)].join(' ')
-        setProgress(72)
-        await execFile(ffmpegPath, [
-          '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-          ...mixInputs.flatMap(file => ['-i', file]),
-          '-filter_complex', `amix=inputs=${mixInputs.length}:weights='${mixWeights}':duration=longest:normalize=0,alimiter=limit=0.99`,
-          '-c:a', 'aac', '-b:a', config.outputBitrate, instrumental,
-        ])
-
-        const remuxed = path.join(workDir, `remuxed${path.extname(job.source)}`)
-        setProgress(76)
-        const streamMaps = job.replaceInstrumental
-          ? ['-map', '0', '-map', '-0:a', '-map', `0:a:${job.vocalTrack}`, '-map', '1:a:0']
-          : ['-map', '0', '-map', '1:a:0']
-        await execFile(ffmpegPath, [
-          '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-          '-i', job.source, '-i', instrumental,
-          ...streamMaps, '-c', 'copy',
-          '-metadata:s:a:1', 'title=Instrumental', '-disposition:a:1', '0',
-          ...(path.extname(job.source).toLowerCase() === '.mp4' ? ['-movflags', '+faststart'] : []),
-          remuxed,
-        ])
-        if (await audioTrackCount(remuxed) !== 2) throw new Error('Remuxed video does not contain exactly two audio tracks')
-
-        const currentStats = await fsPromises.stat(job.source)
-        if (currentStats.size !== initialStats.size || currentStats.mtimeMs !== initialStats.mtimeMs) {
-          throw new Error('Source changed while vocal separation was running')
-        }
-        await fsPromises.copyFile(remuxed, replacement)
-        await fsPromises.chmod(replacement, initialStats.mode)
-        job.onSourceReplacing(job.pathId)
-        await fsPromises.rename(replacement, job.source)
-        job.sourceReplaced = true
-        log.info('%s generated instrumental as A2 for mediaId=%s', job.replaceInstrumental ? 'Replaced' : 'Added', job.mediaId)
-      }
+      separationFinished = true
+      setProgress(100)
+      emitStatus()
     }
 
+    const finishingTasks: Array<Promise<void>> = []
+    if (job.generateInstrumental) {
+      if (!vocal) throw new Error('HTDemucs produced no vocal stem')
+      finishingTasks.push(generateInstrumental(job, vocal, stems, workDir, replacement, initialStats)
+        .catch((err) => { throw markProcessingStage(err, 'separating') }))
+    }
     if (job.needsScript && (job.forceScript || !fs.existsSync(scriptPath(job.source)))) {
-      currentStage = 'scripting'
-      currentProgress = 0
-      emitStatus()
-      // Give WhisperX a simple, decoder-independent audio input. This also
-      // matches the sample rate required by its Silero VAD implementation.
-      const scriptingInput = path.join(workDir, 'vocals-for-whisperx.wav')
-      await execFile(ffmpegPath, [
-        '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-        '-i', vocal || job.source,
-        ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
-        '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
-      ])
-      const { srt } = await runWhisperX(scriptingInput, workDir)
-      await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
-      await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
-      db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = ?', [job.mediaId])
-      emitStatus()
-      log.info('Generated script for mediaId=%s: %s', job.mediaId, scriptPath(job.source))
+      finishingTasks.push(generateScript(job, vocal, workDir)
+        .catch((err) => { throw markProcessingStage(err, 'scripting') }))
     }
+
+    // Both branches only read the separated vocal stem, so run them together.
+    // Wait for every branch even after a failure because cleanup below owns
+    // their shared work directory.
+    const results = await Promise.allSettled(finishingTasks)
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failure) throw failure.reason
     setProgress(100)
     return audioSeconds
   } finally {
@@ -416,35 +386,119 @@ async function separate (job: Job): Promise<number> {
   }
 }
 
+async function generateInstrumental (
+  job: Job,
+  vocal: string,
+  stems: string[],
+  workDir: string,
+  replacement: string,
+  initialStats: Stats,
+): Promise<void> {
+  currentInstrumentalProgress = 0
+  emitStatus()
+  const instrumental = path.join(workDir, 'instrumental.m4a')
+  const mixInputs = [...stems, vocal]
+  const mixWeights = [...stems.map(() => '1'), String(config.instrumentalVocalMix)].join(' ')
+  setInstrumentalProgress(10)
+  await execFile(ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    ...mixInputs.flatMap(file => ['-i', file]),
+    '-filter_complex', `amix=inputs=${mixInputs.length}:weights='${mixWeights}':duration=longest:normalize=0,alimiter=limit=0.99`,
+    '-c:a', 'aac', '-b:a', config.outputBitrate, instrumental,
+  ])
+
+  const remuxed = path.join(workDir, `remuxed${path.extname(job.source)}`)
+  setInstrumentalProgress(35)
+  const videoCodec = await sourceVideoCodec(job.source)
+  const videoOptions = videoCodec && !isPassthroughVideoCodec(videoCodec)
+    ? [
+        '-c:v:0', 'libx264',
+        '-preset:v:0', process.env.KES_TRANSCODE_PRESET || 'veryfast',
+        '-crf:v:0', process.env.KES_TRANSCODE_CRF || '20',
+        '-pix_fmt:v:0', 'yuv420p',
+      ]
+    : []
+  if (videoOptions.length) {
+    log.info('Transcoding %s video to H.264 while adding instrumental track for mediaId=%s', videoCodec, job.mediaId)
+  }
+  const streamMaps = job.replaceInstrumental
+    ? ['-map', '0', '-map', '-0:a', '-map', `0:a:${job.vocalTrack}`, '-map', '1:a:0']
+    : ['-map', '0', '-map', '1:a:0']
+  setInstrumentalProgress(45)
+  await execFile(ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-i', job.source, '-i', instrumental,
+    ...streamMaps, '-c', 'copy', ...videoOptions,
+    '-metadata:s:a:1', 'title=Instrumental', '-disposition:a:1', '0',
+    ...(path.extname(job.source).toLowerCase() === '.mp4' ? ['-movflags', '+faststart'] : []),
+    remuxed,
+  ])
+  setInstrumentalProgress(90)
+  if (await audioTrackCount(remuxed) !== 2) throw new Error('Remuxed video does not contain exactly two audio tracks')
+
+  const currentStats = await fsPromises.stat(job.source)
+  if (currentStats.size !== initialStats.size || currentStats.mtimeMs !== initialStats.mtimeMs) {
+    throw new Error('Source changed while vocal separation was running')
+  }
+  await fsPromises.copyFile(remuxed, replacement)
+  await fsPromises.chmod(replacement, initialStats.mode)
+  job.onSourceReplacing(job.pathId)
+  await fsPromises.rename(replacement, job.source)
+  job.sourceReplaced = true
+  setInstrumentalProgress(100)
+  log.info('%s generated instrumental as A2 for mediaId=%s', job.replaceInstrumental ? 'Replaced' : 'Added', job.mediaId)
+}
+
+async function generateScript (job: Job, vocal: string | undefined, workDir: string): Promise<void> {
+  currentStage = 'scripting'
+  currentScriptingProgress = 0
+  currentProgress = 0
+  emitStatus()
+  // Give WhisperX a simple, decoder-independent audio input. This also
+  // matches the sample rate required by its Silero VAD implementation.
+  const scriptingInput = path.join(workDir, 'vocals-for-whisperx.wav')
+  await execFile(ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-i', vocal || job.source,
+    ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
+    '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
+  ])
+  const { srt } = await runWhisperX(scriptingInput, workDir)
+  await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
+  await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
+  db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = ?', [job.mediaId])
+  currentScriptingProgress = 100
+  currentProgress = 100
+  emitStatus()
+  log.info('Generated script for mediaId=%s: %s', job.mediaId, scriptPath(job.source))
+}
+
 function tasksForJob (
   job: Job,
-  stage?: 'separating' | 'scripting',
-  progress?: number,
+  live = false,
 ): ProcessingTask[] {
-  const separationDone = job.runSeparation && stage === 'scripting'
-  const instrumentalActive = stage === 'separating' && (progress || 0) >= 70
   const tasks: ProcessingTask[] = []
   if (job.runSeparation) tasks.push({
     type: 'separation',
     label: 'Separate vocals',
-    status: separationDone ? 'completed' : stage === 'separating' ? 'processing' : 'queued',
-    progress: separationDone ? 100 : stage === 'separating' ? Math.min(100, Math.round((progress || 0) / 0.7)) : 0,
+    status: live ? separationFinished ? 'completed' : 'processing' : 'queued',
+    progress: live ? separationFinished ? 100 : currentStage === 'separating' ? currentProgress ?? 0 : 0 : 0,
   })
   if (job.generateInstrumental) tasks.push({
     type: 'instrumental',
     label: 'Add instrumental track',
-    status: separationDone ? 'completed' : instrumentalActive ? 'processing' : 'queued',
-    progress: separationDone
-      ? 100
-      : instrumentalActive
-        ? Math.min(100, Math.round(((progress || 70) - 70) / 0.06))
-        : 0,
+    status: !live || currentInstrumentalProgress === undefined
+      ? 'queued'
+      : currentInstrumentalProgress >= 100 ? 'completed' : 'processing',
+    progress: live ? currentInstrumentalProgress ?? 0 : 0,
   })
   if (job.needsScript) tasks.push({
     type: 'scripting',
     label: 'Create SRT script (WhisperX CPU)',
-    status: stage === 'scripting' ? 'processing' : 'queued',
-    progress: stage === 'scripting' ? progress ?? 0 : 0,
+    status: !live || currentScriptingProgress === undefined
+      ? 'queued'
+      : currentScriptingProgress >= 100 ? 'completed' : 'processing',
+    progress: live ? currentScriptingProgress ?? 0 : 0,
   })
   return tasks
 }
@@ -457,11 +511,10 @@ async function runWhisperX (vocal: string, outputDir: string): Promise<{ languag
   // The worker mounts itself on demand and stays alive for subsequent songs,
   // avoiding repeated ASR/VAD model startup.
   const result = await whisperxWorker.transcribe(vocal, outputDir, whisperXSettings(), (progress) => {
-    setProgress(Math.min(99, Math.round(progress)))
+    setScriptingProgress(Math.min(99, Math.round(progress)))
   }, () => {
     emitStatus()
   })
-  setProgress(100)
   return result
 }
 
@@ -522,7 +575,7 @@ async function runSeparatorOnce (args: string[]): Promise<void> {
       output = (output + chunk.toString()).slice(-10 * 1024 * 1024)
       for (const match of chunk.toString().matchAll(/(\d{1,3})(?:\.\d+)?%/g)) {
         const separatorPct = Math.min(100, Number(match[1]))
-        setProgress(Math.round(separatorPct * 0.7))
+        setProgress(separatorPct)
       }
     }
     child.stdout.on('data', handleOutput)
@@ -584,6 +637,36 @@ function setProgress (progress: number): void {
   emitStatus()
 }
 
+function setInstrumentalProgress (progress: number): void {
+  if (currentInstrumentalProgress !== undefined && progress <= currentInstrumentalProgress) return
+  currentInstrumentalProgress = progress
+  if (currentScriptingProgress === undefined) {
+    currentStage = 'separating'
+    currentProgress = progress
+  }
+  emitStatus()
+}
+
+function setScriptingProgress (progress: number): void {
+  if (currentScriptingProgress !== undefined && progress <= currentScriptingProgress) return
+  currentScriptingProgress = progress
+  currentStage = 'scripting'
+  currentProgress = progress
+  emitStatus()
+}
+
+function markProcessingStage (err: unknown, stage: 'separating' | 'scripting'): Error {
+  const error = err instanceof Error ? err : new Error(String(err))
+  return Object.assign(error, { processingStage: stage })
+}
+
+function processingStage (err: unknown): 'separating' | 'scripting' | undefined {
+  if (!(err instanceof Error) || !('processingStage' in err)) return undefined
+  return err.processingStage === 'separating' || err.processingStage === 'scripting'
+    ? err.processingStage
+    : undefined
+}
+
 function emitStatus (): void {
   publishStatus?.(getVocalSeparationStatus())
 }
@@ -593,6 +676,18 @@ async function audioTrackCount (filename: string): Promise<number> {
     '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', filename,
   ])
   return stdout.split(/\r?\n/).filter(Boolean).length
+}
+
+async function sourceVideoCodec (filename: string): Promise<string | null> {
+  const { stdout } = await execFile(ffprobePath, [
+    '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name',
+    '-of', 'default=nw=1:nk=1', filename,
+  ])
+  return stdout.trim().toLowerCase() || null
+}
+
+function isPassthroughVideoCodec (codec: string): boolean {
+  return codec === 'h264' || codec === 'hevc' || codec === 'h265'
 }
 
 function loadConfig (): SeparationConfig {

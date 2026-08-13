@@ -6,9 +6,6 @@ import styles from './MP4Player.css'
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
 const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
 const isWebOs = /Web0S|webOS|NetCast/i.test(navigator.userAgent)
-const HARD_SYNC_THRESHOLD = 1
-const SOFT_SYNC_THRESHOLD = 0.08
-const MAX_SYNC_RATE_ADJUSTMENT = 0.03
 
 interface MP4PlayerProps {
   audioTrack: 0 | 1
@@ -116,7 +113,6 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     this.videoReady = false
     this.audioReady = false
     this.video.current.pause()
-    this.video.current.playbackRate = 1
     this.audio.current.pause()
     if (isWebOs) {
       this.updateWebOsSource()
@@ -172,7 +168,6 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (!this.audio.current) return
 
     this.video.current?.pause()
-    if (this.video.current) this.video.current.playbackRate = 1
     this.audio.current.pause()
     this.playRequest++
     this.audioReady = false
@@ -202,7 +197,6 @@ class MP4Player extends React.Component<MP4PlayerProps> {
 
     if (this.props.isPlaying) {
       if (!this.videoReady || !this.audioReady) return
-      this.video.current.playbackRate = 1
       this.video.current.currentTime = this.audio.current.currentTime
       const request = ++this.playRequest
       Promise.all([this.video.current.play(), this.audio.current.play()])
@@ -217,10 +211,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   }
 
   setCurrentTime = (position: number) => {
-    if (this.video.current) {
-      this.video.current.playbackRate = 1
-      this.video.current.currentTime = position
-    }
+    if (this.video.current) this.video.current.currentTime = position
     if (this.audio.current) this.audio.current.currentTime = position
   }
 
@@ -289,20 +280,8 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     if (!this.video.current || !this.audio.current) return
 
     const position = this.audio.current.currentTime
-    const drift = this.video.current.currentTime - position
-    if (Math.abs(drift) > HARD_SYNC_THRESHOLD) {
-      this.video.current.playbackRate = 1
+    if (Math.abs(this.video.current.currentTime - position) > 0.2) {
       this.video.current.currentTime = position
-    } else if (Math.abs(drift) > SOFT_SYNC_THRESHOLD) {
-      // Hard-seeking on every audio timeupdate flushes the video decoder and
-      // can cause a permanent stutter loop. Nudge the muted video clock until
-      // it catches the audio master instead.
-      this.video.current.playbackRate = Math.max(
-        1 - MAX_SYNC_RATE_ADJUSTMENT,
-        Math.min(1 + MAX_SYNC_RATE_ADJUSTMENT, 1 - drift * 0.1),
-      )
-    } else if (this.video.current.playbackRate !== 1) {
-      this.video.current.playbackRate = 1
     }
     this.props.onStatus({ position })
   }
