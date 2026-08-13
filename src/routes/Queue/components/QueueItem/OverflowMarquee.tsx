@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import styles from './OverflowMarquee.css'
 
 const MARQUEE_PX_PER_SECOND = 30
+const MARQUEE_OVERFLOW_RATIO = 1.1
 
 const OverflowMarquee = ({ className, text }: { className: string, text: string }) => {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -12,7 +13,11 @@ const OverflowMarquee = ({ className, text }: { className: string, text: string 
   useLayoutEffect(() => {
     const measure = () => {
       if (!containerRef.current || !textRef.current) return
-      setDistance(Math.max(0, textRef.current.scrollWidth - containerRef.current.clientWidth))
+      const containerWidth = containerRef.current.clientWidth
+      const textWidth = textRef.current.scrollWidth
+      setDistance(textWidth > containerWidth * MARQUEE_OVERFLOW_RATIO
+        ? textWidth - containerWidth
+        : 0)
     }
     const observer = new ResizeObserver(measure)
     if (containerRef.current) observer.observe(containerRef.current)
@@ -28,7 +33,7 @@ const OverflowMarquee = ({ className, text }: { className: string, text: string 
     <div ref={containerRef} className={clsx(className, styles.marquee)}>
       <span
         ref={textRef}
-        className={clsx(distance > 0 && styles.overflow)}
+        className={clsx(distance > 0 ? styles.overflow : styles.clipped)}
         style={{
           '--marquee-distance': `${distance}px`,
           '--marquee-duration': `${duration}s`,
