@@ -49,5 +49,7 @@
   svg {
     display: block;
     height: var(--handle-height);
+    transform: scale(var(--handle-scale, 1));
+    transform-origin: center;
   }
 }

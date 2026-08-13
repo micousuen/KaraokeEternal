@@ -26,5 +26,7 @@
 }
 
 .slider {
+  --handle-scale: 0.5;
+
   width: 100%;
 }
