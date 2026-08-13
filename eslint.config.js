@@ -30,7 +30,7 @@ export default defineConfig(
     },
   },
   {
-    ignores: ['build/**', 'docs/**', 'dist/**', 'node_modules/**'],
+    ignores: ['build/**', 'docs/**', 'dist/**', 'node_modules/**', '**/.pixi/**', 'test_folder/**'],
   },
   // client-only config
   {
@@ -65,6 +65,9 @@ export default defineConfig(
     rules: {
       ...pluginNode.configs['flat/recommended-module'].rules,
       'n/hashbang': 'off', // suppress incorrect warning
+      // The server is incrementally typed and its tsconfig deliberately allows
+      // explicit any while the stricter client does not.
+      '@typescript-eslint/no-explicit-any': 'off',
     },
     languageOptions: {
       globals: globals.node,

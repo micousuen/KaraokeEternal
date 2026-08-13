@@ -4,7 +4,7 @@ import { Socket } from 'socket.io-client'
 import { OptimisticAction } from './store'
 
 // optimistic actions need a transaction id to match BEGIN to COMMIT/REVERT
-let transactionID = 0
+let nextTransactionID = 1
 
 export default function createSocketMiddleware (socket: Socket, prefix: string): Middleware {
   return (store) => {
@@ -19,6 +19,7 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
 
       const hasMeta = 'meta' in action
       const isOptimistic = hasMeta && (action.meta?.isOptimistic ?? false)
+      const transactionID = isOptimistic ? nextTransactionID++ : undefined
 
       socket.emit('action', action, (cbAction: UnknownAction) => {
         // make sure callback response is an action
@@ -39,9 +40,6 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
       if (!isOptimistic) {
         return next(action)
       }
-
-      // dispatch optimistically?
-      transactionID++
 
       // don't mutate action because we don't need to
       // emit this meta info to the server

@@ -728,6 +728,8 @@ function errorMessage (err: unknown, stage?: 'separating' | 'scripting'): string
 
   const output = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr : ''
   const lines = output
+    // ANSI terminal color escape sequence.
+    // eslint-disable-next-line no-control-regex
     .replace(/\x1b\[[0-9;]*m/g, '')
     .replace(/\r/g, '\n')
     .split('\n')

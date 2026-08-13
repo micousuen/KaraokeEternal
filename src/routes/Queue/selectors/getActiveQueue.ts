@@ -19,7 +19,10 @@ const getActiveQueue = createSelector(
     }
 
     return {
-      result: result.filter(id => !entities[id].isPlayed && !history.includes(id)) as number[],
+      result: result.filter((id) => {
+        const item = entities[id]
+        return (!('isPlayed' in item) || !item.isPlayed) && !history.includes(id)
+      }),
       entities: entities as Record<number, QueueItem>,
     }
   },

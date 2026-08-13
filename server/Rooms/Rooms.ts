@@ -110,7 +110,7 @@ class Rooms {
     } else {
       const joinSecret = crypto.randomToken()
       const defaultRoles = db.all<{ roleId: number }>(
-        "SELECT roleId FROM roles WHERE name IN ('standard', 'guest')",
+        'SELECT roleId FROM roles WHERE name IN (\'standard\', \'guest\')',
       )
       const rolePrefs = { ...prefs.roles }
 
