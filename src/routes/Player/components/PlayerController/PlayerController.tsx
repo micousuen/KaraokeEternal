@@ -59,7 +59,6 @@ const PlayerController = (props: PlayerControllerProps) => {
       isAtQueueEnd: false,
       isPlaying: true,
       isVideoKeyingEnabled: nextItem.isVideoKeyingEnabled,
-      mediaType: nextItem.mediaType,
       position: 0,
       queueId: nextItem.queueId,
       nextUserId: null,
@@ -86,7 +85,6 @@ const PlayerController = (props: PlayerControllerProps) => {
       handleStatus({
         history,
         isAtQueueEnd: true,
-        mediaType: null,
         _isPlayingNext: false,
       })
 
@@ -101,7 +99,6 @@ const PlayerController = (props: PlayerControllerProps) => {
       isAtQueueEnd: false,
       isPlaying: true,
       isVideoKeyingEnabled: nextQueueItem.isVideoKeyingEnabled,
-      mediaType: nextQueueItem.mediaType,
       position: 0,
       queueId: nextQueueItem.queueId,
       nextUserId: null,
@@ -125,11 +122,9 @@ const PlayerController = (props: PlayerControllerProps) => {
   // always emit status when any of these change
   useEffect(() => handleStatus({ isVideoKeyingEnabled: queueItem?.isVideoKeyingEnabled }), [
     handleStatus,
-    player.cdgAlpha,
-    player.cdgSize,
     player.audioTrack,
     player.isPlaying,
-    player.mp4Alpha,
+    player.videoAlpha,
     player.showScript,
     player.volume,
     playerVisualizer,
@@ -190,8 +185,6 @@ const PlayerController = (props: PlayerControllerProps) => {
     <>
       <Player
         audioTrack={player.audioTrack}
-        cdgAlpha={player.cdgAlpha}
-        cdgSize={player.cdgSize}
         isPlaying={player.isPlaying}
         isVisible={!!queueItem && !player.isErrored && !player.isAtQueueEnd}
         isReplayGainEnabled={prefs.isReplayGainEnabled}
@@ -201,8 +194,7 @@ const PlayerController = (props: PlayerControllerProps) => {
         mediaKey={queueItem ? queueItem.queueId : null}
         mediaReplayKey={player._lastReplayTime}
         mediaSeekKey={player._lastSeekTime}
-        mediaType={queueItem ? queueItem.mediaType : null}
-        mp4Alpha={player.mp4Alpha}
+        videoAlpha={player.videoAlpha}
         seekPosition={player._seekPosition}
         onEnd={handleLoadNext}
         onError={handleError}

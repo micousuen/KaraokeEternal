@@ -1,30 +1,30 @@
 import React from 'react'
 import GLChroma from 'gl-chromakey'
-import { MP4PlaybackController, type MP4PlaybackProps } from './MP4PlaybackController'
-import styles from './MP4Player.css'
+import { VideoPlaybackController, type VideoPlaybackProps } from './VideoPlaybackController'
+import styles from './VideoPlayer.css'
 
 const BACKDROP_PADDING = 10
 const BORDER_RADIUS = parseInt(getComputedStyle(document.body).getPropertyValue('--border-radius'))
 
-interface MP4AlphaPlayerProps extends MP4PlaybackProps {
+interface VideoAlphaPlayerProps extends VideoPlaybackProps {
   mediaKey: number
   mediaReplayKey?: number
   mediaSeekKey?: number
   seekPosition: number
-  mp4Alpha: number
+  videoAlpha: number
   width: number
   height: number
   onAudioElement(audio: HTMLAudioElement): void
   onEnd(): void
 }
 
-class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
+class VideoAlphaPlayer extends React.Component<VideoAlphaPlayerProps> {
   canvas = React.createRef<HTMLCanvasElement>()
   frameId: number | null = null
   video = document.createElement('video')
   audio = document.createElement('audio')
   chroma: GLChroma
-  controller: MP4PlaybackController
+  controller: VideoPlaybackController
   supportsFilters = CSS.supports('backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
     || CSS.supports('-webkit-backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
 
@@ -44,7 +44,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
       this.chroma = new GLChroma(this.video, this.canvas.current)
       this.chroma.key({ color: 'auto' })
     }
-    this.controller = new MP4PlaybackController(this.video, this.audio, () => this.props, {
+    this.controller = new VideoPlaybackController(this.video, this.audio, () => this.props, {
       onPlaybackStarted: this.startChroma,
       onStopped: this.stopChroma,
     })
@@ -61,7 +61,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     this.controller.updateSources()
   }
 
-  componentDidUpdate (prevProps: MP4AlphaPlayerProps) {
+  componentDidUpdate (prevProps: VideoAlphaPlayerProps) {
     if (prevProps.mediaKey !== this.props.mediaKey) {
       this.controller.updateSources()
       return
@@ -83,7 +83,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     if (!this.props.isPlaying && (
       prevProps.width !== this.props.width
       || prevProps.height !== this.props.height
-      || prevProps.mp4Alpha !== this.props.mp4Alpha)
+      || prevProps.videoAlpha !== this.props.videoAlpha)
     ) this.renderChromaFrame()
   }
 
@@ -97,7 +97,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   render () {
-    const { mp4Alpha, width, height } = this.props
+    const { videoAlpha, width, height } = this.props
     const screenAspect = width / height
     const videoAspect = this.state.videoWidth / this.state.videoHeight
     const scale = !isNaN(videoAspect)
@@ -108,9 +108,9 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     const pad = (x2 - x1) && (y2 - y1) ? scale * BACKDROP_PADDING : 0
 
     if (this.supportsFilters) {
-      filters.push(`blur(${30 * mp4Alpha * scale}px)`)
-      filters.push(`brightness(${100 - (100 * (mp4Alpha ** 3))}%)`)
-      filters.push(`saturate(${100 - (100 * (mp4Alpha ** 3))}%)`)
+      filters.push(`blur(${30 * videoAlpha * scale}px)`)
+      filters.push(`brightness(${100 - (100 * (videoAlpha ** 3))}%)`)
+      filters.push(`saturate(${100 - (100 * (videoAlpha ** 3))}%)`)
     }
 
     return (
@@ -118,7 +118,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
         <div
           className={styles.backdrop}
           style={{
-            backdropFilter: this.supportsFilters && mp4Alpha !== 1 ? filters.join(' ') : 'none',
+            backdropFilter: this.supportsFilters && videoAlpha !== 1 ? filters.join(' ') : 'none',
             borderRadius: BORDER_RADIUS * scale,
             left: x1 - pad,
             top: y1 - pad,
@@ -146,7 +146,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 
   renderChromaFrame = () => {
-    const contentBounds = this.chroma.render({ passthrough: this.props.mp4Alpha === 1 }).getContentBounds()
+    const contentBounds = this.chroma.render({ passthrough: this.props.videoAlpha === 1 }).getContentBounds()
     if (!contentBounds.every((value, index) => value === this.state.contentBounds[index])) {
       this.setState({ contentBounds })
     }
@@ -164,4 +164,4 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   }
 }
 
-export default MP4AlphaPlayer
+export default VideoAlphaPlayer

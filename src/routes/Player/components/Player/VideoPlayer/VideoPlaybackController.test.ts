@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MP4PlaybackController, type MP4PlaybackProps } from './MP4PlaybackController'
+import { VideoPlaybackController, type VideoPlaybackProps } from './VideoPlaybackController'
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('MP4PlaybackController', () => {
+describe('VideoPlaybackController', () => {
   it('selects directly supported source video and audio', async () => {
     vi.stubGlobal('document', { baseURI: '/karaoke/' })
     vi.stubGlobal('fetch', vi.fn(async () => ({
@@ -20,7 +20,7 @@ describe('MP4PlaybackController', () => {
     })))
     const video = mediaElement('video') as HTMLVideoElement
     const audio = mediaElement('audio') as HTMLAudioElement
-    const props: MP4PlaybackProps = {
+    const props: VideoPlaybackProps = {
       audioTrack: 1,
       isPlaying: false,
       mediaId: 42,
@@ -29,7 +29,7 @@ describe('MP4PlaybackController', () => {
       onPlay: vi.fn(),
       onStatus: vi.fn(),
     }
-    const controller = new MP4PlaybackController(video, audio, () => props)
+    const controller = new VideoPlaybackController(video, audio, () => props)
 
     controller.updateSources()
 

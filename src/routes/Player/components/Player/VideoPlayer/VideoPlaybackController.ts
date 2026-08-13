@@ -1,7 +1,7 @@
 import { BROWSER_MEDIA_VERSION, type SourceMediaInfo } from 'shared/media'
 import { supportsSourceAudio, supportsSourceVideo } from '../../../lib/mediaSupport'
 
-export interface MP4PlaybackProps {
+export interface VideoPlaybackProps {
   audioTrack: 0 | 1
   isPlaying: boolean
   mediaId: number
@@ -20,10 +20,10 @@ interface ControllerOptions {
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
 const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
 
-export class MP4PlaybackController {
+export class VideoPlaybackController {
   #audio: HTMLAudioElement
   #audioReady = false
-  #getProps: () => MP4PlaybackProps
+  #getProps: () => VideoPlaybackProps
   #options: ControllerOptions
   #pendingPosition = 0
   #playRequest = 0
@@ -37,7 +37,7 @@ export class MP4PlaybackController {
   constructor (
     video: HTMLVideoElement,
     audio: HTMLAudioElement,
-    getProps: () => MP4PlaybackProps,
+    getProps: () => VideoPlaybackProps,
     options: ControllerOptions = {},
   ) {
     this.#video = video

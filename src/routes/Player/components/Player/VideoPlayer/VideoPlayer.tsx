@@ -1,10 +1,10 @@
 import React from 'react'
-import { MP4PlaybackController, type MP4PlaybackProps } from './MP4PlaybackController'
-import styles from './MP4Player.css'
+import { VideoPlaybackController, type VideoPlaybackProps } from './VideoPlaybackController'
+import styles from './VideoPlayer.css'
 
 const isWebOs = /Web0S|webOS|NetCast/i.test(navigator.userAgent)
 
-interface MP4PlayerProps extends MP4PlaybackProps {
+interface VideoPlayerProps extends VideoPlaybackProps {
   mediaKey: number
   mediaReplayKey?: number
   mediaSeekKey?: number
@@ -15,14 +15,14 @@ interface MP4PlayerProps extends MP4PlaybackProps {
   onEnd(): void
 }
 
-class MP4Player extends React.Component<MP4PlayerProps> {
+class VideoPlayer extends React.Component<VideoPlayerProps> {
   video = React.createRef<HTMLVideoElement>()
   audio = React.createRef<HTMLAudioElement>()
-  controller: MP4PlaybackController | undefined
+  controller: VideoPlaybackController | undefined
 
   componentDidMount () {
     if (!this.video.current || !this.audio.current) return
-    this.controller = new MP4PlaybackController(
+    this.controller = new VideoPlaybackController(
       this.video.current,
       this.audio.current,
       () => this.props,
@@ -32,7 +32,7 @@ class MP4Player extends React.Component<MP4PlayerProps> {
     this.controller.updateSources()
   }
 
-  componentDidUpdate (prevProps: MP4PlayerProps) {
+  componentDidUpdate (prevProps: VideoPlayerProps) {
     if (!this.controller) return
     if (prevProps.mediaKey !== this.props.mediaKey) {
       this.controller.updateSources()
@@ -93,4 +93,4 @@ class MP4Player extends React.Component<MP4PlayerProps> {
   }
 }
 
-export default MP4Player
+export default VideoPlayer

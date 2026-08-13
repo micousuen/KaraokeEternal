@@ -1,6 +1,6 @@
 # Karaoke Eternal
 
-Host awesome karaoke parties where everyone can easily find and queue songs from their phone's browser. The player is also fully browser-based with support for MP3+G, MP4 videos and WebGL visualizations. The server is self-hosted and runs on nearly everything.
+Host awesome karaoke parties where everyone can easily find and queue songs from their phone's browser. The player is also fully browser-based with support for MP4 and MKV videos plus WebGL visualizations. The server is self-hosted and runs on nearly everything.
 
 [![Karaoke Eternal](/docs/assets/images/README.jpg?raw=true)](/docs/assets/images/README.jpg?raw=true)
 
@@ -11,8 +11,7 @@ Host awesome karaoke parties where everyone can easily find and queue songs from
 ## Features
 
 - Plays:
-  - MP3+G (MP3 with CDG lyrics; including zipped)
-  - MP4 videos
+  - MP4 and MKV videos
   - Music-synced visualizations (with automatic lyrics background removal)
 - Fast, modern mobile browser app designed for "karaoke conditions"
 - Easy joining with QR codes and guest accounts

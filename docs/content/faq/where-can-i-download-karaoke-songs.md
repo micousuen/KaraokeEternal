@@ -4,7 +4,7 @@ category: General
 weight: 2
 ---
 
-Below is a non-exhaustive, probably U.S.-centric list of sources for licensed MP3+G or MP4 files (additions welcome):
+Below is a non-exhaustive, probably U.S.-centric list of sources for licensed karaoke video files (additions welcome):
 
 - [KaraokeNerds](https://www.karaokenerds.com){{% icon-external %}}
 - [SunFly Karaoke](https://www.sunflykaraoke.com){{% icon-external %}}

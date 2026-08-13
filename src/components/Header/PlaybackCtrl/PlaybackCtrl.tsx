@@ -76,7 +76,7 @@ const PlaybackCtrl = () => {
 
       <VolumeSlider volume={status.volume} onVolumeChange={handleVolume} />
 
-      {status.mediaType === 'mp4' && status.audioTrackCount > 1 && (
+      {status.audioTrackCount > 1 && (
         <Button
           animateClassName={styles.btnAnimate}
           className={clsx(styles.btn, styles.audioTrack)}
@@ -88,17 +88,15 @@ const PlaybackCtrl = () => {
         </Button>
       )}
 
-      {status.mediaType === 'mp4' && (
-        <Button
-          animateClassName={styles.btnAnimate}
-          className={clsx(styles.btn, styles.script, status.showScript && styles.scriptActive)}
-          onClick={handleToggleScript}
-          aria-label={`${status.showScript ? 'Hide' : 'Show'} script`}
-          title={status.showScript ? 'Hide script' : 'Show script'}
-        >
-          Script
-        </Button>
-      )}
+      <Button
+        animateClassName={styles.btnAnimate}
+        className={clsx(styles.btn, styles.script, status.showScript && styles.scriptActive)}
+        onClick={handleToggleScript}
+        aria-label={`${status.showScript ? 'Hide' : 'Show'} script`}
+        title={status.showScript ? 'Hide script' : 'Show script'}
+      >
+        Script
+      </Button>
 
       <Button
         className={clsx(styles.btn, styles.displayCtrl)}
@@ -119,13 +117,10 @@ const PlaybackCtrl = () => {
 
       {isDisplayCtrlVisible && (
         <DisplayCtrl
-          cdgAlpha={status.cdgAlpha}
-          cdgSize={status.cdgSize}
           isVideoKeyingEnabled={status.isVideoKeyingEnabled}
           isVisualizerEnabled={status.visualizer.isEnabled}
           isWebGLSupported={status.isWebGLSupported}
-          mediaType={status.mediaType}
-          mp4Alpha={status.mp4Alpha}
+          videoAlpha={status.videoAlpha}
           onClose={toggleDisplayCtrl}
           onRequestOptions={handleOptions}
           sensitivity={status.visualizer.sensitivity}

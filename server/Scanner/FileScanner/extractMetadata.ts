@@ -1,15 +1,8 @@
-import fsPromises from 'node:fs/promises'
 import path from 'node:path'
-import { parseBuffer, parseFile } from 'music-metadata'
-import { unzip } from 'unzipit'
-import getCdgName from '../../lib/getCdgName.js'
-import { getExt } from '../../lib/util.js'
-import fileTypes from '../../Media/fileTypes.js'
+import { parseFile } from 'music-metadata'
 import MetaParser from '../MetaParser/MetaParser.js'
 import type { MetadataResult, MetadataTask } from './MetadataWorkerPool.js'
 import parseFilename from './parseFilename.js'
-
-const audioExts = Object.keys(fileTypes).filter(ext => fileTypes[ext].mimeType.startsWith('audio/'))
 
 export async function extractMetadata (
   { file, parserConfig, forceMediaRead = false, technicalOnly = false }: MetadataTask,
@@ -39,27 +32,7 @@ export async function extractMetadata (
     }
   }
 
-  let mimeType = fileTypes[getExt(file)].mimeType
-  let data
-
-  if (getExt(file) === '.zip') {
-    const buffer = await fsPromises.readFile(file)
-    const { entries } = await unzip(new Uint8Array(buffer))
-    const audioName = Object.keys(entries).find(name => !name.includes('/') && audioExts.includes(getExt(name)))
-    if (!audioName) throw new Error(`no valid audio file ${JSON.stringify(audioExts)} found in archive`)
-    if (!Object.keys(entries).find(name => !name.includes('/') && getExt(name) === '.cdg')) {
-      throw new Error('no .cdg sidecar found in archive')
-    }
-
-    mimeType = fileTypes[getExt(audioName)].mimeType
-    data = await parseBuffer(Buffer.from(await entries[audioName].arrayBuffer()), mimeType, {
-      duration: true,
-      skipCovers: true,
-    })
-  } else {
-    if (fileTypes[getExt(file)].requiresCDG && !getCdgName(file)) throw new Error('no .cdg sidecar found')
-    data = await parseFile(file, { duration: true, skipCovers: true })
-  }
+  const data = await parseFile(file, { duration: true, skipCovers: true })
 
   if (!data.format.duration) throw new Error('could not determine duration')
 

@@ -1,5 +1,4 @@
 import fs from 'fs'
-import { Readable } from 'stream'
 import path from 'path'
 import getLogger from '../lib/Log.js'
 import { getExt } from '../lib/util.js'
@@ -83,7 +82,7 @@ router.get('/:mediaId', async (ctx) => {
   }
   ctx.length = resolved.length!
   log.verbose('streaming %s (%sMB): %s', ctx.type, (ctx.length / 1000000).toFixed(2), resolved.file)
-  streamMedia(ctx, resolved.file!, resolved.buffer, resolved.length!)
+  streamMedia(ctx, resolved.file!, resolved.length!)
 })
 
 // set isPreferred flag
@@ -128,12 +127,12 @@ function supportsType (types: Set<string>, mimeType: string | null | undefined, 
   return !!mimeType && !!codec && types.has(`${mimeType}; codecs="${codec}"`)
 }
 
-function streamMedia (ctx, file: string, buffer: Buffer | undefined, length: number) {
+function streamMedia (ctx, file: string, length: number) {
   ctx.set('Accept-Ranges', 'bytes')
   const range = ctx.request.headers.range
 
   if (!range) {
-    ctx.body = buffer ? Readable.from(buffer) : fs.createReadStream(file)
+    ctx.body = fs.createReadStream(file)
     return
   }
 
@@ -164,9 +163,7 @@ function streamMedia (ctx, file: string, buffer: Buffer | undefined, length: num
   ctx.status = 206
   ctx.set('Content-Range', `bytes ${start}-${end}/${length}`)
   ctx.length = end - start + 1
-  ctx.body = buffer
-    ? Readable.from(buffer.subarray(start, end + 1))
-    : fs.createReadStream(file, { start, end })
+  ctx.body = fs.createReadStream(file, { start, end })
 }
 
 function requireRoomMember (ctx): void {

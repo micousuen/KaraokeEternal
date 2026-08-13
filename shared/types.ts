@@ -38,7 +38,6 @@ export interface QueueItem {
   rgTrackPeak: number
   userDateUpdated: number
   userDisplayName: string
-  mediaType: 'cdg' | 'mp4'
   isPlayed: boolean
   isOptimistic?: false
   isVideoKeyingEnabled: boolean
@@ -110,9 +109,7 @@ export interface UserWithRole extends User {
 export interface PlaybackOptions {
   audioTrack?: 0 | 1
   showScript?: boolean
-  cdgAlpha?: number
-  cdgSize?: number
-  mp4Alpha?: number
+  videoAlpha?: number
   visualizer?: {
     sensitivity?: number
     isEnabled?: boolean
@@ -122,13 +119,9 @@ export interface PlaybackOptions {
   }
 }
 
-export type MediaType = 'cdg' | 'mp4' | '' | null
-
 export interface PlaybackCoreStatus {
   audioTrack: 0 | 1
   audioTrackCount: number
-  cdgAlpha: number
-  cdgSize: number
   duration: number
   errorMessage: string
   history: number[]
@@ -137,8 +130,7 @@ export interface PlaybackCoreStatus {
   isPlaying: boolean
   isVideoKeyingEnabled: boolean
   isWebGLSupported: boolean
-  mediaType: MediaType
-  mp4Alpha: number
+  videoAlpha: number
   showScript: boolean
   nextUserId: number | null
   position: number
@@ -152,8 +144,6 @@ export function createInitialPlaybackStatus (): PlaybackCoreStatus {
   return {
     audioTrack: 0,
     audioTrackCount: 0,
-    cdgAlpha: 0.5,
-    cdgSize: 0.65,
     duration: 0,
     errorMessage: '',
     history: [],
@@ -162,8 +152,7 @@ export function createInitialPlaybackStatus (): PlaybackCoreStatus {
     isPlaying: false,
     isVideoKeyingEnabled: false,
     isWebGLSupported: false,
-    mediaType: null,
-    mp4Alpha: 0.5,
+    videoAlpha: 0.5,
     showScript: false,
     nextUserId: null,
     position: 0,

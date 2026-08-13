@@ -10,7 +10,6 @@ describe('createInitialPlaybackStatus', () => {
     expect(second.history).toEqual([])
     expect(first).toEqual(expect.objectContaining({
       audioTrack: 0,
-      mediaType: null,
       queueId: -1,
       volume: 1,
     }))

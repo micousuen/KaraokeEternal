@@ -6,16 +6,13 @@ import InputCheckbox from 'components/InputCheckbox/InputCheckbox'
 import Slider from 'components/Slider/Slider'
 import Icon from 'components/Icon/Icon'
 import styles from './DisplayCtrl.css'
-import { MediaType, PlaybackOptions } from 'shared/types'
+import { PlaybackOptions } from 'shared/types'
 
 interface DisplayCtrlProps {
-  cdgAlpha: number
-  cdgSize: number
   isVideoKeyingEnabled: boolean
   isVisualizerEnabled: boolean
   isWebGLSupported: boolean
-  mediaType?: MediaType
-  mp4Alpha: number
+  videoAlpha: number
   sensitivity: number
   visualizerPresetName: string
   // actions
@@ -24,30 +21,20 @@ interface DisplayCtrlProps {
 }
 
 const DisplayCtrl = ({
-  cdgAlpha,
-  cdgSize,
   isVideoKeyingEnabled,
   isVisualizerEnabled,
   isWebGLSupported,
-  mediaType = '',
-  mp4Alpha,
+  videoAlpha,
   sensitivity,
   visualizerPresetName,
   onRequestOptions,
   onClose,
 }: DisplayCtrlProps) => {
-  const handleAlpha = (val: number) => {
-    if (mediaType === '') return
-    onRequestOptions({ [mediaType + 'Alpha']: val })
-  }
+  const handleAlpha = (val: number) => onRequestOptions({ videoAlpha: val })
 
   const handleSensitivity = (val: number) => onRequestOptions({
     visualizer: { sensitivity: val },
   })
-
-  const handleSize = (val: number) => {
-    onRequestOptions({ cdgSize: val })
-  }
 
   const handleToggleVisualizer = () => onRequestOptions({
     visualizer: { isEnabled: !isVisualizerEnabled },
@@ -84,7 +71,7 @@ const DisplayCtrl = ({
               />
             </legend>
 
-            {isWebGLSupported && (mediaType === 'cdg' || isVideoKeyingEnabled) && (
+            {isWebGLSupported && isVideoKeyingEnabled && (
               <>
                 <div className={styles.presetContainer}>
                   <div className={styles.presetButtons}>
@@ -135,7 +122,7 @@ const DisplayCtrl = ({
               </>
             )}
 
-            {isWebGLSupported && mediaType !== 'cdg' && !isVideoKeyingEnabled
+            {isWebGLSupported && !isVideoKeyingEnabled
               && <p className={styles.unsupported}>Not available for this media type</p>}
 
             {!isWebGLSupported
@@ -147,29 +134,14 @@ const DisplayCtrl = ({
           <fieldset>
             <legend>Lyrics</legend>
 
-            {mediaType === 'cdg' && (
-              <div className={styles.field}>
-                <label id='label-lyrics-size'>Size</label>
-                <Slider
-                  min={0.4}
-                  max={0.9}
-                  step={0.01}
-                  value={cdgSize}
-                  onChange={handleSize}
-                  className={styles.slider}
-                  aria-labelledby='label-lyrics-size'
-                />
-              </div>
-            )}
-
-            {(mediaType === 'cdg' || isVideoKeyingEnabled) && (
+            {isVideoKeyingEnabled && (
               <div className={styles.field}>
                 <label id='label-lyrics-background'>Background</label>
                 <Slider
                   min={0}
                   max={1}
                   step={0.01}
-                  value={mediaType === 'cdg' ? cdgAlpha : mp4Alpha}
+                  value={videoAlpha}
                   onChange={handleAlpha}
                   className={styles.slider}
                   aria-labelledby='label-lyrics-background'
@@ -177,9 +149,9 @@ const DisplayCtrl = ({
               </div>
             )}
 
-            {mediaType !== 'cdg' && !isVideoKeyingEnabled && (
+            {!isVideoKeyingEnabled && (
               <p className={styles.unsupported}>
-                {mediaType === 'mp4' ? 'Displays the generated script when available' : 'No options available'}
+                Displays the generated script when available
               </p>
             )}
           </fieldset>

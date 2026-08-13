@@ -1,7 +1,6 @@
 import React from 'react'
-import CDGPlayer from './CDGPlayer/CDGPlayer'
-import MP4Player from './MP4Player/MP4Player'
-import MP4AlphaPlayer from './MP4Player/MP4AlphaPlayer'
+import VideoPlayer from './VideoPlayer/VideoPlayer'
+import VideoAlphaPlayer from './VideoPlayer/VideoAlphaPlayer'
 import { type PlayerState } from '../../modules/player'
 import { type PlayerVisualizerState } from '../../modules/playerVisualizer'
 
@@ -9,8 +8,6 @@ const PlayerVisualizer = React.lazy(() => import('./PlayerVisualizer/PlayerVisua
 
 interface PlayerProps {
   audioTrack: 0 | 1
-  cdgAlpha: number
-  cdgSize: number
   isPlaying: boolean
   isVisible: boolean
   isReplayGainEnabled: boolean
@@ -20,8 +17,7 @@ interface PlayerProps {
   mediaKey: number
   mediaReplayKey?: number
   mediaSeekKey?: number
-  mediaType?: string
-  mp4Alpha: number
+  videoAlpha: number
   seekPosition: number
   rgTrackGain?: number
   rgTrackPeak?: number
@@ -125,20 +121,11 @@ class Player extends React.Component<PlayerProps> {
       onAudioElement: this.handleAudioElement,
       onPlay: this.handlePlay,
     }
-    let player: React.ReactNode
+    const player = this.props.isVideoKeyingEnabled && !/Web0S|webOS|NetCast/i.test(navigator.userAgent)
+      ? <VideoAlphaPlayer {...playerProps} />
+      : <VideoPlayer {...playerProps} />
 
-    if (this.props.mediaType === 'cdg') {
-      player = <CDGPlayer {...playerProps} />
-    } else if (this.props.mediaType === 'mp4') {
-      player = this.props.isVideoKeyingEnabled && !/Web0S|webOS|NetCast/i.test(navigator.userAgent)
-        ? <MP4AlphaPlayer {...playerProps} />
-        : <MP4Player {...playerProps} />
-    } else {
-      this.props.onError(`No player for mediaType: ${this.props.mediaType}`)
-      return null
-    }
-
-    const isVisualizerActive = (this.props.mediaType === 'cdg' || this.props.isVideoKeyingEnabled)
+    const isVisualizerActive = this.props.isVideoKeyingEnabled
       && this.props.isWebGLSupported
       && this.props.visualizer.isEnabled
       && this.state.visualizerAudioSourceNode

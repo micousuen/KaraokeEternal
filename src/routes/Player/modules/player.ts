@@ -52,10 +52,8 @@ const playerCmdSeek = createAction<number>(PLAYER_CMD_SEEK)
 const playerCmdVolume = createAction<number>(PLAYER_CMD_VOLUME)
 const playerCmdOptions = createAction<{
   audioTrack?: 0 | 1
-  cdgAlpha: number
-  cdgSize: number
   duration: number
-  mp4Alpha: number
+  videoAlpha: number
   showScript: boolean
 }>(PLAYER_CMD_OPTIONS)
 const playerCmdTakeover = createAction(PLAYER_CMD_TAKEOVER)
@@ -160,9 +158,7 @@ const playerReducer = createReducer(initialState, (builder) => {
     .addCase(playerCmdOptions, (state, { payload }) => ({
       ...state,
       audioTrack: payload.audioTrack === 0 || payload.audioTrack === 1 ? payload.audioTrack : state.audioTrack,
-      cdgAlpha: typeof payload.cdgAlpha === 'number' ? payload.cdgAlpha : state.cdgAlpha,
-      cdgSize: typeof payload.cdgSize === 'number' ? payload.cdgSize : state.cdgSize,
-      mp4Alpha: typeof payload.mp4Alpha === 'number' ? payload.mp4Alpha : state.mp4Alpha,
+      videoAlpha: typeof payload.videoAlpha === 'number' ? payload.videoAlpha : state.videoAlpha,
       showScript: typeof payload.showScript === 'boolean' ? payload.showScript : state.showScript,
     }))
     .addCase(playerCmdPause, (state) => {

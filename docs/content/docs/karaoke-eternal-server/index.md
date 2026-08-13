@@ -79,19 +79,15 @@ See [Getting Started]({{< ref "docs/getting-started" >}}) if you're new to Karao
 
 ## Media Files
 
-The following file types are supported:
-
-- [MP3+G](https://en.wikipedia.org/wiki/MP3%2BG){{% icon-external %}} (including zipped; also supports .m4a instead of .mp3)
-- MP4 and MKV video. On first playback, the customized source build prepares a
-  silent H.264 MP4 plus one AAC/M4A file per source audio track. Keeping audio
-  separate allows instant, cross-browser track switching without retranscoding.
+MP4 and MKV video files are supported. The player streams codecs supported by
+the browser directly. When a video or audio codec is unsupported, the server
+prepares a browser-compatible cached version in the background.
 
 Karaoke Eternal Server expects your media files to be named in **"Artist - Title"** format by default (you can [configure this](#metadata-parser)). Media with filenames that couldn't be parsed won't appear in the library, so check the [scanner log](#file-locations) or console output for these.
 
 The customized source build can parse **"Singer - Song - Language"** filenames by setting
-`KES_FILENAME_FORMAT=artist-title-language`. The language suffix is used only to delimit the
-song title because the current database schema does not store language. Multiple singers remain
-a single combined artist value. Successfully parsed filenames use a zero-I/O fast path: embedded
+`KES_FILENAME_FORMAT=artist-title-language`. The language suffix is saved with the song.
+Multiple singers remain a single combined artist value. Successfully parsed filenames use a zero-I/O fast path: embedded
 metadata and duration are not read during scanning. Media metadata is opened only as a fallback
 when filename parsing or a custom metadata template fails. Fast-path entries initially have an
 unknown duration (`0:00`), so queue wait estimates are unavailable for those entries. New songs

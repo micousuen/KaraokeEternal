@@ -11,7 +11,7 @@ describe('persistent media metadata analysis', () => {
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'karaoke-metadata-'))
-    source = path.join(tempDir, 'Artist-Title.mp3')
+    source = path.join(tempDir, 'Artist-Title.mp4')
     fs.writeFileSync(source, 'first version')
     open({ file: path.join(tempDir, 'database.sqlite3'), ro: false })
     db.run('INSERT INTO artists (artistId, name, nameNorm) VALUES (1, ?, ?)', ['Artist', 'Artist'])
@@ -19,7 +19,7 @@ describe('persistent media metadata analysis', () => {
     db.run('INSERT INTO paths (pathId, path, priority, data) VALUES (1, ?, 0, ?)', [tempDir, '{}'])
     db.run(`
       INSERT INTO media (mediaId, songId, pathId, relPath, duration)
-      VALUES (1, 1, 1, 'Artist-Title.mp3', 0)
+      VALUES (1, 1, 1, 'Artist-Title.mp4', 0)
     `)
   })
 
