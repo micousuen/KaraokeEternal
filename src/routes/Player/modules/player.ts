@@ -21,7 +21,7 @@ import {
   PLAYER_PLAY,
   PLAYER_UPDATE,
 } from 'shared/actionTypes'
-import { createInitialPlaybackStatus, type PlaybackCoreStatus } from 'shared/types'
+import { createInitialPlaybackStatus, type PlaybackCoreStatus, type PlaybackStatus } from 'shared/types'
 
 const PRIVATE_PLAYER_STATE_KEYS = new Set([
   '_isFetching',
@@ -78,17 +78,9 @@ export function playerStatus (status: Partial<PlayerState> = {}, deferEmit = fal
     }
 
     // emit full updated status (excluding "private" properties)
-    const updated = { ...player, ...status }
-    const emitStatus = Object.fromEntries(
-      Object.entries(updated).filter(([key]) => !PRIVATE_PLAYER_STATE_KEYS.has(key)),
-    ) as unknown as PlaybackCoreStatus
-
     dispatch({
       type: PLAYER_EMIT_STATUS,
-      payload: {
-        ...emitStatus,
-        visualizer: playerVisualizer,
-      },
+      payload: createPublicPlayerStatus({ ...player, ...status }, playerVisualizer),
       meta: {
         throttle: {
           wait: 1000,
@@ -119,12 +111,23 @@ export function playerLeave (): AppThunk {
 }
 
 export function playerClaim (): AppThunk {
-  return (dispatch) => {
+  return (dispatch, getState) => {
     // Clear a takeover from a previous visit before claiming this player
     // session again on the existing socket connection.
     dispatch(playerUpdate({ _isSuperseded: false }))
-    dispatch({ type: PLAYER_EMIT_CLAIM })
+    const { player, playerVisualizer } = getState()
+    dispatch({
+      type: PLAYER_EMIT_CLAIM,
+      payload: createPublicPlayerStatus(player, playerVisualizer),
+    })
   }
+}
+
+function createPublicPlayerStatus (player: PlayerState, visualizer: PlaybackStatus['visualizer']): PlaybackStatus {
+  const status = Object.fromEntries(
+    Object.entries(player).filter(([key]) => !PRIVATE_PLAYER_STATE_KEYS.has(key)),
+  ) as unknown as PlaybackCoreStatus
+  return { ...status, visualizer }
 }
 
 // ------------------------------------

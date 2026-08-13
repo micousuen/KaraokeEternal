@@ -42,7 +42,7 @@ export interface SocketRequestPayloads {
   [PLAYER_REQ_REPLAY]: { queueId: number }
   [PLAYER_REQ_SEEK]: number
   [PLAYER_REQ_VOLUME]: number
-  [PLAYER_EMIT_CLAIM]: undefined
+  [PLAYER_EMIT_CLAIM]: PlaybackStatus
   [PLAYER_EMIT_LEAVE]: undefined
   [PLAYER_EMIT_STATUS]: PlaybackStatus
   [PLAYER_EMIT_POSITION]: { position: number }
@@ -70,8 +70,6 @@ export interface SocketRequestMeta {
 }
 
 const EPHEMERAL_SOCKET_TYPES = new Set<string>([
-  PLAYER_EMIT_CLAIM,
-  PLAYER_EMIT_LEAVE,
   PLAYER_EMIT_POSITION,
   PLAYER_EMIT_STATUS,
   PLAYER_REQ_NEXT,

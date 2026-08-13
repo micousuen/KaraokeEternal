@@ -45,14 +45,13 @@ const PlayerController = (props: PlayerControllerProps) => {
   useEffect(() => {
     const claim = () => {
       dispatch(playerClaim())
-      handleStatus()
     }
     claim()
     socket.on('connect', claim)
     return () => {
       socket.off('connect', claim)
     }
-  }, [dispatch, handleStatus])
+  }, [dispatch])
 
   const handleLoadNext = useCallback(() => {
     handleStatus(advanceStatus(player, queueItem, nextQueueItem))

@@ -28,7 +28,6 @@ import {
 } from '../../shared/actionTypes.js'
 
 const NO_PAYLOAD = new Set([
-  PLAYER_EMIT_CLAIM,
   PLAYER_EMIT_LEAVE,
   PLAYER_REQ_NEXT,
   PLAYER_REQ_PAUSE,
@@ -76,6 +75,7 @@ export function validateSocketAction (action: unknown): string | null {
         : 'position must be a non-negative finite number'
     case PLAYER_REQ_OPTIONS:
       return isRecord(payload) ? null : 'Player options must be an object'
+    case PLAYER_EMIT_CLAIM:
     case PLAYER_EMIT_STATUS:
       return validatePlayerStatus(payload)
     case PREFS_SET:

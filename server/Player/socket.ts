@@ -42,12 +42,13 @@ import {
 // Action Handlers
 // ------------------------------------
 const ACTION_HANDLERS = {
-  [PLAYER_EMIT_CLAIM]: (sock) => {
+  [PLAYER_EMIT_CLAIM]: (sock, { payload }) => {
     requireAdmin(sock)
     // Taking over is explicit and only happens when a player screen opens.
     // Routine playback/status updates must never transfer ownership.
     const previousId = claimPlayer(sock.user.roomId, sock.id)
     if (previousId) sock.server.sockets.sockets.get(previousId)?.emit('action', { type: PLAYER_CMD_TAKEOVER })
+    acceptPlayerStatus(sock, payload)
   },
   [PLAYER_REQ_OPTIONS]: relayToRoom(PLAYER_CMD_OPTIONS),
   [PLAYER_REQ_NEXT]: relayToRoom(PLAYER_CMD_NEXT),
@@ -70,25 +71,12 @@ const ACTION_HANDLERS = {
   [PLAYER_REQ_VOLUME]: relayToRoom(PLAYER_CMD_VOLUME),
   [PLAYER_EMIT_STATUS]: (sock, { payload }) => {
     requireAdmin(sock)
-    const previous = getPlayerStatus(sock.user.roomId)
-    const status = pickPlayerStatus(payload)
-    if (!updatePlayerStatus(sock.user.roomId, sock.id, status)) return
-
-    const history = status.history
-    const previousHistory = new Set(previous?.history || [])
-    const newlyPlayed = history.filter(queueId => !previousHistory.has(queueId))
-
-    if (Queue.markPlayed(sock.user.roomId, newlyPlayed)) publishQueue(sock.server, sock.user.roomId)
-
-    sock.to(roomSockets(sock.user.roomId)).emit('action', {
-      type: PLAYER_STATUS,
-      payload: status,
-    })
+    acceptPlayerStatus(sock, payload)
   },
   [PLAYER_EMIT_POSITION]: (sock, { payload }) => {
     requireAdmin(sock)
     if (!updatePlayerPosition(sock.user.roomId, sock.id, payload.position)) return
-    sock.to(roomSockets(sock.user.roomId)).volatile.emit('action', {
+    sock.server.to(roomSockets(sock.user.roomId)).volatile.emit('action', {
       type: PLAYER_POSITION,
       payload,
     })
@@ -102,6 +90,21 @@ const ACTION_HANDLERS = {
     }
   },
 } satisfies SocketHandlerMap
+
+function acceptPlayerStatus (sock, payload: PlaybackStatus): void {
+  const previous = getPlayerStatus(sock.user.roomId)
+  const status = pickPlayerStatus(payload)
+  if (!updatePlayerStatus(sock.user.roomId, sock.id, status)) return
+
+  const previousHistory = new Set(previous?.history || [])
+  const newlyPlayed = status.history.filter(queueId => !previousHistory.has(queueId))
+  if (Queue.markPlayed(sock.user.roomId, newlyPlayed)) publishQueue(sock.server, sock.user.roomId)
+
+  sock.server.to(roomSockets(sock.user.roomId)).emit('action', {
+    type: PLAYER_STATUS,
+    payload: status,
+  })
+}
 
 function pickPlayerStatus (status: PlaybackStatus): PlaybackStatus {
   return {
