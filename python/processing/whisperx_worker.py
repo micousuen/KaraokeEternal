@@ -44,13 +44,58 @@ def format_srt_timestamp(seconds):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
 
 
+def normalized_text(text):
+    """Compare transcript coverage while ignoring layout and punctuation."""
+    return "".join(character.casefold() for character in text if character.isalnum())
+
+
+def preserve_unaligned_text(raw_segments, aligned_segments):
+    """Restore a raw ASR segment if forced alignment dropped any of its text."""
+    buckets = [[] for _ in raw_segments]
+    raw_index = 0
+    for aligned in aligned_segments:
+        start = aligned.get("start")
+        end = aligned.get("end")
+        if start is None or end is None:
+            continue
+        for index in range(raw_index, len(raw_segments)):
+            raw = raw_segments[index]
+            if start > raw["end"] + 0.05:
+                raw_index = index + 1
+                continue
+            if start >= raw["start"] - 0.05 and end <= raw["end"] + 0.05:
+                buckets[index].append(aligned)
+                raw_index = index
+            break
+
+    preserved = []
+    for raw, aligned in zip(raw_segments, buckets):
+        raw_coverage = normalized_text(raw.get("text", ""))
+        aligned_coverage = normalized_text("".join(segment.get("text", "") for segment in aligned))
+        if raw_coverage and raw_coverage != aligned_coverage:
+            # Keep the whole ASR segment and let timed_words estimate timings.
+            # A coarse complete line is preferable to silently missing lyrics.
+            preserved.append({
+                "text": raw["text"],
+                "start": raw["start"],
+                "end": raw["end"],
+                "words": [],
+            })
+        else:
+            preserved.extend(aligned)
+    return preserved
+
+
 def timed_words(result):
     """Return aligned words, estimating a segment only if it has no word timings."""
     words = []
+    no_spaces = result["language"] in {"zh", "yue", "ja", "ko", "th"}
     for segment in result["segments"]:
         segment_words = segment.get("words") or []
         if not segment_words:
-            segment_words = [{"word": word} for word in segment.get("text", "").split()]
+            text = segment.get("text", "").strip()
+            units = list(text) if no_spaces else text.split()
+            segment_words = [{"word": word} for word in units]
         visible_words = [word for word in segment_words if word.get("word", "").strip()]
         if not visible_words:
             continue
@@ -213,6 +258,7 @@ def transcribe(request):
         progress_callback=transcription_progress,
     )
     language = result["language"]
+    raw_segments = result["segments"]
     emit({"id": request["id"], "event": "stage", "stage": "Aligning lyric timings"})
     alignment_language = language
     if alignment_language not in alignment_models:
@@ -239,7 +285,7 @@ def transcribe(request):
                 )
     align_model, align_metadata = alignment_models[alignment_language]
     result = whisperx.align(
-        result["segments"],
+        raw_segments,
         align_model,
         align_metadata,
         audio,
@@ -247,6 +293,7 @@ def transcribe(request):
         print_progress=False,
         progress_callback=alignment_progress,
     )
+    result["segments"] = preserve_unaligned_text(raw_segments, result["segments"])
     result["language"] = language
     srt_path = os.path.join(
         request["outputDir"],
