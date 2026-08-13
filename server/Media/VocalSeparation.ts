@@ -47,6 +47,8 @@ interface Job {
   runSeparation: boolean
   generateInstrumental: boolean
   allowScript: boolean
+  forceScript?: boolean
+  replaceInstrumental?: boolean
   needsScript?: boolean
   sourceReplaced?: boolean
   prioritized?: boolean
@@ -113,12 +115,13 @@ const startupCleanup = fsPromises.rm(tempRoot, { recursive: true, force: true })
   log.warn('Could not clear vocal separation temp folder: %s', err.message)
 })
 
-export function scheduleVocalSeparation (job: Job, prioritize = false): void {
-  if (!config.enabled || scheduled.has(job.mediaId)) return
-  job.needsScript = job.allowScript && config.scripting.enabled && !fs.existsSync(scriptPath(job.source))
+export function scheduleVocalSeparation (job: Job, prioritize = false): boolean {
+  if (!config.enabled || scheduled.has(job.mediaId)) return false
+  job.needsScript = job.allowScript && config.scripting.enabled
+    && (!!job.forceScript || !fs.existsSync(scriptPath(job.source)))
   // Separation is an intermediate step, not a standalone deliverable. Once
   // both downstream outputs already exist, there is nothing left to process.
-  if (!job.generateInstrumental && !job.needsScript) return
+  if (!job.generateInstrumental && !job.needsScript) return false
   job.runSeparation = job.runSeparation && (job.generateInstrumental || job.needsScript)
   job.prioritized = prioritize
   scheduled.add(job.mediaId)
@@ -132,6 +135,7 @@ export function scheduleVocalSeparation (job: Job, prioritize = false): void {
   log.info('Queued mediaId=%s for vocal separation%s', job.mediaId, prioritize ? ' (priority)' : '')
   emitStatus()
   void drain()
+  return true
 }
 
 export async function mountWhisperXModels (): Promise<void> {
@@ -355,10 +359,13 @@ async function separate (job: Job): Promise<number> {
 
         const remuxed = path.join(workDir, `remuxed${path.extname(job.source)}`)
         setProgress(76)
+        const streamMaps = job.replaceInstrumental
+          ? ['-map', '0', '-map', '-0:a', '-map', `0:a:${job.vocalTrack}`, '-map', '1:a:0']
+          : ['-map', '0', '-map', '1:a:0']
         await execFile(ffmpegPath, [
           '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
           '-i', job.source, '-i', instrumental,
-          '-map', '0', '-map', '1:a:0', '-c', 'copy',
+          ...streamMaps, '-c', 'copy',
           '-metadata:s:a:1', 'title=Instrumental', '-disposition:a:1', '0',
           ...(path.extname(job.source).toLowerCase() === '.mp4' ? ['-movflags', '+faststart'] : []),
           remuxed,
@@ -374,11 +381,11 @@ async function separate (job: Job): Promise<number> {
         job.onSourceReplacing(job.pathId)
         await fsPromises.rename(replacement, job.source)
         job.sourceReplaced = true
-        log.info('Added generated instrumental as A2 for mediaId=%s', job.mediaId)
+        log.info('%s generated instrumental as A2 for mediaId=%s', job.replaceInstrumental ? 'Replaced' : 'Added', job.mediaId)
       }
     }
 
-    if (job.needsScript && !fs.existsSync(scriptPath(job.source))) {
+    if (job.needsScript && (job.forceScript || !fs.existsSync(scriptPath(job.source)))) {
       currentStage = 'scripting'
       currentProgress = 0
       emitStatus()

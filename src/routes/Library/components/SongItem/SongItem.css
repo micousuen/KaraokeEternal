@@ -106,3 +106,33 @@
   color: var(--song-item-btn-active-bg-color);
   filter: var(--song-item-btn-active-filter);
 }
+
+.actionMenu {
+  position: fixed;
+  z-index: 1000;
+  width: 232px;
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid hsl(var(--hue-blue), 20%, 35%);
+  border-radius: var(--border-radius);
+  background: hsl(var(--hue-blue), 25%, 11%);
+  box-shadow: var(--box-shadow);
+
+  button {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: calc(var(--border-radius) / 2);
+    color: var(--text-color);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      outline: none;
+      background: hsl(var(--hue-blue), 40%, 24%);
+    }
+  }
+}

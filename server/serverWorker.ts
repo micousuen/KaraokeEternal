@@ -180,6 +180,7 @@ async function serverWorker ({ env, startScanner, stopScanner, suppressWatcher, 
     ctx.env = env
     ctx.startScanner = startScanner
     ctx.stopScanner = stopScanner
+    ctx.suppressWatcher = suppressWatcher
 
     await next()
   })

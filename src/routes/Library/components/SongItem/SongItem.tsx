@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import Highlighter from 'react-highlight-words'
 import { useSwipeable } from 'react-swipeable'
@@ -11,6 +12,7 @@ import ToggleAnimation from 'components/ToggleAnimation/ToggleAnimation'
 import { formatDuration } from 'lib/dateTime'
 import styles from './SongItem.css'
 import RenameSongModal from './RenameSongModal'
+import RegenerateSongModal, { type RegenerateOutput } from './RegenerateSongModal'
 
 let ignoreMouseup = false
 
@@ -55,8 +57,43 @@ const SongItem = ({
 }: SongItemProps) => {
   const [isExpanded, setExpanded] = useState(false)
   const [isRenameOpen, setRenameOpen] = useState(false)
+  const [regenerateOutput, setRegenerateOutput] = useState<RegenerateOutput | null>(null)
+  const [actionMenu, setActionMenu] = useState<{ x: number, y: number } | null>(null)
+  const actionMenuRef = useRef<HTMLDivElement>(null)
   const longPressActiveRef = useRef(false)
-  const canRename = isAdmin
+  const canManage = isAdmin
+
+  useEffect(() => {
+    if (!actionMenu) return
+    actionMenuRef.current?.querySelector('button')?.focus()
+    const close = () => setActionMenu(null)
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!actionMenuRef.current?.contains(event.target as Node)) setActionMenu(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActionMenu(null)
+    }
+    window.addEventListener('pointerdown', closeOnOutsidePress, true)
+    window.addEventListener('keydown', closeOnEscape)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.removeEventListener('pointerdown', closeOnOutsidePress, true)
+      window.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [actionMenu])
+
+  const closeActionMenu = () => setActionMenu(null)
+  const openActionMenu = (x: number, y: number) => {
+    const menuWidth = 240
+    const menuHeight = 132
+    setActionMenu({
+      x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
+    })
+  }
 
   const handleClick = () => {
     if (longPressActiveRef.current) {
@@ -71,16 +108,28 @@ const SongItem = ({
     onSongQueue(songId)
   }
   const handleContextMenu = (event: React.MouseEvent) => {
-    if (!canRename) return
+    if (!canManage) return
     event.preventDefault()
-    setRenameOpen(true)
+    const rect = event.currentTarget.getBoundingClientRect()
+    openActionMenu(event.clientX || rect.left + 16, event.clientY || rect.top + 16)
   }
   const handleInfoClick = () => onSongInfo(songId)
   const handleStarClick = () => onSongStarClick(songId)
-  const bindRenamePressHandlers = useLongPress(() => {
+  const bindActionPressHandlers = useLongPress<HTMLDivElement>((event) => {
     longPressActiveRef.current = true
-    setRenameOpen(true)
+    const point = 'touches' in event ? event.touches[0] : event
+    openActionMenu(point?.clientX ?? window.innerWidth / 2, point?.clientY ?? window.innerHeight / 2)
   }, { threshold: 600, cancelOnMovement: true })
+
+  const handleRename = () => {
+    closeActionMenu()
+    setRenameOpen(true)
+  }
+
+  const handleRegenerate = (output: RegenerateOutput) => {
+    closeActionMenu()
+    setRegenerateOutput(output)
+  }
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: ({ event }) => {
@@ -107,17 +156,17 @@ const SongItem = ({
           isExpanded && styles.expanded,
           artist && styles.withArtist,
         )}
+        onContextMenu={handleContextMenu}
       >
         <ToggleAnimation toggle={isUpcoming} className={styles.animateGlow}>
           <div className={styles.duration}>
             {formatDuration(duration)}
           </div>
           <div
-            {...(canRename ? bindRenamePressHandlers() : {})}
+            {...(canManage ? bindActionPressHandlers() : {})}
             onClick={handleClick}
-            onContextMenu={handleContextMenu}
             className={styles.primary}
-            title={canRename ? 'Right-click or long-press to rename' : undefined}
+            title={canManage ? 'Right-click or long-press for song actions' : undefined}
           >
             <div className={styles.title}>
               {filterKeywords?.length ? <Highlighter autoEscape textToHighlight={title} searchWords={filterKeywords} /> : title}
@@ -148,12 +197,37 @@ const SongItem = ({
           </Button>
         </Buttons>
       </div>
+      {actionMenu && createPortal(
+        <div
+          ref={actionMenuRef}
+          className={styles.actionMenu}
+          role='menu'
+          aria-label='Song actions'
+          style={{ left: actionMenu.x, top: actionMenu.y }}
+        >
+          <button type='button' role='menuitem' onClick={handleRename}>Rename</button>
+          <button type='button' role='menuitem' onClick={() => handleRegenerate('instrumental')}>
+            Regenerate instrumental
+          </button>
+          <button type='button' role='menuitem' onClick={() => handleRegenerate('script')}>
+            Regenerate script
+          </button>
+        </div>,
+        document.body,
+      )}
       {isRenameOpen && (
         <RenameSongModal
           songId={songId}
           title={title}
           artist={author}
           onClose={() => setRenameOpen(false)}
+        />
+      )}
+      {regenerateOutput && (
+        <RegenerateSongModal
+          songId={songId}
+          output={regenerateOutput}
+          onClose={() => setRegenerateOutput(null)}
         />
       )}
     </>

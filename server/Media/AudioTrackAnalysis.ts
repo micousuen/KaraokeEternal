@@ -40,11 +40,11 @@ export function scheduleAudioTrackAnalysis (
   mediaId: number,
   source: string,
   options?: {
-    pathId: number
-    isManagedDownload: boolean
-    onSeparationComplete: (mediaId: number, source: string) => void
-    onSourceReplacing: (pathId: number) => void
-    onAnalysisComplete: (mediaId: number) => void
+    pathId?: number
+    isManagedDownload?: boolean
+    onSeparationComplete?: (mediaId: number, source: string) => void
+    onSourceReplacing?: (pathId: number) => void
+    onAnalysisComplete?: (mediaId: number) => void
   },
 ): void {
   if (pending.has(mediaId)) return
@@ -58,6 +58,43 @@ export function scheduleAudioTrackAnalysis (
   void promise.catch(() => {})
   queue.push({ mediaId, source, ...options, resolve: resolveJob!, reject: rejectJob! })
   void drain()
+}
+
+export async function forceMediaProcessing (
+  mediaId: number,
+  pathId: number,
+  source: string,
+  output: 'instrumental' | 'script',
+  onComplete?: () => void,
+  onSourceReplacing: (pathId: number) => void = () => {},
+): Promise<void> {
+  const record = await ensureAudioTrackAnalysis(mediaId, source)
+  if (record.audioTrackCount < 1) throw new Error('The selected media has no audio track')
+
+  // The classifier reports the karaoke/instrumental channel. WhisperX and
+  // Demucs need its opposite (the vocal/master channel). Fall back to A1 only
+  // when classification is unavailable.
+  const vocalTrack = record.audioTrackCount === 1
+    ? 0
+    : record.ktvTrack === null ? 0 : record.ktvTrack === 0 ? 1 : 0
+  const replaceInstrumental = output === 'instrumental' && record.audioTrackCount > 1
+  const queued = scheduleVocalSeparation({
+    mediaId,
+    pathId,
+    source,
+    vocalTrack,
+    runSeparation: true,
+    generateInstrumental: output === 'instrumental',
+    allowScript: output === 'script',
+    forceScript: output === 'script',
+    replaceInstrumental,
+    onComplete: output === 'instrumental'
+      ? () => scheduleAudioTrackAnalysis(mediaId, source, { onAnalysisComplete: onComplete })
+      : onComplete,
+    onSourceReplacing,
+  }, true)
+
+  if (!queued) throw new Error('Media processing is disabled or this song is already queued')
 }
 
 export async function ensureAudioTrackAnalysis (
