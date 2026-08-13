@@ -5,7 +5,6 @@ import {
   PLAYER_REQ_OPTIONS,
   PLAYER_REQ_PLAY,
   PLAYER_REQ_PAUSE,
-  PLAYER_REQ_PRIORITY,
   PLAYER_REQ_REPLAY,
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
@@ -21,9 +20,6 @@ import { createInitialPlaybackStatus, type PlaybackCoreStatus, type PlaybackOpti
 export const requestPlay = createAction(PLAYER_REQ_PLAY)
 export const requestPause = createAction(PLAYER_REQ_PAUSE)
 export const requestPlayNext = createAction(PLAYER_REQ_NEXT)
-export const requestPriority = createAction(PLAYER_REQ_PRIORITY, (queueId: number) => ({
-  payload: { queueId },
-}))
 const playerStatus = createAction<object>(PLAYER_STATUS)
 const playerPosition = createAction<{ position: number }>(PLAYER_POSITION)
 const playerLeave = createAction(PLAYER_LEAVE)

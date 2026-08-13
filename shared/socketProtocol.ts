@@ -8,7 +8,6 @@ import {
   PLAYER_REQ_OPTIONS,
   PLAYER_REQ_PAUSE,
   PLAYER_REQ_PLAY,
-  PLAYER_REQ_PRIORITY,
   PLAYER_REQ_REPLAY,
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
@@ -16,6 +15,7 @@ import {
   PREFS_SET,
   QUEUE_ADD,
   QUEUE_MOVE,
+  QUEUE_PLAY_NEXT,
   QUEUE_REMOVE,
   QUEUE_SHUFFLE,
   QUEUE_SYNC,
@@ -31,6 +31,7 @@ import {
 export interface SocketRequestPayloads {
   [QUEUE_ADD]: { songId: number }
   [QUEUE_MOVE]: { queueId: number, prevQueueId: number }
+  [QUEUE_PLAY_NEXT]: { queueId: number, prevQueueId: number }
   [QUEUE_REMOVE]: { queueId: number | number[] }
   [QUEUE_SHUFFLE]: { queueIds: number[] }
   [QUEUE_SYNC]: undefined
@@ -38,7 +39,6 @@ export interface SocketRequestPayloads {
   [PLAYER_REQ_OPTIONS]: PlaybackOptions
   [PLAYER_REQ_PAUSE]: undefined
   [PLAYER_REQ_PLAY]: undefined
-  [PLAYER_REQ_PRIORITY]: { queueId: number }
   [PLAYER_REQ_REPLAY]: { queueId: number }
   [PLAYER_REQ_SEEK]: number
   [PLAYER_REQ_VOLUME]: number
@@ -71,13 +71,6 @@ export interface SocketRequestMeta {
 
 const EPHEMERAL_SOCKET_TYPES = new Set<string>([
   PLAYER_EMIT_POSITION,
-  PLAYER_EMIT_STATUS,
-  PLAYER_REQ_NEXT,
-  PLAYER_REQ_OPTIONS,
-  PLAYER_REQ_PAUSE,
-  PLAYER_REQ_PLAY,
-  PLAYER_REQ_PRIORITY,
-  PLAYER_REQ_REPLAY,
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
 ])

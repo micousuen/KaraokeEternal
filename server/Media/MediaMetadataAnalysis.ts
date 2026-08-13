@@ -16,6 +16,7 @@ interface AnalysisRecord {
 }
 
 const log = getLogger('MediaMetadataAnalysis')
+const metadataTimeoutMs = positiveInteger(process.env.KES_METADATA_TIMEOUT_MS, 2 * 60_000)
 const queue: AnalysisJob[] = []
 const pending = new Set<number>()
 let active = false
@@ -104,9 +105,12 @@ function runMetadataWorker (source: string): Promise<MetadataResult> {
       workerData: { filenameFormat: '' },
     })
     let settled = false
+    const timeout = setTimeout(() => finish(new Error(`metadata worker timed out after ${metadataTimeoutMs}ms`)), metadataTimeoutMs)
+    timeout.unref()
     const finish = (error?: Error, result?: MetadataResult) => {
       if (settled) return
       settled = true
+      clearTimeout(timeout)
       void worker.terminate()
       if (error) reject(error)
       else resolve(result!)
@@ -124,4 +128,9 @@ function runMetadataWorker (source: string): Promise<MetadataResult> {
       input: { file: source, forceMediaRead: true, technicalOnly: true },
     })
   })
+}
+
+function positiveInteger (value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }

@@ -18,6 +18,7 @@ import { joinIdentityRooms, roomSockets } from './lib/socketRooms.js'
 import { consumeSocketRateLimit, validateSocketAction } from './lib/socketValidation.js'
 import { isEphemeralSocketRequest, type SocketResponseAction } from '../shared/socketProtocol.js'
 import { registerPresence, releasePresence } from './User/PresenceRegistry.js'
+import { validateUserContext } from './User/UserContext.js'
 
 import {
   LIBRARY_INVALIDATE,
@@ -55,7 +56,7 @@ export default function (io, jwtKey) {
 
     // authenticate the JWT sent via cookie in http handshake
     try {
-      sock.user = jwtVerify(keToken, jwtKey)
+      sock.user = validateUserContext(jwtVerify(keToken, jwtKey))
       await joinIdentityRooms(sock)
       if (typeof sock.user.userId === 'number' && typeof sock.user.roomId === 'number') {
         registerPresence(sock.id, sock.user.userId, sock.user.roomId)
@@ -179,7 +180,7 @@ export default function (io, jwtKey) {
     }
 
     // Large library snapshots are fetched over cacheable/compressed HTTP.
-    const libraryVersion = Library.get().version
+    const libraryVersion = Library.getVersion()
     if (clientLibraryVersion !== libraryVersion) {
       log.verbose('pushing library to %s (%s) (client=%s, server=%s)',
         sock.user.name, sock.id, clientLibraryVersion, libraryVersion)

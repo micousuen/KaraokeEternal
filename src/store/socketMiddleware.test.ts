@@ -2,7 +2,7 @@ import type { UnknownAction } from '@reduxjs/toolkit'
 import type { Socket } from 'socket.io-client'
 import { describe, expect, it, vi } from 'vitest'
 import createSocketMiddleware from './socketMiddleware'
-import { PLAYER_REQ_SEEK, QUEUE_MOVE, QUEUE_PATCH, QUEUE_SYNC } from 'shared/actionTypes'
+import { PLAYER_REQ_PLAY, PLAYER_REQ_SEEK, QUEUE_MOVE, QUEUE_PATCH, QUEUE_SYNC } from 'shared/actionTypes'
 
 describe('socketMiddleware optimistic transactions', () => {
   it('matches out-of-order callbacks to their original transactions', () => {
@@ -59,6 +59,25 @@ describe('socketMiddleware optimistic transactions', () => {
       payload: 12,
     })
     expect(socket.timeout).not.toHaveBeenCalled()
+  })
+
+  it('uses acknowledged delivery for state-changing playback commands', () => {
+    const socket = createSocketMock()
+    const acknowledgedEmit = vi.fn()
+    socket.timeout.mockReturnValue({ emit: acknowledgedEmit })
+    const invoke = createSocketMiddleware(socket as unknown as Socket, 'server/')({
+      dispatch: vi.fn(),
+      getState: vi.fn(() => ({})),
+    })(vi.fn())
+
+    invoke({ type: PLAYER_REQ_PLAY })
+
+    expect(acknowledgedEmit).toHaveBeenCalledWith(
+      'action',
+      expect.objectContaining({ type: PLAYER_REQ_PLAY, meta: { requestId: expect.any(String) } }),
+      expect.any(Function),
+    )
+    expect(socket.volatile.emit).not.toHaveBeenCalled()
   })
 
   it('refreshes handshake versions and requests a queue snapshot after a revision gap', () => {

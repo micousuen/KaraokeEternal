@@ -1,6 +1,6 @@
 import Queue from './Queue.js'
 import Rooms from '../Rooms/Rooms.js'
-import { PLAYER_CMD_PRIORITY, QUEUE_ADD, QUEUE_MOVE, QUEUE_REMOVE, QUEUE_SHUFFLE, QUEUE_SYNC } from '../../shared/actionTypes.js'
+import { PLAYER_CMD_PRIORITY, QUEUE_ADD, QUEUE_MOVE, QUEUE_PLAY_NEXT, QUEUE_REMOVE, QUEUE_SHUFFLE, QUEUE_SYNC } from '../../shared/actionTypes.js'
 import { emitToRoom } from '../lib/socketActions.js'
 import { getQueueSnapshot, publishQueue, sendQueueSnapshot } from './QueuePublisher.js'
 import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
@@ -58,6 +58,17 @@ const ACTION_HANDLERS = {
     acknowledge({ type: QUEUE_MOVE + '_SUCCESS' })
 
     // tell room
+    publishQueue(sock.server, sock.user.roomId)
+  }),
+  [QUEUE_PLAY_NEXT]: (sock, action, acknowledge) => runQueueOperation(sock.user.roomId, async () => {
+    const { queueId, prevQueueId } = action.payload
+    await Rooms.validate(sock.user.roomId, null, { validatePassword: false })
+    if (rejectConflict(sock, action, acknowledge, QUEUE_PLAY_NEXT)) return
+    if (!Queue.isInRoom(queueId, sock.user.roomId)) throw new Error('Queue item is not in this room')
+
+    Queue.move({ queueId, prevQueueId, roomId: sock.user.roomId })
+    emitToRoom(sock, PLAYER_CMD_PRIORITY, { queueId })
+    acknowledge({ type: QUEUE_PLAY_NEXT + '_SUCCESS' })
     publishQueue(sock.server, sock.user.roomId)
   }),
   [QUEUE_SHUFFLE]: (sock, action, acknowledge) => runQueueOperation(sock.user.roomId, async () => {

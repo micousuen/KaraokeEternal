@@ -7,7 +7,6 @@ import {
   PLAYER_REQ_OPTIONS,
   PLAYER_REQ_PAUSE,
   PLAYER_REQ_PLAY,
-  PLAYER_REQ_PRIORITY,
   PLAYER_REQ_REPLAY,
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
@@ -15,6 +14,7 @@ import {
   PREFS_SET,
   QUEUE_ADD,
   QUEUE_MOVE,
+  QUEUE_PLAY_NEXT,
   QUEUE_REMOVE,
   QUEUE_SHUFFLE,
   QUEUE_SYNC,
@@ -50,6 +50,7 @@ export function validateSocketAction (action: unknown): string | null {
     case UNSTAR_SONG:
       return isIntegerField(payload, 'songId') ? null : 'songId must be an integer'
     case QUEUE_MOVE:
+    case QUEUE_PLAY_NEXT:
       return isIntegerField(payload, 'queueId') && isIntegerField(payload, 'prevQueueId') && hasBaseRevision(action)
         ? null
         : 'queueId, prevQueueId, and baseRevision must be integers'
@@ -63,7 +64,6 @@ export function validateSocketAction (action: unknown): string | null {
         && hasBaseRevision(action)
         ? null
         : 'queueIds must be a bounded integer array, with a valid baseRevision'
-    case PLAYER_REQ_PRIORITY:
     case PLAYER_REQ_REPLAY:
       return isIntegerField(payload, 'queueId') ? null : 'queueId must be an integer'
     case PLAYER_REQ_SEEK:

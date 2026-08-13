@@ -231,9 +231,7 @@ class Media {
     }
   }
 
-  /**
-   * Remove unlinked items and VACUUM
-   */
+  /** Remove unlinked items. Database compaction is scheduled separately. */
   static cleanup (): void {
     let res
 
@@ -271,9 +269,6 @@ class Media {
     }
 
     log.info(`cleanup: ${rows.length} queue items for nonexistent songs`)
-
-    log.info('cleanup: vacuuming database')
-    db.run('VACUUM')
   }
 
   /**

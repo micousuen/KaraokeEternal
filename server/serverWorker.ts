@@ -5,6 +5,9 @@ import http from 'http'
 import fs from 'fs'
 import { promisify } from 'util'
 import parseCookie from './lib/parseCookie.js'
+import { validateUserContext } from './User/UserContext.js'
+import { scheduleDatabaseVacuum } from './lib/DatabaseMaintenance.js'
+import { startGuestCleanup } from './User/GuestCleanup.js'
 import jsonWebToken from 'jsonwebtoken'
 import Koa from 'koa'
 import koaRouter from '@koa/router'
@@ -75,6 +78,8 @@ async function serverWorker ({ env, startScanner, stopScanner, suppressWatcher, 
 
     // attach socket.io handlers
     socketActions(io, jwtKey)
+    const stopGuestCleanup = startGuestCleanup(io)
+    shutdownHandlers.push(async () => stopGuestCleanup())
 
     // attach IPC action handlers
     IPC.use(IPCLibraryActions(io))
@@ -97,6 +102,7 @@ async function serverWorker ({ env, startScanner, stopScanner, suppressWatcher, 
       if (code !== 0) return
 
       Media.cleanup()
+      scheduleDatabaseVacuum()
       pushQueuesAndLibrary(io)
     })
 
@@ -162,7 +168,7 @@ async function serverWorker ({ env, startScanner, stopScanner, suppressWatcher, 
     // verify JWT
     try {
       const { keToken } = parseCookie(ctx.request.header.cookie)
-      ctx.user = jwtVerify(keToken, jwtKey)
+      ctx.user = validateUserContext(jwtVerify(keToken, jwtKey))
     } catch {
       ctx.user = {
         dateUpdated: null,

@@ -19,4 +19,14 @@ describe('runProcess', () => {
     await expect(runProcessText(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], { timeoutMs: 20 }))
       .rejects.toThrow('timed out after 20ms')
   })
+
+  it('force-kills a process that ignores graceful termination', async () => {
+    const started = Date.now()
+    await expect(runProcessText(process.execPath, [
+      '-e',
+      'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)',
+    ], { timeoutMs: 50, killGraceMs: 25 }))
+      .rejects.toThrow('timed out after 50ms')
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
 })

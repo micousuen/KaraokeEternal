@@ -469,6 +469,7 @@ async function runSeparator (args: string[]): Promise<void> {
     onStdout: handleOutput,
     onStderr: handleOutput,
     retryOnNoChildProcess: 3,
+    timeoutMs: positiveInteger(process.env.KES_SEPARATOR_TIMEOUT_MS, 30 * 60_000),
   })
 }
 
@@ -479,7 +480,15 @@ async function execFile (
   return runProcessText(command, args, {
     maxStderrBytes: 10 * 1024 * 1024,
     retryOnNoChildProcess: 3,
+    timeoutMs: command === ffprobePath
+      ? positiveInteger(process.env.KES_FFPROBE_TIMEOUT_MS, 30_000)
+      : positiveInteger(process.env.KES_MEDIA_PROCESS_TIMEOUT_MS, 10 * 60_000),
   })
+}
+
+function positiveInteger (value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function setProgress (progress: number): void {

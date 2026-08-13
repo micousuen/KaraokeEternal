@@ -19,6 +19,15 @@ interface SourceAudioFile {
 }
 
 type BrowserAudioFormat = 'aac' | 'mp3'
+export type MediaJobPriority = 'playback' | 'background'
+
+interface ScheduledJob {
+  key: string
+  priority: MediaJobPriority
+  run: () => Promise<void>
+  resolve: () => void
+  reject: (error: unknown) => void
+}
 
 export interface BrowserMediaPrefetch {
   audioFormat?: BrowserAudioFormat
@@ -31,6 +40,8 @@ export interface BrowserMediaPrefetch {
 
 const log = getLogger('Transcoder')
 const pending = new Map<string, Promise<string>>()
+const sourceInfoCache = new Map<string, SourceMediaInfo>()
+const sourceInfoPending = new Map<string, Promise<SourceMediaInfo>>()
 const prefetchQueue: Array<BrowserMediaPrefetch & { key: string }> = []
 const prefetchedOrQueued = new Set<string>()
 const activeCacheDirectories = new Map<string, number>()
@@ -38,6 +49,9 @@ let isPrefetching = false
 let activePrefetchKey: string | undefined
 let pruneQueue = Promise.resolve()
 let pruneTimer: ReturnType<typeof setTimeout> | undefined
+const processQueue: ScheduledJob[] = []
+const scheduledJobs = new Map<string, ScheduledJob>()
+let activeProcesses = 0
 
 const cacheDir = process.env.KES_PATH_TRANSCODE
   || path.join(os.tmpdir(), 'karaoke-eternal-transcode')
@@ -47,8 +61,16 @@ const maxCacheBytes = Math.max(
   1,
   parseFloat(process.env.KES_TRANSCODE_MAX_SIZE_GB || '8') || 8,
 ) * 1024 ** 3
+const maxProcesses = positiveInteger(process.env.KES_TRANSCODE_CONCURRENCY, 2)
+const maxQueuedProcesses = positiveInteger(process.env.KES_TRANSCODE_QUEUE_LIMIT, 50)
+const transcodeTimeoutMs = positiveInteger(process.env.KES_TRANSCODE_TIMEOUT_MS, 10 * 60_000)
+const probeTimeoutMs = positiveInteger(process.env.KES_FFPROBE_TIMEOUT_MS, 30_000)
 
-export async function getBrowserVideo (source: string, mediaId: number): Promise<string> {
+export async function getBrowserVideo (
+  source: string,
+  mediaId: number,
+  priority: MediaJobPriority = 'playback',
+): Promise<string> {
   return getArtifact(source, mediaId, 'video.mp4', output => run(ffmpegPath, [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
     '-i', source,
@@ -59,7 +81,7 @@ export async function getBrowserVideo (source: string, mediaId: number): Promise
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
     output,
-  ]))
+  ]), priority)
 }
 
 export async function getBrowserAudioTrack (
@@ -67,6 +89,7 @@ export async function getBrowserAudioTrack (
   mediaId: number,
   audioTrack: number,
   format: BrowserAudioFormat,
+  priority: MediaJobPriority = 'playback',
 ): Promise<SourceAudioFile> {
   const isAac = format === 'aac'
   const file = await getArtifact(
@@ -82,6 +105,7 @@ export async function getBrowserAudioTrack (
       ...(isAac ? ['-movflags', '+faststart'] : []),
       output,
     ]),
+    priority,
   )
   return { file, mimeType: isAac ? 'audio/mp4' : 'audio/mpeg' }
 }
@@ -90,10 +114,11 @@ export async function getBrowserCombined (
   source: string,
   mediaId: number,
   audioTrack: number,
+  priority: MediaJobPriority = 'playback',
 ): Promise<string> {
   const [video, audio] = await Promise.all([
-    getBrowserVideo(source, mediaId),
-    getBrowserAudioTrack(source, mediaId, audioTrack, 'aac'),
+    getBrowserVideo(source, mediaId, priority),
+    getBrowserAudioTrack(source, mediaId, audioTrack, 'aac', priority),
   ])
   return getArtifact(source, mediaId, `combined-${audioTrack + 1}.mp4`, output => run(ffmpegPath, [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
@@ -101,7 +126,7 @@ export async function getBrowserCombined (
     '-map', '0:v:0', '-map', '1:a:0',
     '-c', 'copy', '-movflags', '+faststart', '-shortest',
     output,
-  ]))
+  ]), priority)
 }
 
 /**
@@ -113,6 +138,7 @@ export async function getSourceAudio (
   mediaId: number,
   audioTrack: number,
   format: SourceAudioTrack,
+  priority: MediaJobPriority = 'playback',
 ): Promise<SourceAudioFile> {
   if (!format.extension || !format.mimeType) throw new Error('Source audio format cannot be stream-copied')
   const file = await getArtifact(
@@ -125,6 +151,7 @@ export async function getSourceAudio (
       ...(format.extension === 'm4a' ? ['-movflags', '+faststart'] : []),
       output,
     ]),
+    priority,
   )
   return { file, mimeType: format.mimeType }
 }
@@ -164,12 +191,12 @@ async function runPrefetchQueue (): Promise<void> {
       try {
         const tasks: Promise<unknown>[] = []
         if (item.prepareVideo && !item.prepareCombined) {
-          tasks.push(getBrowserVideo(item.source, item.mediaId))
+          tasks.push(getBrowserVideo(item.source, item.mediaId, 'background'))
         }
         for (const audioTrack of item.audioTracks || []) {
           tasks.push(item.prepareCombined
-            ? getBrowserCombined(item.source, item.mediaId, audioTrack)
-            : getBrowserAudioTrack(item.source, item.mediaId, audioTrack, item.audioFormat || 'mp3'))
+            ? getBrowserCombined(item.source, item.mediaId, audioTrack, 'background')
+            : getBrowserAudioTrack(item.source, item.mediaId, audioTrack, item.audioFormat || 'mp3', 'background'))
         }
         await Promise.all(tasks)
       } catch (err) {
@@ -189,6 +216,7 @@ async function getArtifact (
   mediaId: number,
   name: string,
   prepare: (output: string) => Promise<void>,
+  priority: MediaJobPriority,
 ): Promise<string> {
   const fingerprint = await sourceFingerprint(source)
   const directory = path.join(cacheDir, `${mediaId}-${fingerprint}`)
@@ -200,9 +228,12 @@ async function getArtifact (
   }
 
   const current = pending.get(output)
-  if (current) return current
+  if (current) {
+    if (priority === 'playback') promoteScheduled(output)
+    return current
+  }
 
-  const job = prepareArtifact(source, directory, output, mediaId, prepare)
+  const job = prepareArtifact(source, directory, output, mediaId, prepare, priority)
     .finally(() => pending.delete(output))
   pending.set(output, job)
   return job
@@ -214,6 +245,7 @@ async function prepareArtifact (
   output: string,
   mediaId: number,
   prepare: (output: string) => Promise<void>,
+  priority: MediaJobPriority,
 ): Promise<string> {
   await fsPromises.mkdir(cacheDir, { recursive: true })
   await fsPromises.mkdir(directory, { recursive: true })
@@ -222,7 +254,7 @@ async function prepareArtifact (
   log.info('Preparing browser media artifact mediaId=%s artifact=%s: %s', mediaId, path.basename(output), source)
 
   try {
-    await prepare(partial)
+    await scheduleProcess(output, priority, () => prepare(partial))
     await fsPromises.rename(partial, output)
     markCacheUsed(directory)
     scheduleStaleVersionCleanup(mediaId, directory)
@@ -239,11 +271,26 @@ async function prepareArtifact (
 }
 
 export async function getSourceMediaInfo (source: string): Promise<SourceMediaInfo> {
+  const key = `${source}\0${await sourceFingerprint(source)}`
+  const cached = sourceInfoCache.get(key)
+  if (cached) return cached
+  const current = sourceInfoPending.get(key)
+  if (current) return current
+
+  const request = readSourceMediaInfo(source)
+    .then((info) => {
+      sourceInfoCache.set(key, info)
+      while (sourceInfoCache.size > 1000) sourceInfoCache.delete(sourceInfoCache.keys().next().value!)
+      return info
+    })
+    .finally(() => sourceInfoPending.delete(key))
+  sourceInfoPending.set(key, request)
+  return request
+}
+
+async function readSourceMediaInfo (source: string): Promise<SourceMediaInfo> {
   const stdout = await runCapture(ffprobePath, [
-    '-v', 'error',
-    '-show_entries', 'stream=codec_type,codec_name,codec_tag_string',
-    '-of', 'json',
-    source,
+    '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,codec_tag_string', '-of', 'json', source,
   ])
   const probe = JSON.parse(stdout) as {
     streams?: Array<{ codec_type?: string, codec_name?: string, codec_tag_string?: string }>
@@ -301,11 +348,78 @@ async function sourceFingerprint (source: string): Promise<string> {
 }
 
 function run (command: string, args: string[]): Promise<void> {
-  return runProcessText(command, args, { maxStderrBytes: 8000 }).then(() => undefined)
+  return runProcessText(command, args, {
+    maxStderrBytes: 8000,
+    timeoutMs: transcodeTimeoutMs,
+  }).then(() => undefined)
 }
 
 function runCapture (command: string, args: string[]): Promise<string> {
-  return runProcessText(command, args, { maxStderrBytes: 8000 }).then(output => output.stdout)
+  return runProcessText(command, args, {
+    maxStderrBytes: 8000,
+    timeoutMs: probeTimeoutMs,
+  }).then(output => output.stdout)
+}
+
+function scheduleProcess (key: string, priority: MediaJobPriority, operation: () => Promise<void>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (processQueue.length >= maxQueuedProcesses && priority === 'playback') dropLastBackgroundJob()
+    if (processQueue.length >= maxQueuedProcesses) {
+      reject(new MediaCapacityError())
+      return
+    }
+    const job = { key, priority, run: operation, resolve, reject }
+    scheduledJobs.set(key, job)
+    processQueue.push(job)
+    drainProcessQueue()
+  })
+}
+
+function dropLastBackgroundJob (): void {
+  for (let index = processQueue.length - 1; index >= 0; index--) {
+    const job = processQueue[index]
+    if (job.priority !== 'background') continue
+    processQueue.splice(index, 1)
+    scheduledJobs.delete(job.key)
+    job.reject(new MediaCapacityError('Background media preparation was superseded by playback'))
+    return
+  }
+}
+
+export class MediaCapacityError extends Error {
+  code = 'MEDIA_CAPACITY'
+
+  constructor (message = 'Media preparation queue is busy; try again shortly') {
+    super(message)
+  }
+}
+
+function promoteScheduled (key: string): void {
+  const job = scheduledJobs.get(key)
+  if (!job || job.priority === 'playback') return
+  const index = processQueue.indexOf(job)
+  if (index === -1) return
+  job.priority = 'playback'
+}
+
+function drainProcessQueue (): void {
+  while (activeProcesses < maxProcesses && processQueue.length) {
+    const playbackIndex = processQueue.findIndex(job => job.priority === 'playback')
+    const job = processQueue.splice(playbackIndex < 0 ? 0 : playbackIndex, 1)[0]
+    scheduledJobs.delete(job.key)
+    activeProcesses++
+    void job.run()
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        activeProcesses--
+        drainProcessQueue()
+      })
+  }
+}
+
+function positiveInteger (value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 async function exists (file: string): Promise<boolean> {

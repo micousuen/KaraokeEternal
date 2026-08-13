@@ -33,6 +33,7 @@ interface Job {
 }
 
 const log = getLogger('AudioTrackAnalysis')
+const classifierTimeoutMs = positiveInteger(process.env.KES_AUDIO_CLASSIFIER_TIMEOUT_MS, 2 * 60_000)
 const queue: Job[] = []
 const pending = new Map<number, Promise<AudioTrackAnalysisRecord>>()
 let active = false
@@ -262,18 +263,33 @@ function runClassifier (source: string): Promise<KtvTrackDetection> {
       workerData: { source },
     })
     let settled = false
+    const timeout = setTimeout(() => {
+      if (settled) return
+      settled = true
+      void worker.terminate()
+      reject(new Error(`classifier worker timed out after ${classifierTimeoutMs}ms`))
+    }, classifierTimeoutMs)
+    timeout.unref()
 
     worker.once('message', (message) => {
+      clearTimeout(timeout)
       settled = true
       if (message.ok) resolve(message.result)
       else reject(new Error(message.error))
     })
     worker.once('error', (err) => {
+      clearTimeout(timeout)
       settled = true
       reject(err)
     })
     worker.once('exit', (code) => {
+      clearTimeout(timeout)
       if (!settled) reject(new Error(`classifier worker exited without a result (code ${code})`))
     })
   })
+}
+
+function positiveInteger (value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }

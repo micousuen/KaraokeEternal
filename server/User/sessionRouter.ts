@@ -6,6 +6,7 @@ import Prefs from '../Prefs/Prefs.js'
 import Rooms from '../Rooms/Rooms.js'
 import User from './User.js'
 import { createUserContext, setUserCookie } from './UserContext.js'
+import { guardLogin, loginAttemptKey, LoginRateLimitError } from './LoginGuard.js'
 
 interface SessionRequest {
   body: Record<string, any>
@@ -19,10 +20,14 @@ router.post('/login', async (ctx) => {
   let user
 
   try {
-    user = await User.validate(req.body as any)
-    if (roomId) await Rooms.validate(roomId, req.body.roomPassword, { validatePassword: true })
-    else if (user.role !== 'admin') ctx.throw(401, 'An admin account is required outside a room invite')
+    user = await guardLogin(loginAttemptKey(ctx.ip, req.body.username), async () => {
+      const validatedUser = await User.validate(req.body as any)
+      if (roomId) await Rooms.validate(roomId, req.body.roomPassword, { validatePassword: true })
+      else if (validatedUser.role !== 'admin') throw new Error('An admin account is required outside a room invite')
+      return validatedUser
+    })
   } catch (err) {
+    if (err instanceof LoginRateLimitError) ctx.throw(err.status, err.message)
     ctx.throw(401, err.message)
   }
 
@@ -30,10 +35,12 @@ router.post('/login', async (ctx) => {
     const newHash = await crypto.hash(req.body.password)
     const query = sql`
       UPDATE users
-      SET password = ${newHash}, dateUpdated = ${Math.floor(Date.now() / 1000)}
+      SET password = ${newHash}, dateUpdated = ${Math.max(Math.floor(Date.now() / 1000), (user.dateUpdated || 0) + 1)}
       WHERE userId = ${user.userId}
     `
     db.run(String(query), query.parameters)
+    user = User.getById(user.userId, true)
+    if (!user) ctx.throw(401, 'Account no longer exists')
   }
 
   const userContext = createUserContext(user, roomId)

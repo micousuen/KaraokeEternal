@@ -71,6 +71,16 @@ class User {
     return { result, entities }
   }
 
+  static getExpiredGuestIds (cutoff: number): number[] {
+    if (!Number.isInteger(cutoff)) throw new Error('cutoff must be an integer timestamp')
+    return db.all<{ userId: number }>(`
+      SELECT users.userId
+      FROM users
+        INNER JOIN roles USING (roleId)
+      WHERE roles.name = 'guest' AND users.dateCreated <= ?
+    `, [cutoff]).map(row => row.userId)
+  }
+
   static async create ({
     username,
     newPassword,

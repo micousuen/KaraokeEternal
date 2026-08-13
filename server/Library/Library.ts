@@ -2,17 +2,17 @@ import sql from 'sqlate'
 import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
 import { performance } from 'perf_hooks'
+import { Worker } from 'node:worker_threads'
 import { Song, Artist } from '../../shared/types.js'
 import Media from '../Media/Media.js'
+import type { LibrarySnapshot } from './LibrarySnapshot.js'
 
 const log = getLogger('Library')
+let lastCacheVersion = 0
 
 class Library {
-  static cache: {
-    version: number | null
-    artists?: { result: number[], entities: Record<number, Artist> }
-    songs?: { result: number[], entities: Record<number, Song> }
-  } = { version: null }
+  static cache: Partial<Omit<LibrarySnapshot, 'version'>> & { version: number | null } = { version: null }
+  static pendingBuild: Promise<void> | undefined
 
   static starCountsCache: {
     version: number | null
@@ -20,94 +20,33 @@ class Library {
     songs?: Record<number, number>
   } = { version: null }
 
-  /**
-  * Get artists and songs in a format suitable for sending to clients.
-  * Should not include songs or artists for which there are no media.
-  */
-  static get (): typeof Library.cache {
-    // already cached?
-    if (this.cache.version) return this.cache
+  static getVersion (): number {
+    if (this.cache.version === null) this.cache = { version: nextCacheVersion() }
+    return this.cache.version
+  }
 
-    const startTime = performance.now()
+  static invalidate (): number {
+    const version = nextCacheVersion()
+    this.cache = { version }
+    return version
+  }
 
-    const SongIdsByArtist = {}
-    const artists = {
-      result: [],
-      entities: {},
-    }
-    const songs = {
-      result: [],
-      entities: {},
-    }
+  static async getAsync (): Promise<LibrarySnapshot> {
+    while (!this.cache.artists || !this.cache.songs) await this.prepare()
+    return this.cache as LibrarySnapshot
+  }
 
-    // query #1: songs
-    {
-      const query = sql`
-        SELECT media.duration AS duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
-          songs.language AS language,
-          MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia,
-          MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
-          MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack
-        FROM media
-          INNER JOIN songs USING (songId)
-          INNER JOIN paths USING (pathId)
-          LEFT JOIN audioTrackAnalysis USING (mediaId)
-        GROUP BY songId
-        ORDER BY songs.titleNorm, paths.priority ASC
-      `
-      const rows = db.all<Omit<Song, 'isManagedDownload' | 'hasSingleAudioTrack'> & {
-        isPreferred: number
-        isManagedDownload: number
-        hasSingleAudioTrack: number
-      }>(String(query), query.parameters)
-
-      for (const row of rows) {
-        const song = { ...row }
-        delete song.isPreferred
-        songs.entities[row.songId] = {
-          ...song,
-          isManagedDownload: !!row.isManagedDownload,
-          hasSingleAudioTrack: !!row.hasSingleAudioTrack,
-        }
-        songs.result.push(row.songId)
-
-        // add to artist's songIds
-        if (typeof SongIdsByArtist[row.artistId] === 'undefined') {
-          SongIdsByArtist[row.artistId] = []
-        }
-
-        SongIdsByArtist[row.artistId].push(row.songId)
-      }
-    }
-
-    // query #2: artists
-    {
-      const query = sql`
-        SELECT artistId, name
-        FROM artists
-        ORDER BY nameNorm ASC
-      `
-      const rows = db.all<Artist>(String(query), query.parameters)
-
-      for (const row of rows) {
-        if (SongIdsByArtist[row.artistId]) {
-          artists.result.push(row.artistId)
-          artists.entities[row.artistId] = row
-          artists.entities[row.artistId].songIds = SongIdsByArtist[row.artistId]
-        }
-      }
-    }
-
-    log.info('built library cache in %sms', (performance.now() - startTime).toFixed(3))
-
-    // cache result
-    this.cache = {
-      artists,
-      songs,
-      version: Date.now(),
-    }
-
-    return this.cache
+  static prepare (): Promise<void> {
+    if (this.cache.artists && this.cache.songs) return Promise.resolve()
+    if (this.pendingBuild) return this.pendingBuild
+    const version = this.getVersion()
+    this.pendingBuild = buildLibrarySnapshotInWorker(db.config.filename, version)
+      .then((snapshot) => {
+        if (this.cache.version === snapshot.version) this.cache = snapshot
+        return undefined
+      })
+      .finally(() => { this.pendingBuild = undefined })
+    return this.pendingBuild
   }
 
   /**
@@ -254,7 +193,7 @@ class Library {
         log.debug('matched song: %s', row.title)
         if (parsed.language && row.language !== parsed.language) {
           db.run('UPDATE songs SET language = ? WHERE songId = ?', [parsed.language, row.songId])
-          this.cache.version = null
+          this.invalidate()
         }
         match.songId = row.songId
         match.title = row.title
@@ -405,11 +344,45 @@ class Library {
     this.starCountsCache = {
       artists,
       songs,
-      version: Date.now(),
+      version: nextCacheVersion(),
     }
 
     return this.starCountsCache
   }
+}
+
+function nextCacheVersion (): number {
+  lastCacheVersion = Math.max(Date.now(), lastCacheVersion + 1)
+  return lastCacheVersion
+}
+
+function buildLibrarySnapshotInWorker (databaseFile: string, version: number): Promise<LibrarySnapshot> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./librarySnapshotWorker.js', import.meta.url), {
+      execArgv: process.execArgv.filter(arg => !arg.startsWith('--input-type')),
+      workerData: { databaseFile, version },
+    })
+    const timeoutMs = 2 * 60_000
+    let settled = false
+    const timeout = setTimeout(() => finish(new Error(`library cache worker timed out after ${timeoutMs}ms`)), timeoutMs)
+    timeout.unref()
+    const finish = (error?: Error, snapshot?: LibrarySnapshot) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      void worker.terminate()
+      if (error) reject(error)
+      else resolve(snapshot!)
+    }
+    worker.once('message', (message) => {
+      if (message.ok) finish(undefined, message.snapshot)
+      else finish(new Error(message.error))
+    })
+    worker.once('error', error => finish(error instanceof Error ? error : new Error(String(error))))
+    worker.once('exit', (code) => {
+      if (!settled) finish(new Error(`library cache worker exited without a result (code ${code})`))
+    })
+  })
 }
 
 function isManagedDownloadPath (data: unknown): boolean {

@@ -133,7 +133,9 @@ router.put('/user/:userId', async (ctx) => {
     fields.set('roleId', sql`(SELECT roleId FROM roles WHERE name = ${req.body.role})`)
   }
 
-  fields.set('dateUpdated', Math.floor(Date.now() / 1000))
+  const target = targetId === user.userId ? user : User.getById(targetId, true)
+  const previousUpdate = target && typeof target.dateUpdated === 'number' ? target.dateUpdated : 0
+  fields.set('dateUpdated', Math.max(Math.floor(Date.now() / 1000), previousUpdate + 1))
 
   const query = sql`
     UPDATE users

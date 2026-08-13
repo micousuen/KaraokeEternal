@@ -3,7 +3,6 @@ import {
   PLAYER_CMD_OPTIONS,
   PLAYER_CMD_PAUSE,
   PLAYER_CMD_PLAY,
-  PLAYER_CMD_PRIORITY,
   PLAYER_CMD_REPLAY,
   PLAYER_CMD_SEEK,
   PLAYER_CMD_VOLUME,
@@ -12,7 +11,6 @@ import {
   PLAYER_REQ_OPTIONS,
   PLAYER_REQ_PAUSE,
   PLAYER_REQ_PLAY,
-  PLAYER_REQ_PRIORITY,
   PLAYER_REQ_REPLAY,
   PLAYER_REQ_SEEK,
   PLAYER_REQ_VOLUME,
@@ -54,12 +52,6 @@ const ACTION_HANDLERS = {
   [PLAYER_REQ_NEXT]: relayToRoom(PLAYER_CMD_NEXT),
   [PLAYER_REQ_PAUSE]: relayToRoom(PLAYER_CMD_PAUSE),
   [PLAYER_REQ_PLAY]: relayToRoom(PLAYER_CMD_PLAY),
-  [PLAYER_REQ_PRIORITY]: (sock, { payload }) => {
-    const { queueId } = payload
-    if (!Queue.isInRoom(queueId, sock.user.roomId)) throw new Error('Queue item is not in this room')
-
-    emitToRoom(sock, PLAYER_CMD_PRIORITY, { queueId })
-  },
   [PLAYER_REQ_REPLAY]: (sock, { payload }) => {
     if (!Queue.isInRoom(payload.queueId, sock.user.roomId)) {
       throw new Error('Queue item is not in this room')

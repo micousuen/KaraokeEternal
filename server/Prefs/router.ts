@@ -6,6 +6,7 @@ import getWindowsDrives from '../lib/getWindowsDrives.js'
 import Prefs from './Prefs.js'
 import Media from '../Media/Media.js'
 import pushQueuesAndLibrary from '../lib/pushQueuesAndLibrary.js'
+import { scheduleDatabaseVacuum } from '../lib/DatabaseMaintenance.js'
 import { PREFS_PATHS_CHANGED } from '../../shared/actionTypes.js'
 import { publishAllQueues } from '../Queue/QueuePublisher.js'
 import type { Prefs as PrefsType } from '../../shared/types.js'
@@ -111,6 +112,7 @@ router.delete('/path/:pathId', (ctx) => {
   process.emit(PREFS_PATHS_CHANGED, prefs.paths)
 
   Media.cleanup()
+  scheduleDatabaseVacuum()
 
   pushQueuesAndLibrary(ctx.io)
 })

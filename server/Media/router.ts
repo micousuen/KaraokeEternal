@@ -7,7 +7,7 @@ import Library from '../Library/Library.js'
 import Media from './Media.js'
 import Prefs from '../Prefs/Prefs.js'
 import fileTypes from './fileTypes.js'
-import { getSourceMediaInfo, prefetchBrowserMedia, type BrowserMediaPrefetch } from './Transcoder.js'
+import { getSourceMediaInfo, MediaCapacityError, prefetchBrowserMedia, type BrowserMediaPrefetch } from './Transcoder.js'
 import { scheduleAudioTrackAnalysis } from './AudioTrackAnalysis.js'
 import { resolveMediaRequest } from './MediaRequestResolver.js'
 import { LIBRARY_PUSH_SONG } from '../../shared/actionTypes.js'
@@ -19,11 +19,14 @@ const configuredPrecacheCount = parseInt(process.env.KES_PRECACHE_COUNT || '5', 
 const precacheCount = Number.isInteger(configuredPrecacheCount)
   ? Math.min(Math.max(configuredPrecacheCount, 0), 100)
   : 5
+const mediaRequestLimit = positiveInteger(process.env.KES_MEDIA_REQUESTS_PER_MINUTE, 240)
+const mediaRequestRates = new Map<number, { count: number, startedAt: number }>()
 
 // Queue upcoming videos for background conversion. The player sends its real
 // round-robin playback order, which the server cannot infer from the raw queue.
 router.post('/precache', async (ctx) => {
   requireRoomMember(ctx)
+  enforceMediaRequestRate(ctx)
 
   const body = ctx.request.body as {
     mediaIds?: unknown
@@ -81,6 +84,7 @@ router.get('/:mediaId', async (ctx) => {
   const { type } = ctx.query
 
   requireRoomMember(ctx)
+  enforceMediaRequestRate(ctx)
 
   const mediaId = parseInt(ctx.params.mediaId, 10)
 
@@ -88,7 +92,13 @@ router.get('/:mediaId', async (ctx) => {
     ctx.throw(422, 'invalid mediaId or type')
   }
 
-  const resolved = await resolveMediaRequest(mediaId, String(type), ctx.query)
+  let resolved
+  try {
+    resolved = await resolveMediaRequest(mediaId, String(type), ctx.query)
+  } catch (error) {
+    if (error instanceof MediaCapacityError) ctx.throw(503, error.message)
+    throw error
+  }
   if (resolved.cacheControl) ctx.set('Cache-Control', resolved.cacheControl)
   ctx.type = resolved.mimeType
   if (resolved.kind === 'json') {
@@ -180,4 +190,27 @@ function requireRoomMember (ctx): void {
   if (typeof ctx.user?.userId !== 'number' || typeof ctx.user?.roomId !== 'number') {
     ctx.throw(401, 'Join a room before accessing media')
   }
+}
+
+function enforceMediaRequestRate (ctx): void {
+  const userId = ctx.user.userId as number
+  const now = Date.now()
+  const current = mediaRequestRates.get(userId)
+  const rate = !current || now - current.startedAt >= 60_000
+    ? { count: 0, startedAt: now }
+    : current
+  rate.count++
+  mediaRequestRates.set(userId, rate)
+  if (mediaRequestRates.size > 10_000) {
+    for (const [id, entry] of mediaRequestRates) {
+      if (now - entry.startedAt >= 60_000) mediaRequestRates.delete(id)
+    }
+    while (mediaRequestRates.size > 10_000) mediaRequestRates.delete(mediaRequestRates.keys().next().value!)
+  }
+  if (rate.count > mediaRequestLimit) ctx.throw(429, 'Too many media requests')
+}
+
+function positiveInteger (value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }

@@ -6,6 +6,7 @@ export interface RunProcessOptions {
   env?: NodeJS.ProcessEnv
   maxStderrBytes?: number
   maxStdoutBytes?: number
+  killGraceMs?: number
   onStderr?: (chunk: Buffer) => void
   onStdout?: (chunk: Buffer) => void
   rejectOnStdoutOverflow?: boolean
@@ -83,12 +84,15 @@ function runProcessOnce (
     let stderrSize = 0
     let settled = false
     let timeout: NodeJS.Timeout | undefined
+    let forceKillTimeout: NodeJS.Timeout | undefined
+    let terminationError: ProcessExecutionError | undefined
 
     const output = (): ProcessOutput => ({ stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) })
     const finish = (error?: Error) => {
       if (settled) return
       settled = true
       if (timeout) clearTimeout(timeout)
+      if (forceKillTimeout) clearTimeout(forceKillTimeout)
       options.signal?.removeEventListener('abort', abort)
       if (error) reject(error)
       else resolve(output())
@@ -99,10 +103,14 @@ function runProcessOnce (
         && (typeof cause.code === 'string' || typeof cause.code === 'number')) error.code = cause.code
       finish(error)
     }
-    const abort = () => {
+    const terminate = (message: string) => {
+      if (settled || terminationError) return
+      terminationError = new ProcessExecutionError(message, output())
       child.kill('SIGTERM')
-      fail(`${path.basename(command)} was canceled`)
+      forceKillTimeout = setTimeout(() => child.kill('SIGKILL'), options.killGraceMs ?? 3_000)
+      forceKillTimeout.unref()
     }
+    const abort = () => terminate(`${path.basename(command)} was canceled`)
     const append = (chunks: Buffer[], chunk: Buffer, currentSize: number, maximum: number) => {
       chunks.push(chunk)
       let size = currentSize + chunk.length
@@ -134,7 +142,8 @@ function runProcessOnce (
     })
     child.once('error', error => fail(`Could not start ${command}: ${error.message}`, error))
     child.once('close', (code, signal) => {
-      if (code === 0) finish()
+      if (terminationError) finish(terminationError)
+      else if (code === 0) finish()
       else {
         const reason = code === null ? `signal ${signal || 'unknown'}` : `code ${code}`
         const processOutput = output()
@@ -153,8 +162,7 @@ function runProcessOnce (
     else options.signal?.addEventListener('abort', abort, { once: true })
     if (options.timeoutMs !== undefined) {
       timeout = setTimeout(() => {
-        child.kill('SIGTERM')
-        fail(`${path.basename(command)} timed out after ${options.timeoutMs}ms`)
+        terminate(`${path.basename(command)} timed out after ${options.timeoutMs}ms`)
       }, options.timeoutMs)
       timeout.unref()
     }

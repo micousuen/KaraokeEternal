@@ -9,6 +9,7 @@ import {
   LIBRARY_INVALIDATE,
   QUEUE_ADD,
   QUEUE_MOVE,
+  QUEUE_PLAY_NEXT,
   QUEUE_PATCH,
   QUEUE_REMOVE,
   QUEUE_SHUFFLE,
@@ -48,7 +49,7 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
       store.dispatch(action)
       if (action?.type === LIBRARY_INVALIDATE) {
         const state = store.getState() as { library?: { version?: number } }
-        if (state.library?.version !== action.payload?.version) void syncLibrary(store)
+        if (state.library?.version !== action.payload?.version) void syncLibrary(store, action.payload?.version)
       }
       if (action?.type === QUEUE_PATCH) {
         const state = store.getState() as { queue?: { revision?: number } }
@@ -120,8 +121,8 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
   }
 }
 
-const QUEUE_MUTATIONS = new Set([QUEUE_ADD, QUEUE_MOVE, QUEUE_REMOVE, QUEUE_SHUFFLE])
-const CONFLICT_SENSITIVE_QUEUE_MUTATIONS = new Set([QUEUE_MOVE, QUEUE_REMOVE, QUEUE_SHUFFLE])
+const QUEUE_MUTATIONS = new Set([QUEUE_ADD, QUEUE_MOVE, QUEUE_PLAY_NEXT, QUEUE_REMOVE, QUEUE_SHUFFLE])
+const CONFLICT_SENSITIVE_QUEUE_MUTATIONS = new Set([QUEUE_MOVE, QUEUE_PLAY_NEXT, QUEUE_REMOVE, QUEUE_SHUFFLE])
 
 function socketAction (
   action: Action & { payload?: unknown },

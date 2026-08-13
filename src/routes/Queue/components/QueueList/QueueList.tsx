@@ -4,8 +4,7 @@ import { useAppDispatch, useAppSelector } from 'store/hooks'
 import QueueItem from '../QueueItem/QueueItem'
 import YouTubeQueueItem from '../YouTubeQueueItem/YouTubeQueueItem'
 import Button from 'components/Button/Button'
-import { moveItem, removeUpcomingItems, shuffleItems } from '../../modules/queue'
-import { requestPriority } from 'store/modules/status'
+import { moveItem, playNext, removeUpcomingItems, shuffleItems } from '../../modules/queue'
 import getQueueRows from '../../selectors/getQueueRows'
 import styles from './QueueList.css'
 import fairShuffle from '../../lib/fairShuffle'
@@ -23,8 +22,7 @@ const QueueList = () => {
   }
 
   const handlePlayNextClick = (qId: number) => {
-    dispatch(moveItem({ queueId: qId, prevQueueId: currentQueueId >= 0 ? currentQueueId : -1 }))
-    dispatch(requestPriority(qId))
+    dispatch(playNext({ queueId: qId, prevQueueId: currentQueueId >= 0 ? currentQueueId : -1 }))
   }
 
   const handleShuffle = () => {

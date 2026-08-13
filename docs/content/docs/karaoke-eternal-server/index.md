@@ -212,6 +212,23 @@ The customized source build also supports these video transcoding environment va
 | `KES_TRANSCODE_CRF` | FFmpeg x264 constant-rate-factor quality | `20` |
 | `KES_TRANSCODE_AUDIO_BITRATE` | AAC output bitrate | `192k` |
 | `KES_TRANSCODE_MAX_SIZE_GB` | Maximum completed transcode cache size in GiB; least-recently-used files are removed first | `8` |
+| `KES_TRANSCODE_CONCURRENCY` | Maximum simultaneous browser-media FFmpeg jobs; active playback is prioritized over pre-caching | `2` |
+| `KES_TRANSCODE_QUEUE_LIMIT` | Maximum browser-media jobs waiting for an FFmpeg slot | `50` |
+| `KES_TRANSCODE_TIMEOUT_MS` | Maximum runtime for one browser-media FFmpeg job | `600000` |
+| `KES_MEDIA_REQUESTS_PER_MINUTE` | Media and pre-cache requests allowed per signed-in user per minute | `240` |
+| `KES_FFPROBE_TIMEOUT_MS` | Maximum runtime for a media probe | `30000` |
+| `KES_MEDIA_PROCESS_TIMEOUT_MS` | Maximum runtime for an FFmpeg step in separation/scripting | `600000` |
+| `KES_SEPARATOR_TIMEOUT_MS` | Maximum runtime for one vocal-separation process | `1800000` |
+| `KES_AUDIO_CLASSIFIER_TIMEOUT_MS` | Maximum runtime for audio-track classification | `120000` |
+| `KES_METADATA_TIMEOUT_MS` | Maximum runtime for slow technical metadata analysis | `120000` |
+| `KES_DATABASE_MAINTENANCE_DELAY_MS` | Delay before background database compaction after cleanup | `60000` |
+| `KES_SESSION_MAX_AGE_SECONDS` | Login session lifetime; account and role changes still revoke sessions immediately | `604800` |
+| `KES_LOGIN_MAX_CONCURRENT` | Maximum simultaneous password verification operations | `4` |
+| `KES_LOGIN_MAX_FAILURES` | Failed attempts per IP/username pair before exponential backoff | `5` |
+| `KES_LOGIN_FAILURE_WINDOW_MS` | Failed-login tracking window | `900000` |
+| `KES_LOGIN_BACKOFF_MS` | Initial failed-login backoff | `1000` |
+| `KES_GUEST_RETENTION_DAYS` | Age at which unregistered guest accounts, queues, and stars are removed | `7` |
+| `KES_GUEST_CLEANUP_INTERVAL_MS` | How often expired guest accounts are checked | `21600000` |
 
 ## File Locations
 

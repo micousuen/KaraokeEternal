@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { QUEUE_MOVE } from '../../shared/actionTypes.js'
+import { PLAYER_CMD_PRIORITY, QUEUE_MOVE, QUEUE_PLAY_NEXT } from '../../shared/actionTypes.js'
 
 const mocks = vi.hoisted(() => ({
   getQueueSnapshot: vi.fn(),
   move: vi.fn(),
   publishQueue: vi.fn(),
   validate: vi.fn(),
+  emitToRoom: vi.fn(),
 }))
 
 vi.mock('./Queue.js', () => ({
@@ -23,7 +24,7 @@ vi.mock('./QueuePublisher.js', () => ({
   publishQueue: mocks.publishQueue,
   sendQueueSnapshot: vi.fn(),
 }))
-vi.mock('../lib/socketActions.js', () => ({ emitToRoom: vi.fn() }))
+vi.mock('../lib/socketActions.js', () => ({ emitToRoom: mocks.emitToRoom }))
 
 import handlers from './socket.js'
 
@@ -69,5 +70,36 @@ describe('queue conflict handling', () => {
         queue: expect.objectContaining({ revision: 11 }),
       }),
     }))
+  })
+
+  it('moves and prioritizes Play Next inside the same revision-guarded lane', async () => {
+    mocks.validate.mockResolvedValue(true)
+    mocks.getQueueSnapshot.mockReturnValue({ revision: 4, result: [], entities: {} })
+    const Queue = (await import('./Queue.js')).default
+    vi.mocked(Queue.isInRoom).mockReturnValue(true)
+    const socket = { user: { roomId: 12 }, server: {} }
+    const acknowledge = vi.fn()
+
+    await handlers[QUEUE_PLAY_NEXT](socket, {
+      payload: { queueId: 8, prevQueueId: 3 },
+      meta: { baseRevision: 4 },
+    }, acknowledge)
+
+    expect(mocks.move).toHaveBeenCalledWith({ roomId: 12, queueId: 8, prevQueueId: 3 })
+    expect(mocks.emitToRoom).toHaveBeenCalledWith(socket, PLAYER_CMD_PRIORITY, { queueId: 8 })
+    expect(acknowledge).toHaveBeenCalledWith({ type: `${QUEUE_PLAY_NEXT}_SUCCESS` })
+  })
+
+  it('does not prioritize Play Next when its queue revision lost a conflict', async () => {
+    mocks.validate.mockResolvedValue(true)
+    mocks.getQueueSnapshot.mockReturnValue({ revision: 5, result: [], entities: {} })
+
+    await handlers[QUEUE_PLAY_NEXT]({ user: { roomId: 12 }, server: {} }, {
+      payload: { queueId: 8, prevQueueId: 3 },
+      meta: { baseRevision: 4 },
+    }, vi.fn())
+
+    expect(mocks.move).not.toHaveBeenCalled()
+    expect(mocks.emitToRoom).not.toHaveBeenCalled()
   })
 })

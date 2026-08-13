@@ -3,6 +3,7 @@ import Library from '../Library/Library.js'
 import { scheduleAudioTrackAnalysis } from './AudioTrackAnalysis.js'
 import { scheduleMediaMetadataAnalysis } from './MediaMetadataAnalysis.js'
 import { LIBRARY_SCAN_BATCH, MEDIA_ADD, MEDIA_ANALYZE, MEDIA_CLEANUP, MEDIA_REMOVE, MEDIA_UPDATE } from '../../shared/actionTypes.js'
+import { scheduleDatabaseVacuum } from '../lib/DatabaseMaintenance.js'
 
 /**
  * IPC action handlers
@@ -14,7 +15,7 @@ export default function (io, suppressWatcher) {
   const queueLiveUpdate = (songId) => {
     if (!Number.isInteger(songId)) return
     pendingSongIds.add(songId)
-    Library.cache.version = null
+    Library.invalidate()
 
     if (!flushTimer) {
       flushTimer = setTimeout(() => {
@@ -58,7 +59,10 @@ export default function (io, suppressWatcher) {
       queueLiveUpdate(payload.songId)
       return mediaId
     },
-    [MEDIA_CLEANUP]: Media.cleanup,
+    [MEDIA_CLEANUP]: () => {
+      Media.cleanup()
+      scheduleDatabaseVacuum()
+    },
     [MEDIA_REMOVE]: ({ payload }) => Media.remove(payload),
     [MEDIA_UPDATE]: ({ payload }) => {
       Media.update(payload)

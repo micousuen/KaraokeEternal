@@ -20,7 +20,7 @@ let encodedLibrary: {
 } | undefined
 
 router.get('/library', async (ctx) => {
-  const library = Library.get()
+  const library = await Library.getAsync()
   const etag = `"library-${library.version}"`
   ctx.set('Cache-Control', 'private, no-cache')
   ctx.set('ETag', etag)
@@ -121,7 +121,7 @@ router.post('/song/:songId/regenerate', async (ctx) => {
       source,
       output,
       () => {
-        Library.cache.version = null
+        Library.invalidate()
         io.emit('action', {
           type: LIBRARY_PUSH_SONG,
           payload: Library.getSong(songId),

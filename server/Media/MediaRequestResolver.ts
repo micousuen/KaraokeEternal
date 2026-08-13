@@ -87,9 +87,15 @@ export async function resolveMediaRequest (
     const audioTrack = getPhysicalAudioTrack(parseTrack(query.audioTrack), analysis.audioTrackCount, analysis.ktvTrack)
     const format = audioTrack === null ? undefined : sourceInfo.audioTracks[audioTrack]
     if (!format) throw new MediaRequestError(404, 'Source audio track not found')
-    const sourceAudioTracks = sourceInfo.audioTracks.map((trackFormat, track) => (
+    const sourceAudioTracks = sourceInfo.audioTracks.map((trackFormat, candidateTrack) => (
       trackFormat.extension && trackFormat.mimeType
-        ? getSourceAudio(file, mediaId, track, trackFormat)
+        ? getSourceAudio(
+            file,
+            mediaId,
+            candidateTrack,
+            trackFormat,
+            candidateTrack === audioTrack ? 'playback' : 'background',
+          )
         : null
     ))
     const sourceAudio = await sourceAudioTracks[audioTrack]
@@ -118,7 +124,12 @@ export async function resolveMediaRequest (
     if (type === 'videoCombined') {
       const combinedTracks = Array.from(
         { length: sourceInfo.audioTrackCount },
-        (_, audioTrack) => getBrowserCombined(file, mediaId, audioTrack),
+        (_, audioTrack) => getBrowserCombined(
+          file,
+          mediaId,
+          audioTrack,
+          audioTrack === track ? 'playback' : 'background',
+        ),
       )
       const combined = await combinedTracks[track]
       // Both muxed variants share the same prepared H.264 video and AAC jobs.
@@ -131,7 +142,13 @@ export async function resolveMediaRequest (
     const audioFormat = query.audioFormat === 'aac' ? 'aac' : 'mp3'
     const audioTracks = Array.from(
       { length: sourceInfo.audioTrackCount },
-      (_, audioTrack) => getBrowserAudioTrack(file, mediaId, audioTrack, audioFormat),
+      (_, audioTrack) => getBrowserAudioTrack(
+        file,
+        mediaId,
+        audioTrack,
+        audioFormat,
+        audioTrack === track ? 'playback' : 'background',
+      ),
     )
     const audio = await audioTracks[track]
     void Promise.allSettled(audioTracks)
