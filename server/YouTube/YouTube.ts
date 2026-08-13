@@ -1,4 +1,3 @@
-import childProcess from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
@@ -7,6 +6,7 @@ import Prefs from '../Prefs/Prefs.js'
 import Media from '../Media/Media.js'
 import Queue from '../Queue/Queue.js'
 import type { YouTubeJob } from '../../shared/types.js'
+import { ProcessExecutionError, runProcessText } from '../lib/runProcess.js'
 
 const log = getLogger('YouTube')
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
@@ -237,59 +237,48 @@ function resolveDownloadLibraryPath (downloadsPath: string): { pathId: number, b
   }
 }
 
-function spawnYtDlp (args: string[], job: YouTubeJob, pushJobs: () => void): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = childProcess.spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
-    let finalPath = ''
-    let lastPush = 0
-    let lineBuffer = ''
-
-    const timeout = setTimeout(() => {
-      proc.kill('SIGTERM')
-      reject(new Error('YouTube download timed out'))
-    }, 30 * 60 * 1000)
-    timeout.unref()
-
-    proc.stdout.setEncoding('utf8')
-    proc.stderr.setEncoding('utf8')
-    proc.stdout.on('data', (chunk: string) => {
-      stdout = (stdout + chunk).slice(-16000)
-      lineBuffer += chunk
-      const lines = lineBuffer.split(/\r?\n/)
-      lineBuffer = lines.pop() || ''
-      for (const line of lines) {
-        if (line.startsWith('progress:')) {
-          const pct = parseFloat(line.substring('progress:'.length).replace('%', '').trim())
-          if (Number.isFinite(pct)) {
-            job.progress = Math.max(0, Math.min(100, pct))
-            if (Date.now() - lastPush >= 500) {
-              lastPush = Date.now()
-              pushJobs()
-            }
+async function spawnYtDlp (args: string[], job: YouTubeJob, pushJobs: () => void): Promise<string> {
+  let finalPath = ''
+  let lastPush = 0
+  let lineBuffer = ''
+  const handleStdout = (chunk: Buffer) => {
+    lineBuffer += chunk.toString()
+    const lines = lineBuffer.split(/\r?\n/)
+    lineBuffer = lines.pop() || ''
+    for (const line of lines) {
+      if (line.startsWith('progress:')) {
+        const pct = parseFloat(line.substring('progress:'.length).replace('%', '').trim())
+        if (Number.isFinite(pct)) {
+          job.progress = Math.max(0, Math.min(100, pct))
+          if (Date.now() - lastPush >= 500) {
+            lastPush = Date.now()
+            pushJobs()
           }
-        } else if (line.startsWith('title:')) {
-          job.title = line.substring('title:'.length).trim() || job.title
-          pushJobs()
-        } else if (line.startsWith('filepath:')) {
-          finalPath = line.substring('filepath:'.length).trim()
         }
+      } else if (line.startsWith('title:')) {
+        job.title = line.substring('title:'.length).trim() || job.title
+        pushJobs()
+      } else if (line.startsWith('filepath:')) {
+        finalPath = line.substring('filepath:'.length).trim()
       }
+    }
+  }
+
+  try {
+    const { stdout } = await runProcessText('yt-dlp', args, {
+      timeoutMs: 30 * 60 * 1000,
+      maxStdoutBytes: 16000,
+      maxStderrBytes: 16000,
+      onStdout: handleStdout,
     })
-    proc.stderr.on('data', (chunk: string) => {
-      stderr = (stderr + chunk).slice(-16000)
-    })
-    proc.on('error', (error) => {
-      clearTimeout(timeout)
-      reject(error)
-    })
-    proc.on('close', (code) => {
-      clearTimeout(timeout)
-      if (code === 0) return resolve(finalPath || stdout.trim().split(/\r?\n/).pop() || '')
-      reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`))
-    })
-  })
+    return finalPath || stdout.trim().split(/\r?\n/).pop() || ''
+  } catch (error) {
+    if (error instanceof ProcessExecutionError) {
+      if (/timed out/.test(error.message)) throw new Error('YouTube download timed out')
+      throw new Error(error.stderr.toString().trim() || error.message, { cause: error })
+    }
+    throw error
+  }
 }
 
 async function waitForMedia (pathId: number, relPath: string): Promise<{ songId: number }> {

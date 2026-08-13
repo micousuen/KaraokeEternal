@@ -122,7 +122,57 @@ export interface PlaybackOptions {
   }
 }
 
-export type MediaType = 'cdg' | 'mp4' | ''
+export type MediaType = 'cdg' | 'mp4' | '' | null
+
+export interface PlaybackCoreStatus {
+  audioTrack: 0 | 1
+  audioTrackCount: number
+  cdgAlpha: number
+  cdgSize: number
+  duration: number
+  errorMessage: string
+  history: number[]
+  isAtQueueEnd: boolean
+  isErrored: boolean
+  isPlaying: boolean
+  isVideoKeyingEnabled: boolean
+  isWebGLSupported: boolean
+  mediaType: MediaType
+  mp4Alpha: number
+  showScript: boolean
+  nextUserId: number | null
+  position: number
+  queueId: number
+  rgTrackGain: number | null
+  rgTrackPeak: number | null
+  volume: number
+}
+
+export function createInitialPlaybackStatus (): PlaybackCoreStatus {
+  return {
+    audioTrack: 0,
+    audioTrackCount: 0,
+    cdgAlpha: 0.5,
+    cdgSize: 0.65,
+    duration: 0,
+    errorMessage: '',
+    history: [],
+    isAtQueueEnd: false,
+    isErrored: false,
+    isPlaying: false,
+    isVideoKeyingEnabled: false,
+    isWebGLSupported: false,
+    mediaType: null,
+    mp4Alpha: 0.5,
+    showScript: false,
+    nextUserId: null,
+    position: 0,
+    queueId: -1,
+    rgTrackGain: null,
+    rgTrackPeak: null,
+    volume: 1,
+  }
+}
 
 export interface Media {
   songId: number

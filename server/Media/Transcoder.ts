@@ -1,11 +1,11 @@
-import childProcess from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import getLogger from '../lib/Log.js'
-import { BROWSER_MEDIA_VERSION } from '../../shared/media.js'
+import { runProcessText } from '../lib/runProcess.js'
+import { BROWSER_MEDIA_VERSION, type SourceAudioTrack } from '../../shared/media.js'
 
 interface BrowserMediaBundle {
   video?: string
@@ -25,12 +25,6 @@ export interface SourceMediaInfo {
   audioTrackCount: number
   audioTracks: SourceAudioTrack[]
   videoCodec: string | null
-}
-
-export interface SourceAudioTrack {
-  codec: string | null
-  extension: string | null
-  mimeType: string | null
 }
 
 interface SourceAudioFile {
@@ -388,38 +382,11 @@ function resolveBundle (directory: string, manifest: BundleManifest): BrowserMed
 }
 
 function run (command: string, args: string[]): Promise<void> {
-  return spawn(command, args).then(() => undefined)
+  return runProcessText(command, args, { maxStderrBytes: 8000 }).then(() => undefined)
 }
 
 function runCapture (command: string, args: string[]): Promise<string> {
-  return spawn(command, args)
-}
-
-function spawn (command: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const process = childProcess.spawn(command, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-
-    process.stdout.setEncoding('utf8')
-    process.stderr.setEncoding('utf8')
-    process.stdout.on('data', (chunk) => {
-      stdout += chunk
-    })
-    process.stderr.on('data', (chunk) => {
-      stderr = (stderr + chunk).slice(-8000)
-    })
-
-    process.on('error', (err) => {
-      reject(new Error(`Could not start ${command}: ${err.message}`))
-    })
-    process.on('close', (code) => {
-      if (code === 0) resolve(stdout)
-      else reject(new Error(`${command} exited with code ${code}: ${stderr.trim()}`))
-    })
-  })
+  return runProcessText(command, args, { maxStderrBytes: 8000 }).then(output => output.stdout)
 }
 
 async function exists (file: string): Promise<boolean> {

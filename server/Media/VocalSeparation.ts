@@ -1,43 +1,22 @@
-import childProcess from 'node:child_process'
 import fs, { type Stats } from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import path from 'node:path'
-import { parse } from 'yaml'
 import getLogger from '../lib/Log.js'
 import { db } from '../lib/Database.js'
+import { runProcess, runProcessText } from '../lib/runProcess.js'
 import whisperxWorker, { type WhisperXSettings } from './WhisperXWorker.js'
+import { loadVocalSeparationConfig } from './VocalSeparationConfig.js'
+import { VocalSeparationHistory, type SeparationHistoryItem } from './VocalSeparationHistory.js'
+import { MediaProcessingQueue } from './MediaProcessingQueue.js'
 
 const log = getLogger('VocalSeparation')
 const downloadsPath = process.env.KES_PATH_DOWNLOADS || '/media/downloads'
-const configPath = process.env.KES_PATH_VOCAL_SEPARATION_CONFIG || path.resolve('config/vocal-separation.yaml')
 const tempRoot = path.join(downloadsPath, '.karaoke-eternal-separation')
 const modelRoot = path.join(downloadsPath, '.karaoke-eternal-models')
 const numbaCacheRoot = path.join(modelRoot, '.numba-cache')
 const separatorPath = process.env.KES_PATH_AUDIO_SEPARATOR || 'audio-separator'
 const ffmpegPath = process.env.KES_PATH_FFMPEG || 'ffmpeg'
 const ffprobePath = process.env.KES_PATH_FFPROBE || 'ffprobe'
-
-interface SeparationConfig {
-  enabled: boolean
-  model: string
-  segmentSeconds: number
-  overlap: number
-  shifts: number
-  outputBitrate: string
-  instrumentalVocalMix: number
-  scripting: {
-    enabled: boolean
-    model: string
-    language?: string
-    vadOnset?: number
-    vadChunkSeconds?: number
-    beamSize?: number
-    maxLineWidth?: number
-    maxLineCount?: number
-    minLineWidth?: number
-    initialPrompt?: string
-  }
-}
 
 interface Job {
   mediaId: number
@@ -82,21 +61,11 @@ export interface ProcessingTask {
   progress: number | null
 }
 
-export interface SeparationHistoryItem {
-  mediaId: number
-  song: string
-  status: 'processing' | 'succeeded' | 'failed'
-  attempts: number
-  startedAt: number | null
-  completedAt: number | null
-  audioSeconds: number | null
-  processingSeconds: number | null
-  error: string | null
-}
+export type { SeparationHistoryItem } from './VocalSeparationHistory.js'
 
-const config = loadConfig()
-const queue: Job[] = []
-const scheduled = new Set<number>()
+const config = loadVocalSeparationConfig()
+const history = new VocalSeparationHistory()
+const jobs = new MediaProcessingQueue<Job>()
 let active = false
 let paused = false
 let currentJob: Job | undefined
@@ -119,22 +88,14 @@ const startupCleanup = fsPromises.rm(tempRoot, { recursive: true, force: true })
 })
 
 export function scheduleVocalSeparation (job: Job, prioritize = false): boolean {
-  if (!config.enabled || scheduled.has(job.mediaId)) return false
+  if (!config.enabled || jobs.has(job.mediaId)) return false
   job.needsScript = job.allowScript && config.scripting.enabled
     && (!!job.forceScript || !fs.existsSync(scriptPath(job.source)))
   // Separation is an intermediate step, not a standalone deliverable. Once
   // both downstream outputs already exist, there is nothing left to process.
   if (!job.generateInstrumental && !job.needsScript) return false
   job.runSeparation = job.runSeparation && (job.generateInstrumental || job.needsScript)
-  job.prioritized = prioritize
-  scheduled.add(job.mediaId)
-  if (prioritize) {
-    let lastPriority = -1
-    for (let index = 0; index < queue.length; index++) {
-      if (queue[index].prioritized) lastPriority = index
-    }
-    queue.splice(lastPriority + 1, 0, job)
-  } else queue.push(job)
+  if (!jobs.enqueue(job, prioritize)) return false
   log.info('Queued mediaId=%s for vocal separation%s', job.mediaId, prioritize ? ' (priority)' : '')
   emitStatus()
   void drain()
@@ -169,13 +130,13 @@ export function resumeVocalSeparation (): void {
 }
 
 export function getVocalSeparationStatus (): VocalSeparationStatus {
-  const history = getHistory()
+  const historyItems = history.getAll()
   return {
     enabled: config.enabled,
     isPaused: paused,
     modelsMounted: whisperxWorker.mounted,
     modelsLoading: whisperxWorker.loading,
-    queuedSongs: queue.length,
+    queuedSongs: jobs.length,
     currentSong: currentJob ? path.basename(currentJob.source, path.extname(currentJob.source)) : null,
     currentStartedAt: currentStartedAt || null,
     currentProgress: currentProgress ?? null,
@@ -184,13 +145,13 @@ export function getVocalSeparationStatus (): VocalSeparationStatus {
     completedSongs,
     averageSpeed: processingSeconds > 0 ? processedAudioSeconds / processingSeconds : null,
     lastError,
-    recent: history,
-    queued: queue.map(job => ({
+    recent: historyItems,
+    queued: jobs.list().map(job => ({
       mediaId: job.mediaId,
       song: path.basename(job.source, path.extname(job.source)),
       tasks: tasksForJob(job),
     })),
-    completedThisRun: history.filter(item => completedThisRun.has(item.mediaId)),
+    completedThisRun: historyItems.filter(item => completedThisRun.has(item.mediaId)),
   }
 }
 
@@ -206,8 +167,8 @@ async function drain (): Promise<void> {
   active = true
   try {
     await startupCleanup
-    while (queue.length && !paused) {
-      const job = queue.shift()!
+    while (jobs.length && !paused) {
+      const job = jobs.dequeue()!
       currentJob = job
       currentStartedAt = Date.now()
       currentProgress = 0
@@ -216,7 +177,7 @@ async function drain (): Promise<void> {
       currentInstrumentalProgress = undefined
       currentScriptingProgress = !job.runSeparation && job.needsScript ? 0 : undefined
       lastError = null
-      markStarted(job)
+      history.markStarted(job, config.model)
       emitStatus()
       try {
         const audioSeconds = await separate(job)
@@ -225,20 +186,20 @@ async function drain (): Promise<void> {
         completedThisRun.add(job.mediaId)
         processedAudioSeconds += audioSeconds
         processingSeconds += elapsedSeconds
-        markFinished(job, 'succeeded', audioSeconds, elapsedSeconds, null)
+        history.markFinished(job, 'succeeded', audioSeconds, elapsedSeconds, null)
         job.onComplete?.()
         job.sourceReplaced = false
       } catch (err) {
         lastError = errorMessage(err, processingStage(err) || currentStage)
         const elapsedSeconds = currentStartedAt ? (Date.now() - currentStartedAt) / 1000 : 0
-        markFinished(job, 'failed', null, elapsedSeconds, lastError)
+        history.markFinished(job, 'failed', null, elapsedSeconds, lastError)
         // The instrumental replacement may have succeeded before scripting
         // failed. Re-analyze that changed source even though the overall job failed.
         if (job.sourceReplaced) job.onComplete?.()
         job.sourceReplaced = false
         log.warn('Could not generate instrumental for mediaId=%s: %s', job.mediaId, lastError)
       } finally {
-        scheduled.delete(job.mediaId)
+        jobs.complete(job.mediaId)
         currentJob = undefined
         currentStartedAt = undefined
         currentProgress = undefined
@@ -252,60 +213,6 @@ async function drain (): Promise<void> {
   } finally {
     active = false
   }
-}
-
-function markStarted (job: Job): void {
-  db.run(`
-    INSERT INTO vocalSeparationHistory
-      (mediaId, source, model, status, attempts, startedAt, completedAt, audioSeconds, processingSeconds, error)
-    VALUES (?, ?, ?, 'processing', 1, ?, NULL, NULL, NULL, NULL)
-    ON CONFLICT(mediaId) DO UPDATE SET
-      source = excluded.source,
-      model = excluded.model,
-      status = 'processing',
-      attempts = vocalSeparationHistory.attempts + 1,
-      startedAt = excluded.startedAt,
-      completedAt = NULL,
-      audioSeconds = NULL,
-      processingSeconds = NULL,
-      error = NULL
-  `, [job.mediaId, job.source, config.model, Math.round(Date.now() / 1000)])
-}
-
-function markFinished (
-  job: Job,
-  status: 'succeeded' | 'failed',
-  audioSeconds: number | null,
-  elapsedSeconds: number,
-  error: string | null,
-): void {
-  db.run(`
-    UPDATE vocalSeparationHistory
-    SET status = ?, completedAt = ?, audioSeconds = ?, processingSeconds = ?, error = ?
-    WHERE mediaId = ?
-  `, [status, Math.round(Date.now() / 1000), audioSeconds, elapsedSeconds, error, job.mediaId])
-}
-
-function getHistory (): SeparationHistoryItem[] {
-  return db.all<{
-    mediaId: number
-    source: string
-    status: 'processing' | 'succeeded' | 'failed'
-    attempts: number
-    startedAt: number | null
-    completedAt: number | null
-    audioSeconds: number | null
-    processingSeconds: number | null
-    error: string | null
-  }>(`
-    SELECT mediaId, source, status, attempts, startedAt, completedAt,
-      audioSeconds, processingSeconds, error
-    FROM vocalSeparationHistory
-    ORDER BY COALESCE(completedAt, startedAt) DESC
-  `).map(row => ({
-    ...row,
-    song: path.basename(row.source, path.extname(row.source)),
-  }))
 }
 
 async function separate (job: Job): Promise<number> {
@@ -541,93 +448,33 @@ async function mediaDuration (filename: string): Promise<number> {
 }
 
 async function runSeparator (args: string[]): Promise<void> {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await runSeparatorOnce(args)
-      return
-    } catch (err) {
-      if (attempt === 3 || !isNoChildProcessError(err)) throw err
-      log.warn('audio-separator process wait failed with ECHILD; retrying (%s/3)', attempt + 1)
+  const handleOutput = (chunk: Buffer) => {
+    for (const match of chunk.toString().matchAll(/(\d{1,3})(?:\.\d+)?%/g)) {
+      setProgress(Math.min(100, Number(match[1])))
     }
   }
-}
-
-async function runSeparatorOnce (args: string[]): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = childProcess.spawn(separatorPath, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        // Numba otherwise tries to cache librosa JIT functions beside the
-        // read-only Python installation under /opt/audio-separator.
-        NUMBA_CACHE_DIR: numbaCacheRoot,
-      },
-    })
-    let output = ''
-    let settled = false
-    const finish = (err?: Error) => {
-      if (settled) return
-      settled = true
-      if (err) reject(Object.assign(err, { stderr: output }))
-      else resolve()
-    }
-    const handleOutput = (chunk: Buffer) => {
-      output = (output + chunk.toString()).slice(-10 * 1024 * 1024)
-      for (const match of chunk.toString().matchAll(/(\d{1,3})(?:\.\d+)?%/g)) {
-        const separatorPct = Math.min(100, Number(match[1]))
-        setProgress(separatorPct)
-      }
-    }
-    child.stdout.on('data', handleOutput)
-    child.stderr.on('data', handleOutput)
-    child.on('error', finish)
-    child.on('close', (code) => {
-      if (code === 0) finish()
-      else finish(new Error(`audio-separator exited with code ${code}`))
-    })
+  await runProcess(separatorPath, args, {
+    env: {
+      ...process.env,
+      // Numba otherwise tries to cache librosa JIT functions beside the
+      // read-only Python installation under /opt/audio-separator.
+      NUMBA_CACHE_DIR: numbaCacheRoot,
+    },
+    maxStdoutBytes: 10 * 1024 * 1024,
+    maxStderrBytes: 10 * 1024 * 1024,
+    onStdout: handleOutput,
+    onStderr: handleOutput,
+    retryOnNoChildProcess: 3,
   })
-}
-
-function isNoChildProcessError (err: unknown): boolean {
-  if (!(err instanceof Error)) return false
-  return ('code' in err && err.code === 'ECHILD') || /no child processes/i.test(`${err.message}\n${'stderr' in err ? err.stderr : ''}`)
 }
 
 async function execFile (
   command: string,
   args: string[],
 ): Promise<{ stdout: string, stderr: string }> {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      return await runCommand(command, args)
-    } catch (err) {
-      if (attempt === 3 || !isNoChildProcessError(err)) throw err
-      log.warn('%s process wait failed with ECHILD; retrying (%s/3)', path.basename(command), attempt + 1)
-    }
-  }
-  throw new Error(`${path.basename(command)} did not start`)
-}
-
-function runCommand (command: string, args: string[]): Promise<{ stdout: string, stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = childProcess.spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    let settled = false
-    const finish = (err?: Error) => {
-      if (settled) return
-      settled = true
-      const output = { stdout: Buffer.concat(stdout).toString(), stderr: Buffer.concat(stderr).toString() }
-      if (err) reject(Object.assign(err, output))
-      else resolve(output)
-    }
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-    child.on('error', finish)
-    child.on('close', (code, signal) => {
-      if (code === 0) finish()
-      else finish(new Error(`${path.basename(command)} exited with ${code === null ? `signal ${signal || 'unknown'}` : `code ${code}`}`))
-    })
+  return runProcessText(command, args, {
+    maxStderrBytes: 10 * 1024 * 1024,
+    retryOnNoChildProcess: 3,
   })
 }
 
@@ -690,43 +537,13 @@ function isPassthroughVideoCodec (codec: string): boolean {
   return codec === 'h264' || codec === 'hevc' || codec === 'h265'
 }
 
-function loadConfig (): SeparationConfig {
-  const value = parse(fs.readFileSync(configPath, 'utf8')) as SeparationConfig
-  if (typeof value.enabled !== 'boolean' || typeof value.model !== 'string' || !value.model
-    || !Number.isFinite(value.segmentSeconds) || !Number.isFinite(value.overlap)
-    || !Number.isInteger(value.shifts) || typeof value.outputBitrate !== 'string'
-    || !Number.isFinite(value.instrumentalVocalMix) || value.instrumentalVocalMix < 0 || value.instrumentalVocalMix > 1) {
-    throw new Error(`${configPath}: invalid vocal separation configuration`)
-  }
-  if (!value.scripting || typeof value.scripting.enabled !== 'boolean'
-    || typeof value.scripting.model !== 'string' || !value.scripting.model) {
-    throw new Error(`${configPath}: invalid scripting configuration`)
-  }
-  const invalidVadOnset = value.scripting.vadOnset !== undefined
-    && (!Number.isFinite(value.scripting.vadOnset) || value.scripting.vadOnset <= 0 || value.scripting.vadOnset >= 1)
-  const invalidVadChunkSeconds = value.scripting.vadChunkSeconds !== undefined
-    && (!Number.isFinite(value.scripting.vadChunkSeconds) || value.scripting.vadChunkSeconds < 5 || value.scripting.vadChunkSeconds > 30)
-  const invalidBeamSize = value.scripting.beamSize !== undefined
-    && (!Number.isInteger(value.scripting.beamSize) || value.scripting.beamSize < 1)
-  const invalidMaxLineWidth = value.scripting.maxLineWidth !== undefined
-    && (!Number.isInteger(value.scripting.maxLineWidth) || value.scripting.maxLineWidth < 10)
-  const invalidMaxLineCount = value.scripting.maxLineCount !== undefined
-    && (!Number.isInteger(value.scripting.maxLineCount) || value.scripting.maxLineCount < 1)
-  const invalidMinLineWidth = value.scripting.minLineWidth !== undefined
-    && (!Number.isInteger(value.scripting.minLineWidth) || value.scripting.minLineWidth < 1)
-  const invalidInitialPrompt = value.scripting.initialPrompt !== undefined
-    && typeof value.scripting.initialPrompt !== 'string'
-  if (invalidVadOnset || invalidVadChunkSeconds || invalidBeamSize || invalidMaxLineWidth || invalidMaxLineCount || invalidMinLineWidth || invalidInitialPrompt) {
-    throw new Error(`${configPath}: invalid scripting tuning configuration`)
-  }
-  return value
-}
-
 function errorMessage (err: unknown, stage?: 'separating' | 'scripting'): string {
   const stageLabel = stage === 'scripting' ? 'Scripting' : 'Separation'
   if (!(err instanceof Error)) return `[${stageLabel}] ${String(err)}`
 
-  const output = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr : ''
+  const output = 'stderr' in err
+    ? Buffer.isBuffer(err.stderr) ? err.stderr.toString() : typeof err.stderr === 'string' ? err.stderr : ''
+    : ''
   const lines = output
     // ANSI terminal color escape sequence.
     // eslint-disable-next-line no-control-regex

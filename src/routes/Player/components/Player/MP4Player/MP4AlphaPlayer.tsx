@@ -1,18 +1,12 @@
 import React from 'react'
 import GLChroma from 'gl-chromakey'
-import { BROWSER_MEDIA_VERSION } from 'shared/media'
-import { type SourceMediaInfo, supportsSourceAudio, supportsSourceVideo } from '../../../lib/mediaSupport'
+import { MP4PlaybackController, type MP4PlaybackProps } from './MP4PlaybackController'
 import styles from './MP4Player.css'
 
-const BACKDROP_PADDING = 10 // px at 1:1 scale
+const BACKDROP_PADDING = 10
 const BORDER_RADIUS = parseInt(getComputedStyle(document.body).getPropertyValue('--border-radius'))
-const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
-const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
 
-interface MP4AlphaPlayerProps {
-  audioTrack: 0 | 1
-  isPlaying: boolean
-  mediaId: number
+interface MP4AlphaPlayerProps extends MP4PlaybackProps {
   mediaKey: number
   mediaReplayKey?: number
   mediaSeekKey?: number
@@ -21,12 +15,7 @@ interface MP4AlphaPlayerProps {
   width: number
   height: number
   onAudioElement(audio: HTMLAudioElement): void
-  // media events
   onEnd(): void
-  onError(error: string): void
-  onLoad(): void
-  onPlay(): void
-  onStatus(status: { position?: number, duration?: number, audioTrackCount?: number }): void
 }
 
 class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
@@ -34,36 +23,20 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
   frameId: number | null = null
   video = document.createElement('video')
   audio = document.createElement('audio')
-  pendingPosition = 0
-  sourceInfo: SourceMediaInfo | undefined
-  usingSourceVideo = false
-  usingSourceAudio = false
-  sourceRequest = 0
-  playRequest = 0
-  videoReady = false
-  audioReady = false
   chroma: GLChroma
-  supportsFilters = CSS.supports('backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)') || CSS.supports('-webkit-backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
+  controller: MP4PlaybackController
+  supportsFilters = CSS.supports('backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
+    || CSS.supports('-webkit-backdrop-filter', 'blur(10px) brightness(100%) saturate(100%)')
+
   state = {
-    contentBounds: [0, 0, 0, 0], // x1, y1, x2, y2
+    contentBounds: [0, 0, 0, 0],
     videoWidth: 0,
     videoHeight: 0,
   }
 
   componentDidMount () {
     this.props.onAudioElement(this.audio)
-    this.audio.oncanplay = this.handleAudioCanPlay
-    this.audio.onended = this.handleEnded
-    this.audio.onerror = this.handleAudioError
-    this.audio.onloadstart = this.props.onLoad
-    this.audio.onloadedmetadata = this.handleAudioMetadata
-    this.audio.onplay = this.handlePlay
-    this.audio.ontimeupdate = this.handleTimeUpdate
     this.audio.preload = 'auto'
-
-    this.video.onerror = this.handleVideoError
-    this.video.oncanplay = this.handleVideoCanPlay
-    this.video.onloadedmetadata = this.handleLoadedMetadata
     this.video.muted = true
     this.video.preload = 'auto'
 
@@ -71,62 +44,56 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
       this.chroma = new GLChroma(this.video, this.canvas.current)
       this.chroma.key({ color: 'auto' })
     }
-
-    this.updateSources()
+    this.controller = new MP4PlaybackController(this.video, this.audio, () => this.props, {
+      onPlaybackStarted: this.startChroma,
+      onStopped: this.stopChroma,
+    })
+    this.audio.oncanplay = this.controller.handleAudioCanPlay
+    this.audio.onended = this.handleEnded
+    this.audio.onerror = this.controller.handleAudioError
+    this.audio.onloadstart = this.props.onLoad
+    this.audio.onloadedmetadata = this.controller.handleAudioMetadata
+    this.audio.onplay = this.controller.handlePlay
+    this.audio.ontimeupdate = this.controller.handleTimeUpdate
+    this.video.onerror = this.controller.handleVideoError
+    this.video.oncanplay = this.controller.handleVideoCanPlay
+    this.video.onloadedmetadata = this.handleLoadedMetadata
+    this.controller.updateSources()
   }
 
   componentDidUpdate (prevProps: MP4AlphaPlayerProps) {
     if (prevProps.mediaKey !== this.props.mediaKey) {
-      this.updateSources()
+      this.controller.updateSources()
       return
     }
-
     if (prevProps.audioTrack !== this.props.audioTrack) {
-      this.updateAudioSource(this.audio.currentTime || 0)
+      this.controller.updateAudioSource(this.audio.currentTime || 0)
       return
     }
-
     if (prevProps.mediaReplayKey !== this.props.mediaReplayKey) {
-      this.setCurrentTime(0)
+      this.controller.setCurrentTime(0)
       return
     }
-
     if (prevProps.mediaSeekKey !== this.props.mediaSeekKey) {
-      this.setCurrentTime(this.props.seekPosition)
+      this.controller.setCurrentTime(this.props.seekPosition)
       return
     }
-
-    if (prevProps.isPlaying !== this.props.isPlaying) {
-      this.updateIsPlaying()
-    }
+    if (prevProps.isPlaying !== this.props.isPlaying) this.controller.updateIsPlaying()
 
     if (!this.props.isPlaying && (
       prevProps.width !== this.props.width
       || prevProps.height !== this.props.height
       || prevProps.mp4Alpha !== this.props.mp4Alpha)
-    ) {
-      const contentBounds = this.chroma.render({ passthrough: this.props.mp4Alpha === 1 }).getContentBounds()
-
-      if (!contentBounds.every((val, i) => val === this.state.contentBounds[i])) {
-        this.setState({ contentBounds })
-      }
-    }
+    ) this.renderChromaFrame()
   }
 
   componentWillUnmount () {
     this.audio.ontimeupdate = null
     this.audio.oncanplay = null
     this.video.oncanplay = null
-    this.audio.pause()
-    this.video.pause()
     this.stopChroma()
-    this.playRequest++
-
     this.chroma.unload()
-    this.video.removeAttribute('src')
-    this.video.load() // reset to ensure playback stops
-    this.audio.removeAttribute('src')
-    this.audio.load()
+    this.controller.dispose()
   }
 
   render () {
@@ -134,9 +101,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
     const screenAspect = width / height
     const videoAspect = this.state.videoWidth / this.state.videoHeight
     const scale = !isNaN(videoAspect)
-      ? (screenAspect > videoAspect
-          ? height / this.state.videoHeight
-          : width / this.state.videoWidth)
+      ? (screenAspect > videoAspect ? height / this.state.videoHeight : width / this.state.videoWidth)
       : 0
     const filters = []
     const [x1, y1, x2, y2] = this.state.contentBounds
@@ -160,8 +125,7 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
             width: (x2 - x1) + pad * 2,
             height: (y2 - y1) + pad * 2,
           }}
-        >
-        </div>
+        />
         <canvas
           className={styles.canvas}
           width={this.state.videoWidth * scale}
@@ -169,175 +133,35 @@ class MP4AlphaPlayer extends React.Component<MP4AlphaPlayerProps> {
           ref={this.canvas}
         />
       </div>
-
     )
   }
 
   handleLoadedMetadata = () => {
-    this.setState({
-      videoWidth: this.video.videoWidth,
-      videoHeight: this.video.videoHeight,
-    })
+    this.setState({ videoWidth: this.video.videoWidth, videoHeight: this.video.videoHeight })
   }
 
-  updateSources = () => {
-    this.stopChroma()
-    this.playRequest++
-    this.videoReady = false
-    this.audioReady = false
-    this.video.pause()
-    this.audio.pause()
-    const request = ++this.sourceRequest
-    void fetch(`${document.baseURI}api/media/${this.props.mediaId}?type=videoInfo${mediaVersion}`)
-      .then(async (response): Promise<SourceMediaInfo> => {
-        if (!response.ok) throw new Error(await response.text())
-        return response.json() as Promise<SourceMediaInfo>
-      })
-      .then((info): undefined => {
-        if (request !== this.sourceRequest) return undefined
-        this.sourceInfo = info
-        this.props.onStatus({ audioTrackCount: info.audioTrackCount })
-        this.usingSourceVideo = supportsSourceVideo(this.video, info)
-        this.usingSourceAudio = supportsSourceAudio(this.audio, info.audioTracks[this.props.audioTrack])
-        this.videoReady = false
-        this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceVideo ? 'sourceVideo' : 'video'}${mediaVersion}`
-        this.video.load()
-        this.updateAudioSource()
-        return undefined
-      })
-      .catch((err): undefined => {
-        if (request !== this.sourceRequest) return undefined
-        this.usingSourceVideo = false
-        this.usingSourceAudio = false
-        this.videoReady = false
-        this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
-        this.video.load()
-        this.updateAudioSource()
-        this.props.onError(err.message)
-        return undefined
-      })
-  }
-
-  updateAudioSource = (position = 0, preferSource = true) => {
-    this.stopChroma()
-    this.video.pause()
-    this.audio.pause()
-    this.playRequest++
-    this.audioReady = false
-    this.pendingPosition = position
-    this.usingSourceAudio = preferSource && !!this.sourceInfo
-      && supportsSourceAudio(this.audio, this.sourceInfo.audioTracks[this.props.audioTrack])
-    this.audio.src = `${document.baseURI}api/media/${this.props.mediaId}?type=${this.usingSourceAudio ? 'sourceAudio' : 'videoAudio'}&audioTrack=${this.props.audioTrack}${this.usingSourceAudio ? '' : audioFormat}${mediaVersion}`
-    this.audio.load()
-  }
-
-  updateIsPlaying = () => {
-    if (this.props.isPlaying) {
-      if (!this.videoReady || !this.audioReady) return
-      this.video.currentTime = this.audio.currentTime
-      const request = ++this.playRequest
-      Promise.all([this.video.play(), this.audio.play()])
-        .catch((err) => {
-          if (request === this.playRequest && !isPlayInterruption(err)) this.props.onError(err.message)
-        })
-    } else {
-      this.playRequest++
-      this.audio.pause()
-      this.video.pause()
-      this.stopChroma()
-    }
-  }
-
-  startChroma = () => {
-    this.frameId = requestAnimationFrame(this.startChroma)
-    const contentBounds = this.chroma.render({ passthrough: this.props.mp4Alpha === 1 }).getContentBounds()
-
-    // content bounds changed?
-    if (!contentBounds.every((val, i) => val === this.state.contentBounds[i])) {
-      this.setState({ contentBounds })
-    }
-  }
-
-  stopChroma = () => cancelAnimationFrame(this.frameId)
-
-  /*
-  * <video> event handlers
-  */
   handleEnded = () => {
     this.props.onEnd()
     this.stopChroma()
   }
 
-  handleVideoError = () => {
-    if (this.usingSourceVideo) {
-      const position = this.audio.currentTime || this.video.currentTime || 0
-      this.usingSourceVideo = false
-      this.playRequest++
-      this.videoReady = false
-      this.video.pause()
-      this.audio.pause()
-      this.pendingPosition = position
-      this.video.src = `${document.baseURI}api/media/${this.props.mediaId}?type=video${mediaVersion}`
-      this.video.load()
-      return
+  renderChromaFrame = () => {
+    const contentBounds = this.chroma.render({ passthrough: this.props.mp4Alpha === 1 }).getContentBounds()
+    if (!contentBounds.every((value, index) => value === this.state.contentBounds[index])) {
+      this.setState({ contentBounds })
     }
-    const { message, code } = this.video.error
-    this.props.onError(`${message} (video code ${code})`)
   }
 
-  handleAudioError = () => {
-    if (this.usingSourceAudio) {
-      this.usingSourceAudio = false
-      this.playRequest++
-      this.audioReady = false
-      this.updateAudioSource(this.audio.currentTime || 0, false)
-      return
-    }
-    const { message, code } = this.audio.error
-    this.props.onError(`${message} (audio code ${code})`)
+  startChroma = () => {
+    this.stopChroma()
+    this.frameId = requestAnimationFrame(this.startChroma)
+    this.renderChromaFrame()
   }
 
-  handleAudioMetadata = () => {
-    this.props.onStatus({ duration: this.audio.duration })
-    if (this.pendingPosition <= 0) return
-    this.setCurrentTime(Math.min(this.pendingPosition, this.audio.duration))
-    this.pendingPosition = 0
+  stopChroma = () => {
+    if (this.frameId !== null) cancelAnimationFrame(this.frameId)
+    this.frameId = null
   }
-
-  handleVideoCanPlay = () => {
-    this.videoReady = true
-    this.updateIsPlaying()
-  }
-
-  handleAudioCanPlay = () => {
-    this.audioReady = true
-    this.updateIsPlaying()
-  }
-
-  handlePlay = () => {
-    this.props.onPlay()
-    this.startChroma()
-  }
-
-  handleTimeUpdate = () => {
-    const position = this.audio.currentTime
-    if (Math.abs(this.video.currentTime - position) > 0.2) {
-      this.video.currentTime = position
-    }
-    this.props.onStatus({ position })
-  }
-
-  setCurrentTime = (position: number) => {
-    this.video.currentTime = position
-    this.audio.currentTime = position
-  }
-}
-
-function isPlayInterruption (err: unknown): boolean {
-  return err instanceof Error && (
-    err.name === 'AbortError'
-    || /play\(\) request was interrupted|play request was interrupted/i.test(err.message)
-  )
 }
 
 export default MP4AlphaPlayer

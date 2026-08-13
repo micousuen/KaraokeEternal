@@ -21,6 +21,18 @@ import {
   PLAYER_UPDATE,
   REDUX_SLICE_INJECT_NOOP,
 } from 'shared/actionTypes'
+import { createInitialPlaybackStatus, type PlaybackCoreStatus } from 'shared/types'
+
+const PRIVATE_PLAYER_STATE_KEYS = new Set([
+  '_isFetching',
+  '_isPlayingNext',
+  '_priorityQueueId',
+  '_isReplayingQueueId',
+  '_lastReplayTime',
+  '_lastSeekTime',
+  '_seekPosition',
+  '_isSuperseded',
+])
 
 // internal use
 export const playerUpdate = createAction<object>(PLAYER_UPDATE)
@@ -59,12 +71,10 @@ export function playerStatus (status: Partial<PlayerState> = {}, deferEmit = fal
     dispatch(playerUpdate(status))
 
     // emit full updated status (excluding "private" properties)
+    const updated = { ...player, ...status }
     const emitStatus = Object.fromEntries(
-      Object.entries({
-        ...player, // previous complete state
-        ...status, // current partial state
-      }).filter(([key]) => !key.startsWith('_')),
-    )
+      Object.entries(updated).filter(([key]) => !PRIVATE_PLAYER_STATE_KEYS.has(key)),
+    ) as unknown as PlaybackCoreStatus
 
     dispatch({
       type: PLAYER_EMIT_STATUS,
@@ -113,28 +123,7 @@ export function playerClaim (): AppThunk {
 // ------------------------------------
 // Reducer
 // ------------------------------------
-export interface PlayerState {
-  audioTrack: 0 | 1
-  audioTrackCount: number
-  cdgAlpha: number
-  cdgSize: number
-  duration: number
-  errorMessage: string
-  historyJSON: string
-  isAtQueueEnd: boolean
-  isErrored: boolean
-  isPlaying: boolean
-  isVideoKeyingEnabled: boolean
-  isWebGLSupported: boolean
-  mediaType: string | null
-  mp4Alpha: number
-  showScript: boolean
-  nextUserId: number | null
-  position: number
-  queueId: number
-  rgTrackGain: number | null
-  rgTrackPeak: number | null
-  volume: number
+export interface PlayerState extends PlaybackCoreStatus {
   _isFetching: boolean
   _isPlayingNext: boolean
   _priorityQueueId: number | null
@@ -146,27 +135,8 @@ export interface PlayerState {
 }
 
 const initialState: PlayerState = {
-  audioTrack: 0,
-  audioTrackCount: 0,
-  cdgAlpha: 0.5,
-  cdgSize: 0.65,
-  duration: 0,
-  errorMessage: '',
-  historyJSON: '[]', // queueIds (JSON string is hack to pass selector equality check on clients)
-  isAtQueueEnd: false,
-  isErrored: false,
-  isPlaying: false,
-  isVideoKeyingEnabled: false,
+  ...createInitialPlaybackStatus(),
   isWebGLSupported: getWebGLSupport(),
-  mediaType: null,
-  mp4Alpha: 0.5,
-  showScript: false,
-  nextUserId: null,
-  position: 0,
-  queueId: -1,
-  rgTrackGain: null,
-  rgTrackPeak: null,
-  volume: 1,
   // "private" internal state that shouldn't be emitted
   _isFetching: false,
   _isPlayingNext: false,

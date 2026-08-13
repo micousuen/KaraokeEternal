@@ -44,7 +44,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     const nextItem = queue.entities[queueId]
     if (!nextItem) return
 
-    const history = JSON.parse(player.historyJSON)
+    const history = [...player.history]
 
     if (queueId !== player.queueId) {
       // reset history up to and including the replaying queueId
@@ -55,7 +55,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     handleStatus({
       audioTrackCount: 0,
       duration: 0,
-      historyJSON: JSON.stringify(history),
+      history,
       isAtQueueEnd: false,
       isPlaying: true,
       isVideoKeyingEnabled: nextItem.isVideoKeyingEnabled,
@@ -65,7 +65,7 @@ const PlayerController = (props: PlayerControllerProps) => {
       nextUserId: null,
       _isReplayingQueueId: null,
     })
-  }, [handleStatus, player.historyJSON, player.queueId, queue.entities])
+  }, [handleStatus, player.history, player.queueId, queue.entities])
 
   // Claim ownership once when this player screen opens. Playback status
   // updates (including Play Next) do not affect ownership.
@@ -74,7 +74,7 @@ const PlayerController = (props: PlayerControllerProps) => {
   }, [dispatch])
 
   const handleLoadNext = useCallback(() => {
-    const history = JSON.parse(player.historyJSON)
+    const history = [...player.history]
 
     // add current item to history (once)
     if (queueItem && history.lastIndexOf(queueItem.queueId) === -1) {
@@ -84,7 +84,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     // queue exhausted?
     if (!nextQueueItem) {
       handleStatus({
-        historyJSON: JSON.stringify(history),
+        history,
         isAtQueueEnd: true,
         mediaType: null,
         _isPlayingNext: false,
@@ -97,7 +97,7 @@ const PlayerController = (props: PlayerControllerProps) => {
     handleStatus({
       audioTrackCount: 0,
       duration: 0,
-      historyJSON: JSON.stringify(history),
+      history,
       isAtQueueEnd: false,
       isPlaying: true,
       isVideoKeyingEnabled: nextQueueItem.isVideoKeyingEnabled,
@@ -108,7 +108,7 @@ const PlayerController = (props: PlayerControllerProps) => {
       _isPlayingNext: false,
       _priorityQueueId: null,
     })
-  }, [handleStatus, nextQueueItem, player.historyJSON, queueItem])
+  }, [handleStatus, nextQueueItem, player.history, queueItem])
 
   // "lock in" the next user that isn't the currently up user, if possible
   useEffect(() => {

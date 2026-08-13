@@ -12,6 +12,7 @@
     },
     "moduleResolution": "Bundler",
     "module": "esnext",
+    "target": "es2022",
     "jsx": "react",
     "plugins": [
       {

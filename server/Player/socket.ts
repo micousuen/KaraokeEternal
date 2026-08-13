@@ -110,13 +110,9 @@ const ACTION_HANDLERS = {
   [PLAYER_EMIT_STATUS]: (sock, { payload }) => {
     if (sock._isSuperseded) return
 
-    let history: number[] = []
-    try {
-      const parsed = JSON.parse(payload.historyJSON || '[]')
-      if (Array.isArray(parsed)) history = parsed
-    } catch {
-      // Ignore malformed client history; status can still be relayed.
-    }
+    const history = Array.isArray(payload.history)
+      ? payload.history.filter(queueId => Number.isInteger(queueId))
+      : []
 
     if (Queue.markPlayed(sock.user.roomId, history)) {
       sock.server.to(Rooms.prefix(sock.user.roomId)).emit('action', {

@@ -12,7 +12,7 @@ import {
   PLAYER_STATUS,
   PLAYER_LEAVE,
 } from 'shared/actionTypes'
-import { MediaType, PlaybackOptions } from 'shared/types'
+import { createInitialPlaybackStatus, type PlaybackCoreStatus, type PlaybackOptions } from 'shared/types'
 
 // ------------------------------------
 // Actions
@@ -63,52 +63,15 @@ export const requestOptions = createAction(PLAYER_REQ_OPTIONS, (opts: PlaybackOp
 // ------------------------------------
 // Reducer
 // ------------------------------------
-interface StatusState {
-  audioTrack: 0 | 1
-  audioTrackCount: number
-  cdgAlpha: number
-  cdgSize: number
-  duration: number
-  errorMessage: string
-  historyJSON: string // queueIds in JSON array
-  isAtQueueEnd: boolean
-  isErrored: boolean
+interface StatusState extends PlaybackCoreStatus {
   isPlayerPresent: boolean
-  isPlaying: boolean
-  isVideoKeyingEnabled: boolean
-  isWebGLSupported: boolean
-  mediaType: MediaType | null
-  mp4Alpha: number
-  showScript: boolean
-  nextUserId: number | null
-  position: number
-  queueId: number
   visualizer: PlayerVisualizerState | Record<string, never>
-  volume: number
 }
 
 const initialState: StatusState = {
-  audioTrack: 0,
-  audioTrackCount: 0,
-  cdgAlpha: 0,
-  cdgSize: 0.8,
-  duration: 0,
-  errorMessage: '',
-  historyJSON: '[]', // queueIds in JSON array
-  isAtQueueEnd: false,
-  isErrored: false,
+  ...createInitialPlaybackStatus(),
   isPlayerPresent: false,
-  isPlaying: false,
-  isVideoKeyingEnabled: false,
-  isWebGLSupported: false,
-  mediaType: null,
-  mp4Alpha: 1,
-  showScript: false,
-  nextUserId: null,
-  position: 0,
-  queueId: -1,
   visualizer: {},
-  volume: 1,
 }
 
 const statusReducer = createReducer(initialState, (builder) => {
@@ -119,8 +82,15 @@ const statusReducer = createReducer(initialState, (builder) => {
     .addCase(playerStatus, (state, { payload }) => ({
       ...state,
       ...payload,
+      history: sameHistory(state.history, 'history' in payload ? payload.history : undefined),
       isPlayerPresent: true,
     }))
 })
+
+function sameHistory (current: number[], incoming: unknown): number[] {
+  if (!Array.isArray(incoming) || !incoming.every(value => typeof value === 'number')) return current
+  if (current.length === incoming.length && current.every((value, index) => value === incoming[index])) return current
+  return incoming
+}
 
 export default statusReducer

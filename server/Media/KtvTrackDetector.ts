@@ -1,7 +1,7 @@
-import childProcess from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse } from 'yaml'
+import { runProcess } from '../lib/runProcess.js'
 
 export interface KtvTrackDetection {
   duration: number
@@ -235,55 +235,11 @@ async function execFile (
   args: string[],
   options: { maxBuffer?: number } = {},
 ): Promise<{ stdout: Buffer, stderr: Buffer }> {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      return await execFileOnce(command, args, options.maxBuffer)
-    } catch (err) {
-      if (attempt === 3 || !isNoChildProcessError(err)) throw err
-    }
-  }
-  throw new Error(`${path.basename(command)} did not start`)
-}
-
-function execFileOnce (
-  command: string,
-  args: string[],
-  maxBuffer = Number.POSITIVE_INFINITY,
-): Promise<{ stdout: Buffer, stderr: Buffer }> {
-  return new Promise((resolve, reject) => {
-    const child = childProcess.spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    let stdoutSize = 0
-    let settled = false
-    const finish = (err?: Error) => {
-      if (settled) return
-      settled = true
-      const output = { stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) }
-      if (err) reject(Object.assign(err, output))
-      else resolve(output)
-    }
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdoutSize += chunk.length
-      if (stdoutSize > maxBuffer) {
-        child.kill('SIGKILL')
-        finish(new Error(`${path.basename(command)} output exceeded ${maxBuffer} bytes`))
-        return
-      }
-      stdout.push(chunk)
-    })
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-    child.on('error', finish)
-    child.on('close', (code, signal) => {
-      if (code === 0) finish()
-      else finish(new Error(`${path.basename(command)} exited with ${code === null ? `signal ${signal || 'unknown'}` : `code ${code}`}`))
-    })
+  return runProcess(command, args, {
+    maxStdoutBytes: options.maxBuffer,
+    rejectOnStdoutOverflow: options.maxBuffer !== undefined,
+    retryOnNoChildProcess: 3,
   })
-}
-
-function isNoChildProcessError (err: unknown): boolean {
-  if (!(err instanceof Error)) return false
-  return ('code' in err && err.code === 'ECHILD') || /no child processes/i.test(`${err.message}\n${'stderr' in err ? err.stderr : ''}`)
 }
 
 function fft (real: Float64Array, imag: Float64Array): void {

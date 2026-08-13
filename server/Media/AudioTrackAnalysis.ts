@@ -6,6 +6,7 @@ import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
 import type { KtvTrackDetection } from './KtvTrackDetector.js'
 import { scheduleVocalSeparation } from './VocalSeparation.js'
+import { planAutomaticMediaProcessing, planForcedMediaProcessing } from './MediaProcessingPolicy.js'
 
 export interface AudioTrackAnalysisRecord {
   mediaId: number
@@ -71,23 +72,22 @@ export async function forceMediaProcessing (
   const record = await ensureAudioTrackAnalysis(mediaId, source)
   if (record.audioTrackCount < 1) throw new Error('The selected media has no audio track')
 
-  // The classifier reports the karaoke/instrumental channel. WhisperX and
-  // Demucs need its opposite (the vocal/master channel). Fall back to A1 only
-  // when classification is unavailable.
-  const vocalTrack = record.audioTrackCount === 1
-    ? 0
-    : record.ktvTrack === null ? 0 : record.ktvTrack === 0 ? 1 : 0
-  const replaceInstrumental = output === 'instrumental' && record.audioTrackCount > 1
+  const plan = planForcedMediaProcessing({
+    audioTrackCount: record.audioTrackCount,
+    ktvTrack: record.ktvTrack,
+    isManagedDownload: false,
+  }, output)
+  if (!plan.shouldSchedule || plan.vocalTrack === null) throw new Error('The selected media has no usable audio track')
   const queued = scheduleVocalSeparation({
     mediaId,
     pathId,
     source,
-    vocalTrack,
-    runSeparation: true,
-    generateInstrumental: output === 'instrumental',
-    allowScript: output === 'script',
-    forceScript: output === 'script',
-    replaceInstrumental,
+    vocalTrack: plan.vocalTrack,
+    runSeparation: plan.runSeparation,
+    generateInstrumental: plan.generateInstrumental,
+    allowScript: plan.allowScript,
+    forceScript: plan.forceScript,
+    replaceInstrumental: plan.replaceInstrumental,
     onComplete: output === 'instrumental'
       ? () => scheduleAudioTrackAnalysis(mediaId, source, { onAnalysisComplete: onComplete })
       : onComplete,
@@ -134,20 +134,17 @@ async function drain (): Promise<void> {
         const record = cached || await analyze(job.mediaId, job.source)
         job.onAnalysisComplete?.(job.mediaId)
         if (job.pathId !== undefined && job.onSeparationComplete) {
-          const requiresProcessing = record.audioTrackCount === 1 || !!job.isManagedDownload
-          if (!requiresProcessing) {
+          const plan = planAutomaticMediaProcessing({
+            audioTrackCount: record.audioTrackCount,
+            ktvTrack: record.ktvTrack,
+            isManagedDownload: !!job.isManagedDownload,
+          })
+          if (!plan.shouldSchedule) {
             // Existing dual-track media is classified so playback can select
             // its vocal channel, but it must never enter the processing queue.
-            job.resolve?.(record)
-            continue
-          }
-          const vocalTrack = record.audioTrackCount === 1
-            ? 0
-            : record.ktvTrack === null
-              ? null
-              : record.ktvTrack === 0 ? 1 : 0
-          if (vocalTrack === null) {
-            log.warn('Skipping vocal separation for mediaId=%s: could not identify the vocal track', job.mediaId)
+            if (plan.vocalTrack === null && (record.audioTrackCount === 1 || job.isManagedDownload)) {
+              log.warn('Skipping vocal separation for mediaId=%s: could not identify the vocal track', job.mediaId)
+            }
             job.resolve?.(record)
             continue
           }
@@ -158,15 +155,15 @@ async function drain (): Promise<void> {
             // A one-track source must use A1. For a dual-track source, the
             // classifier identifies the karaoke/instrumental track and we
             // separate its opposite vocal/master track.
-            vocalTrack,
+            vocalTrack: plan.vocalTrack!,
             // A YouTube download still needs an isolated vocal stem for an
             // accurate script. Existing dual-track library files stop after
             // classification, since they already have their own vocal/KTV pair.
-            runSeparation: record.audioTrackCount === 1 || !!job.isManagedDownload,
-            generateInstrumental: record.audioTrackCount === 1,
+            runSeparation: plan.runSeparation,
+            generateInstrumental: plan.generateInstrumental,
             // Keep library videos that already have A1/A2 untouched. Downloads
             // are still scripted because their dual tracks may not include one.
-            allowScript: record.audioTrackCount === 1 || !!job.isManagedDownload,
+            allowScript: plan.allowScript,
             onComplete: record.audioTrackCount === 1
               ? () => job.onSeparationComplete?.(job.mediaId, job.source)
               : undefined,

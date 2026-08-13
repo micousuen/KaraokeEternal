@@ -4,7 +4,7 @@ import { ensureState } from 'redux-optimistic-ui'
 
 const getQueue = (state: RootState) => ensureState(state.queue)
 const getCurrentQueueId = (state: RootState) => state.status.isAtQueueEnd ? undefined : state.status.queueId
-const getPlayerHistoryJSON = (state: RootState) => state.status.historyJSON
+const getPlayerHistory = (state: RootState) => state.status.history
 
 type SongsStatus = {
   played: number[]
@@ -13,9 +13,8 @@ type SongsStatus = {
 }
 
 const getSongsStatus: Selector<RootState, SongsStatus> = createSelector(
-  [getQueue, getCurrentQueueId, getPlayerHistoryJSON],
-  (queue, curId, historyJSON): SongsStatus => {
-    const history = JSON.parse(historyJSON)
+  [getQueue, getCurrentQueueId, getPlayerHistory],
+  (queue, curId, history): SongsStatus => {
     const played: number[] = []
     const upcoming: number[] = []
 

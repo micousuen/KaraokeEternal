@@ -7,17 +7,9 @@ const getActiveQueue = createSelector(
   [
     (state: RootState) => ensureState(state.queue).result,
     (state: RootState) => ensureState(state.queue).entities,
-    (state: RootState) => state.status.historyJSON,
+    (state: RootState) => state.status.history,
   ],
-  (result, entities, historyJSON) => {
-    let history: number[] = []
-    try {
-      const parsed = JSON.parse(historyJSON)
-      if (Array.isArray(parsed)) history = parsed
-    } catch {
-      // Persisted database state remains authoritative.
-    }
-
+  (result, entities, history) => {
     return {
       result: result.filter((id) => {
         const item = entities[id]

@@ -1,43 +1,22 @@
-export interface SourceAudioTrack {
-  codec: string | null
-  extension: string | null
-  mimeType: string | null
-}
+import {
+  AUDIO_MEDIA_CANDIDATES,
+  codecMediaType,
+  VIDEO_MEDIA_CANDIDATES,
+  type SourceAudioTrack,
+  type SourceMediaInfo,
+} from 'shared/media'
 
-export interface SourceMediaInfo {
-  audioTrackCount: number
-  videoMimeType: string | null
-  videoCodec: string | null
-  audioTracks: Array<SourceAudioTrack | null>
-}
-
-const videoCandidates = [
-  'video/mp4; codecs="avc1"',
-  'video/mp4; codecs="hvc1"',
-  'video/mp4; codecs="hev1"',
-  'video/mp4; codecs="vp09"',
-  'video/mp4; codecs="av01"',
-  'video/mp4; codecs="mp4v"',
-]
-
-const audioCandidates = [
-  'audio/mp4; codecs="mp4a"',
-  'audio/mp4; codecs="alac"',
-  'audio/mpeg; codecs="mp3"',
-  'audio/ogg; codecs="opus"',
-  'audio/ogg; codecs="vorbis"',
-  'audio/flac; codecs="flac"',
-]
+export type { SourceAudioTrack, SourceMediaInfo } from 'shared/media'
 
 const canPlay = (element: HTMLMediaElement, mimeType: string | null, codec: string | null): boolean =>
-  !!mimeType && !!codec && element.canPlayType(`${mimeType}; codecs="${codec}"`) !== ''
+  element.canPlayType(codecMediaType(mimeType, codec) || '') !== ''
 
 export const getSupportedMediaTypes = (): { videoTypes: string[], audioTypes: string[] } => {
   const video = document.createElement('video')
   const audio = document.createElement('audio')
   return {
-    videoTypes: videoCandidates.filter(type => video.canPlayType(type) !== ''),
-    audioTypes: audioCandidates.filter(type => audio.canPlayType(type) !== ''),
+    videoTypes: VIDEO_MEDIA_CANDIDATES.filter(type => video.canPlayType(type) !== ''),
+    audioTypes: AUDIO_MEDIA_CANDIDATES.filter(type => audio.canPlayType(type) !== ''),
   }
 }
 
