@@ -370,10 +370,14 @@ async function generateScript (job: Job, vocal: string | undefined, workDir: str
     ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
   ])
-  const { srt } = await runWhisperX(scriptingInput, workDir)
+  const { language, srt } = await runWhisperX(scriptingInput, workDir)
   await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
   await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
   db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = ?', [job.mediaId])
+  db.run(`
+    UPDATE songs SET language = ?
+    WHERE songId = (SELECT songId FROM media WHERE mediaId = ?)
+  `, [language, job.mediaId])
   currentScriptingProgress = 100
   currentProgress = 100
   emitStatus()

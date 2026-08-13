@@ -13,9 +13,9 @@ export class DatabaseWrapper {
   private db: DatabaseSync
   public config: { filename: string }
 
-  constructor (file: string) {
+  constructor (file: string, readOnly = false) {
     this.config = { filename: file }
-    this.db = new DatabaseSync(file)
+    this.db = new DatabaseSync(file, { readOnly })
   }
 
   close () {
@@ -166,9 +166,9 @@ class Database {
     log.info('Opening database file %s %s', ro ? '(read-only)' : '(writeable)', file)
 
     // create path if it doesn't exist
-    fs.mkdirSync(path.dirname(file), { recursive: true })
+    if (!ro) fs.mkdirSync(path.dirname(file), { recursive: true })
 
-    const instance = new DatabaseWrapper(file)
+    const instance = new DatabaseWrapper(file, ro)
 
     if (!ro) {
       instance.migrate({

@@ -9,6 +9,11 @@ const pythonPath = process.env.KES_PATH_PYTHON || 'python'
 const workerPath = process.env.KES_PATH_WHISPERX_WORKER || '/opt/processing/whisperx_worker.py'
 const modelRoot = path.join(process.env.KES_PATH_DOWNLOADS || '/media/downloads', '.karaoke-eternal-models')
 const pixiLibPath = '/opt/processing/.pixi/envs/default/lib'
+const defaultRequestTimeoutMs = 10 * 60 * 1000
+const configuredRequestTimeoutMs = Number(process.env.KES_WHISPERX_TIMEOUT_MS)
+const requestTimeoutMs = Number.isFinite(configuredRequestTimeoutMs) && configuredRequestTimeoutMs > 0
+  ? configuredRequestTimeoutMs
+  : defaultRequestTimeoutMs
 
 export interface WhisperXSettings {
   model: string
@@ -25,6 +30,7 @@ export interface WhisperXSettings {
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
+  timeout: NodeJS.Timeout
   onProgress?: (progress: number) => void
   onStage?: (stage: string) => void
 }
@@ -105,7 +111,7 @@ class WhisperXWorker {
       this.#stderr = (this.#stderr + output).slice(-12_000)
       log.info('[WhisperX] %s', output.trim())
     })
-    child.on('error', err => this.#failAll(err))
+    child.on('error', err => this.#abort(child, err))
     child.on('close', (code, signal) => {
       if (this.#child !== child) return
       this.#child = undefined
@@ -122,10 +128,24 @@ class WhisperXWorker {
     onStage?: (stage: string) => void,
   ): Promise<T> {
     if (!this.#child?.stdin.writable) return Promise.reject(new Error('WhisperX worker is unavailable'))
+    const child = this.#child
     const id = ++this.#nextId
     return new Promise<T>((resolve, reject) => {
-      this.#pending.set(id, { resolve: value => resolve(value as T), reject, onProgress, onStage })
-      this.#child!.stdin.write(`${JSON.stringify({ ...message, id })}\n`)
+      const command = typeof message.command === 'string' ? message.command : 'request'
+      const timeout = setTimeout(() => {
+        if (!this.#pending.has(id)) return
+        // A timed-out inference may leave Python permanently occupied. Kill it
+        // so the next request starts a clean worker and mounts models again.
+        this.#abort(child, new Error(`WhisperX ${command} timed out after ${Math.round(requestTimeoutMs / 1000)} seconds`))
+      }, requestTimeoutMs)
+      timeout.unref()
+      this.#pending.set(id, { resolve: value => resolve(value as T), reject, timeout, onProgress, onStage })
+      child.stdin.write(`${JSON.stringify({ ...message, id })}\n`, (error) => {
+        if (!error) return
+        const pending = this.#pending.get(id)
+        if (!pending) return
+        this.#abort(child, error)
+      })
     })
   }
 
@@ -148,14 +168,29 @@ class WhisperXWorker {
       return
     }
     this.#pending.delete(message.id!)
+    clearTimeout(pending.timeout)
     if (message.event === 'error') {
       pending.reject(new Error([message.error, message.traceback].filter(Boolean).join('\n')))
     } else pending.resolve(message)
   }
 
   #failAll (error: Error): void {
-    for (const pending of this.#pending.values()) pending.reject(error)
+    for (const pending of this.#pending.values()) {
+      clearTimeout(pending.timeout)
+      pending.reject(error)
+    }
     this.#pending.clear()
+  }
+
+  #abort (child: childProcess.ChildProcessWithoutNullStreams, error: Error): void {
+    if (this.#child !== child) return
+    // Detach first so a subsequent request can spawn its replacement without
+    // racing the old process's asynchronous close event.
+    this.#child = undefined
+    this.#mounted = false
+    this.#loading = false
+    this.#failAll(error)
+    child.kill('SIGKILL')
   }
 }
 

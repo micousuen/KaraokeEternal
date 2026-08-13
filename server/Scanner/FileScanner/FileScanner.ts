@@ -8,7 +8,7 @@ import Scanner from '../Scanner.js'
 import IPC from '../../lib/IPCBridge.js'
 import fileTypes from '../../Media/fileTypes.js'
 import MetadataWorkerPool, { MetadataResult } from './MetadataWorkerPool.js'
-import { LIBRARY_MATCH_SONG, MEDIA_ADD, MEDIA_ANALYZE_AUDIO_TRACKS, MEDIA_REMOVE, MEDIA_UPDATE } from '../../../shared/actionTypes.js'
+import { LIBRARY_MATCH_SONG, MEDIA_ADD, MEDIA_ANALYZE, MEDIA_REMOVE, MEDIA_UPDATE } from '../../../shared/actionTypes.js'
 const log = getLogger('FileScanner')
 
 const searchExts = Object.keys(fileTypes).filter(ext => fileTypes[ext].scan !== false)
@@ -28,6 +28,7 @@ class FileScanner extends Scanner {
   async scan (pathId) {
     const dir = this.paths.entities[pathId]?.path
     const validMediaIds = []
+    const analysisJobs = []
     const stats = { new: 0, removed: 0, existing: 0 }
     let files // { file, stats }[]
 
@@ -82,17 +83,13 @@ class FileScanner extends Scanner {
           if (!extracted?.result) throw extracted?.error || new Error('metadata worker returned no result')
           const res = await this.process(files[i].file, pathId, extracted.result)
           validMediaIds.push(res.mediaId)
-          if (fileTypes[getExt(files[i].file)]?.mimeType.startsWith('video/')) {
-            IPC.send({
-              type: MEDIA_ANALYZE_AUDIO_TRACKS,
-              payload: {
-                mediaId: res.mediaId,
-                pathId,
-                source: files[i].file,
-                isManagedDownload: res.isManagedDownload,
-              },
-            })
-          }
+          analysisJobs.push({
+            mediaId: res.mediaId,
+            pathId,
+            source: files[i].file,
+            isManagedDownload: res.isManagedDownload,
+            isVideo: fileTypes[getExt(files[i].file)]?.mimeType.startsWith('video/'),
+          })
 
           if (res.isNew) stats.new++
           else stats.existing++
@@ -115,6 +112,14 @@ class FileScanner extends Scanner {
     const numRemoved = await this.removeInvalid(pathId, validMediaIds)
     stats.removed = numRemoved
     log.info(`Removed ${numRemoved} invalid media entries`)
+
+    // Discovery is now complete and already visible to clients. Hand off the
+    // expensive duration, ReplayGain, and audio-track work without delaying it.
+    // Acknowledge batches so the scanner process cannot exit while IPC still
+    // has thousands of individual fire-and-forget messages buffered.
+    while (analysisJobs.length) {
+      await (IPC as any).req({ type: MEDIA_ANALYZE, payload: analysisJobs.splice(0, 500) })
+    }
 
     return stats
   }
@@ -154,6 +159,14 @@ class FileScanner extends Scanner {
     if (res.result.length) {
       const row = res.entities[res.result[0]]
       if (row.isManagedDownload) media.isManagedDownload = 1
+      // The fast filename pass intentionally has no technical metadata. Keep
+      // the last analyzed values visible until the background pass refreshes
+      // them instead of briefly replacing them with zero/null on every scan.
+      if (metadata.duration <= 0) {
+        media.duration = row.duration
+        media.rgTrackGain = row.rgTrackGain
+        media.rgTrackPeak = row.rgTrackPeak
+      }
       const diff = {}
 
       // did anything change?

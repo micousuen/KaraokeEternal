@@ -7,7 +7,7 @@ const log = getLogger(`server[${process.pid}]`)
 const ACTION_HANDLERS = {
   [PREFS_SET]: (sock, { payload }, acknowledge) => {
     if (!sock.user.isAdmin) {
-      acknowledge({
+      return acknowledge({
         type: PREFS_SET + _ERROR,
         error: 'Unauthorized',
       })
@@ -20,7 +20,7 @@ const ACTION_HANDLERS = {
   },
   [PREFS_PATH_SET_PRIORITY]: (sock, { payload }, acknowledge) => {
     if (!sock.user.isAdmin) {
-      acknowledge({
+      return acknowledge({
         type: PREFS_PATH_SET_PRIORITY + _ERROR,
         error: 'Unauthorized',
       })
@@ -43,17 +43,16 @@ const ACTION_HANDLERS = {
 
 // helper to push prefs to admins
 const pushPrefs = (sock) => {
-  const admins = []
+  const admins: string[] = []
 
   for (const s of sock.server.sockets.sockets.values()) {
     if (s.user && s.user.isAdmin) {
       admins.push(s.id)
-      sock.server.to(s.id)
     }
   }
 
   if (admins.length) {
-    sock.server.emit('action', {
+    sock.server.to(admins).emit('action', {
       type: PREFS_PUSH,
       payload: Prefs.get(),
     })

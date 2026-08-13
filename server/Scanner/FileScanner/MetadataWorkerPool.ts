@@ -2,6 +2,8 @@ import { Worker } from 'node:worker_threads'
 
 export interface MetadataTask {
   file: string
+  forceMediaRead?: boolean
+  technicalOnly?: boolean
   parserConfig?: Record<string, unknown>
 }
 

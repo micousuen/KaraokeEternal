@@ -164,9 +164,10 @@ async function drain (): Promise<void> {
             // Keep library videos that already have A1/A2 untouched. Downloads
             // are still scripted because their dual tracks may not include one.
             allowScript: plan.allowScript,
-            onComplete: record.audioTrackCount === 1
-              ? () => job.onSeparationComplete?.(job.mediaId, job.source)
-              : undefined,
+            // Refresh the library after script-only work too, so detected
+            // language and script availability become visible immediately.
+            // If the source was remuxed, the callback also re-analyzes it.
+            onComplete: () => job.onSeparationComplete?.(job.mediaId, job.source),
             onSourceReplacing: job.onSourceReplacing,
           }, job.isManagedDownload)
         }

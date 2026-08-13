@@ -1,7 +1,8 @@
 import Media from './Media.js'
 import Library from '../Library/Library.js'
 import { scheduleAudioTrackAnalysis } from './AudioTrackAnalysis.js'
-import { LIBRARY_SCAN_BATCH, MEDIA_ADD, MEDIA_ANALYZE_AUDIO_TRACKS, MEDIA_CLEANUP, MEDIA_REMOVE, MEDIA_UPDATE } from '../../shared/actionTypes.js'
+import { scheduleMediaMetadataAnalysis } from './MediaMetadataAnalysis.js'
+import { LIBRARY_SCAN_BATCH, MEDIA_ADD, MEDIA_ANALYZE, MEDIA_CLEANUP, MEDIA_REMOVE, MEDIA_UPDATE } from '../../shared/actionTypes.js'
 
 /**
  * IPC action handlers
@@ -32,18 +33,25 @@ export default function (io, suppressWatcher) {
   }
 
   return {
-    [MEDIA_ANALYZE_AUDIO_TRACKS]: ({ payload }) => {
-      const schedule = (mediaId, source) => scheduleAudioTrackAnalysis(mediaId, source, {
-        pathId: payload.pathId,
-        isManagedDownload: !!payload.isManagedDownload,
-        onSeparationComplete: schedule,
-        onSourceReplacing: suppressWatcher,
-        onAnalysisComplete: (analyzedMediaId) => {
+    [MEDIA_ANALYZE]: ({ payload }) => {
+      for (const item of Array.isArray(payload) ? payload : [payload]) {
+        const onAnalysisComplete = (analyzedMediaId) => {
           const media = Media.search({ mediaId: analyzedMediaId })
           queueLiveUpdate(media.entities[analyzedMediaId]?.songId)
-        },
-      })
-      schedule(payload.mediaId, payload.source)
+        }
+        const schedule = (mediaId, source) => {
+          scheduleMediaMetadataAnalysis({ mediaId, source, onComplete: onAnalysisComplete })
+          if (!item.isVideo) return
+          scheduleAudioTrackAnalysis(mediaId, source, {
+            pathId: item.pathId,
+            isManagedDownload: !!item.isManagedDownload,
+            onSeparationComplete: schedule,
+            onSourceReplacing: suppressWatcher,
+            onAnalysisComplete,
+          })
+        }
+        schedule(item.mediaId, item.source)
+      }
     },
     [MEDIA_ADD]: ({ payload }) => {
       const mediaId = Media.add(payload)
