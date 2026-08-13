@@ -19,6 +19,7 @@ import { consumeSocketRateLimit, validateSocketAction } from './lib/socketValida
 import { isEphemeralSocketRequest, type SocketResponseAction } from '../shared/socketProtocol.js'
 import { registerPresence, releasePresence } from './User/PresenceRegistry.js'
 import { validateUserContext } from './User/UserContext.js'
+import { randomUUID } from 'node:crypto'
 
 import {
   LIBRARY_INVALIDATE,
@@ -29,6 +30,7 @@ import {
   PREFS_PUSH,
   YOUTUBE_JOBS_PUSH,
   SOCKET_AUTH_ERROR,
+  SERVER_INSTANCE,
   VOCAL_SEPARATION_STATUS,
   _ERROR,
   _SUCCESS,
@@ -49,6 +51,8 @@ const completedRequests = new Map<string, { expiresAt: number, response: SocketR
 const pendingRequests = new Map<string, Promise<SocketResponseAction>>()
 
 export default function (io, jwtKey) {
+  const serverInstanceId = randomUUID()
+
   io.on('connection', async (sock) => {
     const { keToken } = parseCookie(sock.handshake.headers.cookie)
     const clientLibraryVersion = parseInt(sock.handshake.query.library, 10)
@@ -74,6 +78,14 @@ export default function (io, jwtKey) {
       log.verbose('disconnected %s (%s)', sock.handshake.address, err.message)
       return
     }
+
+    // A browser tab can remain open while this process restarts. Tell it about
+    // the new process before sending snapshots so it can discard stale runtime
+    // state consistently on every route.
+    io.to(sock.id).emit('action', {
+      type: SERVER_INSTANCE,
+      payload: serverInstanceId,
+    })
 
     // attach disconnect handler
     sock.on('disconnect', (reason) => {

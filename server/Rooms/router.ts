@@ -1,5 +1,4 @@
 import KoaRouter from '@koa/router'
-import jsonWebToken from 'jsonwebtoken'
 import sql from 'sqlate'
 import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
@@ -7,6 +6,7 @@ import Rooms from '../Rooms/Rooms.js'
 import { ValidationError } from '../lib/Errors.js'
 import { roomAdminSockets } from '../lib/socketRooms.js'
 import { forgetQueue } from '../Queue/QueuePublisher.js'
+import { setUserCookie } from '../User/UserContext.js'
 
 interface RequestWithBody {
   body: Record<string, unknown>
@@ -14,9 +14,8 @@ interface RequestWithBody {
 
 const log = getLogger('Rooms')
 const router = new KoaRouter({ prefix: '/api/rooms' })
-const { sign: jwtSign } = jsonWebToken
 
-const setAdminRoom = (ctx, roomId: number | null) => {
+export const setAdminRoom = (ctx, roomId: number | null) => {
   const userCtx = {
     dateCreated: ctx.user.dateCreated,
     dateUpdated: ctx.user.dateUpdated,
@@ -27,12 +26,7 @@ const setAdminRoom = (ctx, roomId: number | null) => {
     userId: ctx.user.userId,
     username: ctx.user.username,
   }
-  const token = jwtSign(userCtx, ctx.jwtKey)
-
-  ctx.cookies.set('keToken', token, {
-    httpOnly: true,
-    sameSite: 'lax',
-  })
+  setUserCookie(ctx, userCtx)
   ctx.body = userCtx
 }
 

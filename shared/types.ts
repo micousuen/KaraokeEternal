@@ -28,6 +28,15 @@ export interface YouTubeJob {
   file?: string
 }
 
+export interface YouTubeSearchResult {
+  channel: string
+  duration: number | null
+  id: string
+  thumbnailUrl: string
+  title: string
+  url: string
+}
+
 export interface QueueItem {
   queueId: number
   songId: number

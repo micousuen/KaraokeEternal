@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { useAppSelector } from 'store/hooks'
 import { Link } from 'react-router'
 import ArtistList from '../components/ArtistList/ArtistList'
@@ -14,17 +14,9 @@ const LibraryView = () => {
   const ui = useAppSelector(state => state.ui)
 
   const isSearching = !!filterStr.trim().length || filterStarred
-  const [initialHeaderHeight] = useState(ui.headerHeight)
-  const [finalHeaderHeight, setFinalHeaderHeight] = useState(null)
-
-  // don't render ArtistList until headerHeight is stable; otherwise
-  // scroll position restoration does not work well (appears OBO)
-  // @todo - this is hacky
-  if (finalHeaderHeight === null && ui.headerHeight > initialHeaderHeight) {
-    setFinalHeaderHeight(ui.headerHeight)
-  }
-
-  if (!finalHeaderHeight) return null
+  // Wait for the shared layout measurement before restoring the virtualized
+  // list position. This must not set React state while rendering.
+  if (!ui.headerHeight) return null
 
   return (
     <>

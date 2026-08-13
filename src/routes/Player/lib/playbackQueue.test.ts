@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { QueueItem } from 'shared/types'
 import type { PlayerState } from '../modules/player'
-import { advanceStatus, findNextUserId, getPrecacheMediaIds, replayStatus, selectPlaybackItems } from './playbackQueue'
+import type { ActiveQueue } from './playbackQueue'
+import {
+  advanceStatus,
+  findNextUserId,
+  getPrecacheMediaIds,
+  replayStatus,
+  selectPlaybackItems,
+  shouldAdvancePlayback,
+} from './playbackQueue'
 
 const item = (queueId: number, userId = queueId): QueueItem => ({
   queueId,
@@ -47,5 +55,22 @@ describe('playback queue transitions', () => {
   it('finds the next singer and preserves precache order', () => {
     expect(findNextUserId(queue, queue.entities[1])).toBe(20)
     expect(getPrecacheMediaIds(queue, queue.entities[1], queue.entities[3])).toEqual([30, 20])
+  })
+
+  it('settles an old playing session when the reconnected queue is empty', () => {
+    const emptyQueue: ActiveQueue = { result: [], entities: {} }
+    const stalePlayer = player({ isPlaying: true, isAtQueueEnd: false })
+    expect(shouldAdvancePlayback(stalePlayer, emptyQueue)).toBe(true)
+
+    const settledPlayer = player({ isPlaying: true, isAtQueueEnd: true })
+    expect(shouldAdvancePlayback(settledPlayer, emptyQueue)).toBe(false)
+  })
+
+  it('honors an explicit play-next request even after reaching the queue end', () => {
+    expect(shouldAdvancePlayback(player({
+      isPlaying: true,
+      isAtQueueEnd: true,
+      _isPlayingNext: true,
+    }), { result: [], entities: {} } as ActiveQueue)).toBe(true)
   })
 })

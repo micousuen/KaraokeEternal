@@ -14,6 +14,7 @@ import {
   QUEUE_REMOVE,
   QUEUE_SHUFFLE,
   QUEUE_SYNC,
+  SERVER_INSTANCE,
   VOCAL_SEPARATION_MODELS_MOUNT,
   VOCAL_SEPARATION_MODELS_UNMOUNT,
 } from 'shared/actionTypes'
@@ -21,6 +22,7 @@ import { syncLibrary } from './librarySync'
 
 // optimistic actions need a transaction id to match BEGIN to COMMIT/REVERT
 let nextOptimisticId = 1
+const SERVER_INSTANCE_STORAGE_KEY = 'karaoke-eternal-server-instance'
 
 export interface OptimisticResponseMeta {
   optimisticAction: {
@@ -32,6 +34,8 @@ export interface OptimisticResponseMeta {
 
 export default function createSocketMiddleware (socket: Socket, prefix: string): Middleware {
   return (store) => {
+    let serverInstanceId = readServerInstanceId()
+    let isReloading = false
     const updateConnectionVersions = () => {
       const state = store.getState() as {
         library?: { version?: number }
@@ -46,6 +50,21 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
 
     // attach handler for incoming actions (from server)
     socket.on('action', (action) => {
+      if (action?.type === SERVER_INSTANCE) {
+        const nextServerInstanceId = action.payload
+        if (typeof nextServerInstanceId !== 'string' || !nextServerInstanceId) return
+
+        const didRestart = serverInstanceId !== null && serverInstanceId !== nextServerInstanceId
+        serverInstanceId = nextServerInstanceId
+        writeServerInstanceId(nextServerInstanceId)
+        if (didRestart) {
+          isReloading = true
+          globalThis.location?.reload()
+        }
+        return
+      }
+      if (isReloading) return
+
       store.dispatch(action)
       if (action?.type === LIBRARY_INVALIDATE) {
         const state = store.getState() as { library?: { version?: number } }
@@ -118,6 +137,23 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
         },
       })
     }
+  }
+}
+
+function readServerInstanceId (): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(SERVER_INSTANCE_STORAGE_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeServerInstanceId (serverInstanceId: string): void {
+  try {
+    globalThis.sessionStorage?.setItem(SERVER_INSTANCE_STORAGE_KEY, serverInstanceId)
+  } catch {
+    // Some embedded/private browsers deny session storage. The in-memory value
+    // still detects a restart for the lifetime of the current tab.
   }
 }
 

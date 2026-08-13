@@ -94,7 +94,14 @@ const ProcessingPanel = () => {
             {status.lastError}
           </div>
         )}
-        <div className={styles.actions}>
+        <div className={styles.secondaryActions}>
+          <Button
+            variant='default'
+            disabled={status.modelsLoading}
+            onClick={() => dispatch(status.modelsMounted ? unmountWhisperXModels() : mountWhisperXModels())}
+          >
+            {status.modelsLoading ? 'Mounting WhisperX models…' : status.modelsMounted ? 'Unmount WhisperX models' : 'Mount WhisperX models'}
+          </Button>
           <Button
             variant={status.isPaused ? 'primary' : 'default'}
             disabled={!status.enabled || (!status.isPaused && !status.currentSong && status.queuedSongs === 0)}
@@ -102,21 +109,14 @@ const ProcessingPanel = () => {
           >
             {status.isPaused ? 'Resume processing' : 'Stop processing'}
           </Button>
+        </div>
+        <div className={styles.primaryAction}>
           <Button
             variant='primary'
             disabled={!status.enabled || isScanning}
             onClick={() => dispatch(requestScanAll())}
           >
             {isScanning ? 'Scanning media folders…' : 'Process media library'}
-          </Button>
-        </div>
-        <div className={styles.actions}>
-          <Button
-            variant='default'
-            disabled={status.modelsLoading}
-            onClick={() => dispatch(status.modelsMounted ? unmountWhisperXModels() : mountWhisperXModels())}
-          >
-            {status.modelsLoading ? 'Mounting WhisperX models…' : status.modelsMounted ? 'Unmount WhisperX models' : 'Mount WhisperX models'}
           </Button>
         </div>
         {openList === 'queued' && (

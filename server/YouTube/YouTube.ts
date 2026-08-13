@@ -5,12 +5,16 @@ import getLogger from '../lib/Log.js'
 import Prefs from '../Prefs/Prefs.js'
 import Media from '../Media/Media.js'
 import Queue from '../Queue/Queue.js'
-import type { YouTubeJob } from '../../shared/types.js'
+import type { YouTubeJob, YouTubeSearchResult } from '../../shared/types.js'
 import { ProcessExecutionError, runProcessText } from '../lib/runProcess.js'
 
 const log = getLogger('YouTube')
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
 const MAX_DOWNLOAD_HEIGHT = 1080
+const SEARCH_CACHE_MS = 5 * 60 * 1000
+const SEARCH_CONCURRENCY = 3
+const SEARCH_LIMIT = 10
+const SEARCH_TIMEOUT_MS = 15 * 1000
 const DOWNLOAD_FORMAT = [
   `bv*[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]+ba[ext=m4a]`,
   `b[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]`,
@@ -39,7 +43,10 @@ interface YouTubeOptions {
 }
 
 const jobs = new Map<string, YouTubeJob>()
+const searchCache = new Map<string, { expiresAt: number, results: YouTubeSearchResult[] }>()
+const pendingSearches = new Map<string, Promise<YouTubeSearchResult[]>>()
 let activeDownloads = 0
+let activeSearches = 0
 
 export function normalizeYouTubeUrl (input: string): string {
   let url: URL
@@ -106,6 +113,121 @@ export function getYouTubeJob (jobId: string, userId: number): YouTubeJob | unde
 
 export function getRoomYouTubeJobs (roomId: number): YouTubeJob[] {
   return Array.from(jobs.values()).filter(job => job.roomId === roomId && job.status !== 'complete')
+}
+
+export async function searchYouTube (
+  input: string,
+  options: Pick<YouTubeOptions, 'maxDuration' | 'providerUrl'>,
+): Promise<YouTubeSearchResult[]> {
+  const query = normalizeSearchQuery(input)
+  const cacheKey = query.toLowerCase()
+  const cached = searchCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached.results
+
+  const pending = pendingSearches.get(cacheKey)
+  if (pending) return pending
+  if (activeSearches >= SEARCH_CONCURRENCY) {
+    throw new Error('The YouTube search service is busy; try again shortly')
+  }
+
+  activeSearches++
+  const request = runYouTubeSearch(query, options).finally(() => activeSearches--)
+  pendingSearches.set(cacheKey, request)
+  try {
+    const results = await request
+    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_MS, results })
+    pruneSearchCache()
+    return results
+  } finally {
+    pendingSearches.delete(cacheKey)
+  }
+}
+
+export function parseYouTubeSearchResults (output: string, maxDuration: number): YouTubeSearchResult[] {
+  let data: { entries?: unknown[] }
+  try {
+    data = JSON.parse(output)
+  } catch {
+    throw new Error('YouTube returned an invalid search response')
+  }
+
+  if (!Array.isArray(data.entries)) return []
+
+  return data.entries.flatMap((entry): YouTubeSearchResult[] => {
+    if (!entry || typeof entry !== 'object') return []
+    const result = entry as Record<string, unknown>
+    const id = typeof result.id === 'string' ? result.id : ''
+    if (!VIDEO_ID.test(id)) return []
+    if (result.live_status === 'is_live' || result.live_status === 'is_upcoming') return []
+
+    const rawDuration = typeof result.duration === 'number' ? result.duration : Number(result.duration)
+    const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null
+    if (duration !== null && duration > maxDuration) return []
+
+    const rawTitle = typeof result.title === 'string' ? result.title.trim() : ''
+    const rawChannel = [result.channel, result.uploader, result.channel_id]
+      .find(value => typeof value === 'string' && value.trim())
+
+    return [{
+      channel: typeof rawChannel === 'string' ? rawChannel.trim() : '',
+      duration,
+      id,
+      thumbnailUrl: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+      title: rawTitle || 'Untitled YouTube video',
+      url: `https://www.youtube.com/watch?v=${id}`,
+    }]
+  }).slice(0, SEARCH_LIMIT)
+}
+
+function normalizeSearchQuery (input: string): string {
+  const query = input.trim().replace(/\s+/g, ' ')
+  if (query.length < 2) throw new Error('Enter at least two characters to search YouTube')
+  if (query.length > 120) throw new Error('YouTube searches are limited to 120 characters')
+  return query
+}
+
+async function runYouTubeSearch (
+  query: string,
+  options: Pick<YouTubeOptions, 'maxDuration' | 'providerUrl'>,
+): Promise<YouTubeSearchResult[]> {
+  const args = [
+    '--ignore-config',
+    '--flat-playlist',
+    '--skip-download',
+    '--dump-single-json',
+    '--playlist-end', String(SEARCH_LIMIT),
+    '--force-ipv4',
+    '--js-runtimes', 'node',
+  ]
+  if (options.providerUrl) {
+    args.push('--extractor-args', 'youtube:player-client=mweb')
+    args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${options.providerUrl}`)
+  }
+  args.push(`ytsearch${SEARCH_LIMIT}:${query}`)
+
+  try {
+    const { stdout } = await runProcessText('yt-dlp', args, {
+      timeoutMs: SEARCH_TIMEOUT_MS,
+      maxStdoutBytes: 512 * 1024,
+      maxStderrBytes: 16 * 1024,
+      rejectOnStdoutOverflow: true,
+    })
+    return parseYouTubeSearchResults(stdout, options.maxDuration)
+  } catch (error) {
+    if (error instanceof ProcessExecutionError) {
+      if (/timed out/.test(error.message)) throw new Error('YouTube search timed out')
+      throw new Error(error.stderr.toString().trim() || error.message, { cause: error })
+    }
+    throw error
+  }
+}
+
+function pruneSearchCache (): void {
+  const now = Date.now()
+  for (const [key, cached] of searchCache) {
+    if (cached.expiresAt <= now) searchCache.delete(key)
+  }
+  while (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value!)
 }
 
 async function runDownload (job: YouTubeJob, url: string, options: YouTubeOptions): Promise<void> {

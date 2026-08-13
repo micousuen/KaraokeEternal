@@ -96,15 +96,20 @@
   overflow-wrap: anywhere;
 }
 
-.actions {
-  display: flex;
-  align-items: center;
+.secondaryActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-m);
   margin-top: var(--space-m);
 }
 
-.actions small {
-  color: #aaa;
+.primaryAction {
+  margin-top: var(--space-m);
+
+  button {
+    padding-block: calc(var(--space-m) * 1.5);
+    font-size: var(--font-size-m);
+  }
 }
 
 .listModal {
@@ -164,8 +169,7 @@
     grid-template-columns: 1fr;
   }
 
-  .actions {
-    align-items: stretch;
-    flex-direction: column;
+  .secondaryActions {
+    gap: var(--space-s);
   }
 }

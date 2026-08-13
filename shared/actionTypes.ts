@@ -1,5 +1,6 @@
 export const SOCKET_REQUEST_CONNECT = 'user/SOCKET_REQUEST_CONNECT'
 export const SOCKET_AUTH_ERROR = 'user/SOCKET_AUTH_ERROR'
+export const SERVER_INSTANCE = 'lifecycle/SERVER_INSTANCE'
 
 // Library
 export const LIBRARY_FILTER_STRING = 'library/FILTER_KEYWORD'

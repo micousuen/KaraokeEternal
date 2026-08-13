@@ -75,6 +75,11 @@ export function findNextUserId (queue: ActiveQueue, current?: QueueItem): number
   return null
 }
 
+export function shouldAdvancePlayback (player: PlayerState, queue: ActiveQueue): boolean {
+  return player._isPlayingNext
+    || (player.isPlaying && !player.isAtQueueEnd && !queue.result.includes(player.queueId))
+}
+
 export function getPrecacheMediaIds (
   queue: ActiveQueue,
   current: QueueItem,

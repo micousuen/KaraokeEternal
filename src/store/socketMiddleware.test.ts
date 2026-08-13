@@ -1,8 +1,19 @@
 import type { UnknownAction } from '@reduxjs/toolkit'
 import type { Socket } from 'socket.io-client'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import createSocketMiddleware from './socketMiddleware'
-import { PLAYER_REQ_PLAY, PLAYER_REQ_SEEK, QUEUE_MOVE, QUEUE_PATCH, QUEUE_SYNC } from 'shared/actionTypes'
+import {
+  PLAYER_REQ_PLAY,
+  PLAYER_REQ_SEEK,
+  QUEUE_MOVE,
+  QUEUE_PATCH,
+  QUEUE_SYNC,
+  SERVER_INSTANCE,
+} from 'shared/actionTypes'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('socketMiddleware optimistic transactions', () => {
   it('matches out-of-order callbacks to their original transactions', () => {
@@ -95,6 +106,53 @@ describe('socketMiddleware optimistic transactions', () => {
     const receive = socket.on.mock.calls.find(call => call[0] === 'action')?.[1]
     receive({ type: QUEUE_PATCH, payload: { baseRevision: 1, revision: 3 } })
     expect(socket.emit).toHaveBeenCalledWith('action', { type: QUEUE_SYNC })
+  })
+
+  it('reloads an open tab before applying snapshots from a restarted server', () => {
+    const reload = vi.fn()
+    const setItem = vi.fn()
+    vi.stubGlobal('location', { reload })
+    vi.stubGlobal('sessionStorage', {
+      getItem: vi.fn(() => 'previous-server'),
+      setItem,
+    })
+    const socket = createSocketMock()
+    const store = {
+      dispatch: vi.fn(),
+      getState: vi.fn(() => ({ queue: { revision: 2 } })),
+    }
+    createSocketMiddleware(socket as unknown as Socket, 'server/')(store)
+
+    const receive = socket.on.mock.calls.find(call => call[0] === 'action')?.[1]
+    receive({ type: SERVER_INSTANCE, payload: 'new-server' })
+    receive({ type: QUEUE_PATCH, payload: { baseRevision: 1, revision: 3 } })
+
+    expect(setItem).toHaveBeenCalledWith('karaoke-eternal-server-instance', 'new-server')
+    expect(reload).toHaveBeenCalledOnce()
+    expect(store.dispatch).not.toHaveBeenCalled()
+    expect(socket.emit).not.toHaveBeenCalled()
+  })
+
+  it('keeps the current tab state when reconnecting to the same server process', () => {
+    const reload = vi.fn()
+    vi.stubGlobal('location', { reload })
+    vi.stubGlobal('sessionStorage', {
+      getItem: vi.fn(() => 'current-server'),
+      setItem: vi.fn(),
+    })
+    const socket = createSocketMock()
+    const store = {
+      dispatch: vi.fn(),
+      getState: vi.fn(() => ({})),
+    }
+    createSocketMiddleware(socket as unknown as Socket, 'server/')(store)
+
+    const receive = socket.on.mock.calls.find(call => call[0] === 'action')?.[1]
+    receive({ type: SERVER_INSTANCE, payload: 'current-server' })
+    receive({ type: 'status/TEST', payload: 1 })
+
+    expect(reload).not.toHaveBeenCalled()
+    expect(store.dispatch).toHaveBeenCalledWith({ type: 'status/TEST', payload: 1 })
   })
 
   it('sends the observed queue revision with conflict-sensitive mutations', () => {

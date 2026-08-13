@@ -98,10 +98,13 @@ export async function resolveMediaRequest (
           )
         : null
     ))
+    const sourceAudioPreparation = Promise.allSettled(
+      sourceAudioTracks.filter((candidate): candidate is Promise<Awaited<ReturnType<typeof getSourceAudio>>> => candidate !== null),
+    )
     const sourceAudio = await sourceAudioTracks[audioTrack]
     // Keep switching tracks instant, but do not make the current track wait
     // for the other stream-copy jobs to finish.
-    void Promise.allSettled(sourceAudioTracks.filter((track): track is Promise<Awaited<ReturnType<typeof getSourceAudio>>> => track !== null))
+    void sourceAudioPreparation
     const stats = await fsPromises.stat(sourceAudio.file)
     return fileResponse(sourceAudio.file, sourceAudio.mimeType, stats.size, 'no-store')
   }
@@ -131,10 +134,11 @@ export async function resolveMediaRequest (
           audioTrack === track ? 'playback' : 'background',
         ),
       )
+      const combinedPreparation = Promise.allSettled(combinedTracks)
       const combined = await combinedTracks[track]
       // Both muxed variants share the same prepared H.264 video and AAC jobs.
       // Finish the alternate track in the background for immediate switching.
-      void Promise.allSettled(combinedTracks)
+      void combinedPreparation
       const stats = await fsPromises.stat(combined)
       return fileResponse(combined, 'video/mp4', stats.size, 'no-store')
     }
@@ -150,8 +154,9 @@ export async function resolveMediaRequest (
         audioTrack === track ? 'playback' : 'background',
       ),
     )
+    const audioPreparation = Promise.allSettled(audioTracks)
     const audio = await audioTracks[track]
-    void Promise.allSettled(audioTracks)
+    void audioPreparation
     const stats = await fsPromises.stat(audio.file)
     return fileResponse(audio.file, audio.mimeType, stats.size, 'no-store')
   }

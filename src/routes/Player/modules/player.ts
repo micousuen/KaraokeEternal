@@ -2,6 +2,7 @@ import { createAction, createReducer } from '@reduxjs/toolkit'
 import { AppThunk } from 'store/store'
 import { THROTTLE_CANCEL } from 'store/throttleMiddleware'
 import getWebGLSupport from 'lib/getWebGLSupport'
+import { withoutUndefinedStatus } from './playerStatus'
 import {
   PLAYER_CMD_NEXT,
   PLAYER_CMD_OPTIONS,
@@ -64,14 +65,15 @@ const playerCmdTakeover = createAction(PLAYER_CMD_TAKEOVER)
 export function playerStatus (status: Partial<PlayerState> = {}, deferEmit = false): AppThunk {
   return (dispatch, getState) => {
     const { player, playerVisualizer } = getState()
+    const definedStatus = withoutUndefinedStatus(status)
 
     // update "internal" state (player slice); status is partial
-    dispatch(playerUpdate(status))
+    dispatch(playerUpdate(definedStatus))
 
-    if (Object.keys(status).length === 1 && typeof status.position === 'number') {
+    if (Object.keys(definedStatus).length === 1 && typeof definedStatus.position === 'number') {
       dispatch({
         type: PLAYER_EMIT_POSITION,
-        payload: { position: status.position },
+        payload: { position: definedStatus.position },
         meta: { throttle: { wait: 250, leading: false } },
       })
       return
@@ -80,7 +82,7 @@ export function playerStatus (status: Partial<PlayerState> = {}, deferEmit = fal
     // emit full updated status (excluding "private" properties)
     dispatch({
       type: PLAYER_EMIT_STATUS,
-      payload: createPublicPlayerStatus({ ...player, ...status }, playerVisualizer),
+      payload: createPublicPlayerStatus({ ...player, ...definedStatus }, playerVisualizer),
       meta: {
         throttle: {
           wait: 1000,

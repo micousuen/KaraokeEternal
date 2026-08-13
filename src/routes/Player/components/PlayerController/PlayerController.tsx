@@ -8,7 +8,7 @@ import { playerClaim, playerLeave, playerError, playerLoad, playerPlay, playerSt
 import getRoomPrefs from '../../selectors/getRoomPrefs'
 import type { QueueItem } from 'shared/types'
 import ScriptOverlay from '../ScriptOverlay/ScriptOverlay'
-import { advanceStatus, findNextUserId, replayStatus, selectPlaybackItems } from '../../lib/playbackQueue'
+import { advanceStatus, findNextUserId, replayStatus, selectPlaybackItems, shouldAdvancePlayback } from '../../lib/playbackQueue'
 import useMediaPrecache from '../../hooks/useMediaPrecache'
 import socket from 'lib/socket'
 
@@ -59,14 +59,12 @@ const PlayerController = (props: PlayerControllerProps) => {
 
   // "lock in" the next user that isn't the currently up user, if possible
   useEffect(() => {
-    if (!player.nextUserId || queueItem?.userId === nextQueueItem?.userId) {
-      const nextUserId = findNextUserId(queue, queueItem)
-      if (nextUserId !== null) handleStatus({ nextUserId })
-    }
-  }, [handleStatus, nextQueueItem, player.nextUserId, queue, queueItem])
+    const nextUserId = findNextUserId(queue, queueItem)
+    if (player.nextUserId !== nextUserId) handleStatus({ nextUserId })
+  }, [handleStatus, player.nextUserId, queue, queueItem])
 
   // always emit status when any of these change
-  useEffect(() => handleStatus({ isVideoKeyingEnabled: queueItem?.isVideoKeyingEnabled }), [
+  useEffect(() => handleStatus({ isVideoKeyingEnabled: !!queueItem?.isVideoKeyingEnabled }), [
     handleStatus,
     player.audioTrack,
     player.isPlaying,
@@ -82,10 +80,8 @@ const PlayerController = (props: PlayerControllerProps) => {
 
   // playing for first time or playing next?
   useEffect(() => {
-    if ((player.isPlaying && !queue.result.includes(player.queueId)) || player._isPlayingNext) {
-      handleLoadNext()
-    }
-  }, [handleLoadNext, player.isPlaying, player.queueId, player._isPlayingNext, queue.result])
+    if (shouldAdvancePlayback(player, queue)) handleLoadNext()
+  }, [handleLoadNext, player, queue])
 
   // replaying?
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useCallback, useRef } from 'react'
 import { useMatch } from 'react-router'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import useResizeObserver from 'use-resize-observer'
@@ -18,14 +18,20 @@ const CoreLayout = () => {
   const dispatch = useAppDispatch()
   const headerRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLDivElement>(null)
+  const handleHeaderResize = useCallback(({ height }: { height: number }) => {
+    dispatch(setHeaderHeight(height))
+  }, [dispatch])
+  const handleFooterResize = useCallback(({ height }: { height: number }) => {
+    dispatch(setFooterHeight(height))
+  }, [dispatch])
 
   useResizeObserver({
-    onResize: ({ height }) => { dispatch(setHeaderHeight(height)) },
+    onResize: handleHeaderResize,
     ref: headerRef,
   })
 
   useResizeObserver({
-    onResize: ({ height }) => { dispatch(setFooterHeight(height)) },
+    onResize: handleFooterResize,
     ref: navRef,
   })
 

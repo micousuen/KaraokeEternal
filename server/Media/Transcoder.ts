@@ -249,7 +249,7 @@ async function prepareArtifact (
 ): Promise<string> {
   await fsPromises.mkdir(cacheDir, { recursive: true })
   await fsPromises.mkdir(directory, { recursive: true })
-  const partial = `${output}.partial-${process.pid}-${crypto.randomBytes(4).toString('hex')}`
+  const partial = temporaryArtifactPath(output)
   activeCacheDirectories.set(directory, (activeCacheDirectories.get(directory) || 0) + 1)
   log.info('Preparing browser media artifact mediaId=%s artifact=%s: %s', mediaId, path.basename(output), source)
 
@@ -268,6 +268,13 @@ async function prepareArtifact (
     if (activeCount === 1) activeCacheDirectories.delete(directory)
     else activeCacheDirectories.set(directory, activeCount - 1)
   }
+}
+
+export function temporaryArtifactPath (output: string): string {
+  const extension = path.extname(output)
+  const basename = path.basename(output, extension)
+  const temporaryName = `${basename}.partial-${process.pid}-${crypto.randomBytes(4).toString('hex')}${extension}`
+  return path.join(path.dirname(output), temporaryName)
 }
 
 export async function getSourceMediaInfo (source: string): Promise<SourceMediaInfo> {
