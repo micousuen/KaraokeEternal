@@ -15,8 +15,8 @@
 .popover {
   position: absolute;
   z-index: 10;
-  right: 0;
   top: calc(100% + var(--space-xs));
+  right: 0;
   width: 12rem;
   max-width: 70vw;
   padding: var(--space-m);
@@ -29,4 +29,16 @@
   --handle-scale: 0.5;
 
   width: 100%;
+}
+
+@media (max-width: 600px) {
+  .popover {
+    position: fixed;
+    top: calc(48px + var(--space-xs));
+    right: auto;
+    left: 50%;
+    width: min(12rem, calc(100vw - (2 * var(--container-padding))));
+    max-width: none;
+    transform: translateX(-50%);
+  }
 }
