@@ -26,23 +26,29 @@ const SongList = (props: SongListProps) => {
   const handleSongInfo = (songId: number) => dispatch(showSongInfo(songId))
   const handleSongStar = (songId: number) => dispatch(toggleSongStarred(songId))
 
-  return props.songIds.map(songId => (
-    <SongItem
-      {...songs[songId]}
-      artist={props.showArtist ? artists[songs[songId].artistId].name : ''}
-      author={artists[songs[songId].artistId].name}
-      filterKeywords={props.filterKeywords}
-      isPlayed={played.has(songId)}
-      isUpcoming={queued.has(songId)}
-      isStarred={starredSongs.has(songId)}
-      isAdmin={isAdmin}
-      key={songId}
-      numStars={starredSongCounts[songId] || 0}
-      onSongQueue={handleSongQueue}
-      onSongStarClick={handleSongStar}
-      onSongInfo={handleSongInfo}
-    />
-  ))
+  return props.songIds.flatMap((songId) => {
+    const song = songs[songId]
+    if (!song) return []
+    const artistName = artists[song.artistId]?.name || 'Unknown artist'
+
+    return [
+      <SongItem
+        {...song}
+        artist={props.showArtist ? artistName : ''}
+        author={artistName}
+        filterKeywords={props.filterKeywords}
+        isPlayed={played.has(songId)}
+        isUpcoming={queued.has(songId)}
+        isStarred={starredSongs.has(songId)}
+        isAdmin={isAdmin}
+        key={songId}
+        numStars={starredSongCounts[songId] || 0}
+        onSongQueue={handleSongQueue}
+        onSongStarClick={handleSongStar}
+        onSongInfo={handleSongInfo}
+      />,
+    ]
+  })
 }
 
 export default SongList
