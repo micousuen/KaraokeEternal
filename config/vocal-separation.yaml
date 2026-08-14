@@ -39,6 +39,12 @@ scripting:
   # those regions are then split losslessly to this maximum ASR duration.
   vadChunkSeconds: 15
 
+  # Number of VAD chunks Whisper transcribes in a single forward pass. Higher
+  # values improve throughput at the cost of proportionally more memory (each
+  # item allocates its own KV cache). 1 is safest on constrained CPU/RAM;
+  # 2-4 is typical for a laptop CPU.
+  batchSize: 2
+
   # Keep the beam moderate, but let it retain more finished candidates and
   # slightly favor complete lyric phrases over prematurely short hypotheses.
   beamSize: 6

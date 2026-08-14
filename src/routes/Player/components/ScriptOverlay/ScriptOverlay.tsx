@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import styles from './ScriptOverlay.css'
 
-interface Cue { start: number, end: number, lines: string[] }
+interface Cue { start: number, end: number, lines: string[], activeLine: number }
 
 const parseTime = (value: string): number => {
   const match = value.trim().match(/(?:(\d+):)?(\d{2}):(\d{2})[,.](\d{3})/)
@@ -13,8 +13,16 @@ const parseSrt = (source: string): Cue[] => source.trim().split(/\r?\n\s*\r?\n/)
   const lines = block.split(/\r?\n/)
   const timingIndex = lines.findIndex(line => line.includes('-->'))
   if (timingIndex === -1) return []
-  const [start, end] = lines[timingIndex].split('-->')
-  return [{ start: parseTime(start), end: parseTime(end), lines: lines.slice(timingIndex + 1) }]
+  const [start, rest] = lines[timingIndex].split('-->')
+  // The generator appends `A<n>` after the timing arrow to identify the
+  // currently-singing row. Legacy scripts without this marker default to 0.
+  const activeMatch = rest.match(/\bA(\d+)\b/)
+  return [{
+    start: parseTime(start),
+    end: parseTime(rest),
+    lines: lines.slice(timingIndex + 1),
+    activeLine: activeMatch ? Number(activeMatch[1]) : 0,
+  }]
 })
 
 const ScriptOverlay = ({ mediaId, mediaKey, position }: { mediaId: number, mediaKey: number, position: number }) => {
@@ -33,20 +41,11 @@ const ScriptOverlay = ({ mediaId, mediaKey, position }: { mediaId: number, media
     ? loaded.cues.findIndex(cue => position >= cue.start && position <= cue.end)
     : -1, [loaded, mediaKey, position])
   const cue = cueIndex === -1 ? undefined : loaded.cues[cueIndex]
-  // Each generated cue ends when its currently sung row finishes. Every later
-  // rolling cue retains that row at the same index, so compare it to the prior
-  // cue to find the active line without adding custom markup to the SRT file.
-  const retainedLine = cueIndex <= 0 || !cue
-    ? -1
-    : cue.lines.findIndex((line, index) => line === loaded.cues[cueIndex - 1].lines[index])
-  const activeLine = retainedLine === -1
-    ? 0
-    : retainedLine
   return cue
     ? (
         <div className={styles.script}>
           {cue.lines.map((line, index) => (
-            <span key={`${index}-${line}`} className={index === activeLine ? styles.activeLine : undefined}>{line}</span>
+            <span key={`${index}-${line}`} className={index === cue.activeLine ? styles.activeLine : undefined}>{line}</span>
           ))}
         </div>
       )

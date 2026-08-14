@@ -155,7 +155,13 @@ def lyric_lines(result, max_width, min_width):
 
 
 def rolling_cues(result, max_width, min_width):
-    """Build two independently advancing lyric rows."""
+    """Build two independently advancing lyric rows.
+
+    Yields (start, end, text, active_row) — active_row is the 0-based index of
+    the currently-singing line within `text.split("\\n")`. Encoding this
+    explicitly avoids the client having to diff consecutive cues to guess which
+    row is active, which is unreliable when two rows share identical text.
+    """
     lines = lyric_lines(result, max_width, min_width)
     groups = []
     for line in lines:
@@ -175,7 +181,10 @@ def rolling_cues(result, max_width, min_width):
             ending = top if ending_top else bottom
             if ending["end"] > current_time:
                 displayed = [line["text"] for line in (top, bottom) if line is not None]
-                cues.append((current_time, ending["end"], "\n".join(displayed)))
+                # active_row is the index into `displayed`, not into (top, bottom).
+                # If only bottom remains, it slides up to index 0.
+                active_row = 0 if ending_top or top is None else 1
+                cues.append((current_time, ending["end"], "\n".join(displayed), active_row))
             current_time = ending["end"]
             replacement = group[next_line] if next_line < len(group) else None
             next_line += 1
@@ -188,5 +197,10 @@ def rolling_cues(result, max_width, min_width):
 
 def write_rolling_srt(result, output_path, max_width, min_width):
     with open(output_path, "w", encoding="utf-8") as output:
-        for index, (start, end, text) in enumerate(rolling_cues(result, max_width, min_width), start=1):
-            output.write(f"{index}\n{format_srt_timestamp(start)} --> {format_srt_timestamp(end)}\n{text}\n\n")
+        for index, (start, end, text, active_row) in enumerate(rolling_cues(result, max_width, min_width), start=1):
+            # `A<row>` is appended after the timing arrow. Standard SRT parsers
+            # take only the two timestamps from this line and ignore trailing
+            # tokens, so external players remain compatible.
+            output.write(
+                f"{index}\n{format_srt_timestamp(start)} --> {format_srt_timestamp(end)} A{active_row}\n{text}\n\n"
+            )

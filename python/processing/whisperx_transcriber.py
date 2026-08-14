@@ -94,7 +94,7 @@ class WhisperXTranscriber:
                 emit("stage", stage="Detecting vocals and language")
             result = self.model.transcribe(
                 audio,
-                batch_size=1,
+                batch_size=int(settings.get("batchSize", 2)),
                 chunk_size=settings["vadChunkSeconds"],
                 print_progress=False,
                 progress_callback=transcription_progress,

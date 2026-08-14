@@ -18,6 +18,7 @@ export interface SeparationConfig {
     vadOffset?: number
     vadChunkSeconds?: number
     beamSize?: number
+    batchSize?: number
     patience?: number
     lengthPenalty?: number
     maxLineWidth?: number
@@ -49,6 +50,8 @@ export function loadVocalSeparationConfig (
     && (!Number.isFinite(value.scripting.vadChunkSeconds) || value.scripting.vadChunkSeconds < 5 || value.scripting.vadChunkSeconds > 30)
   const invalidBeamSize = value.scripting.beamSize !== undefined
     && (!Number.isInteger(value.scripting.beamSize) || value.scripting.beamSize < 1)
+  const invalidBatchSize = value.scripting.batchSize !== undefined
+    && (!Number.isInteger(value.scripting.batchSize) || value.scripting.batchSize < 1 || value.scripting.batchSize > 32)
   const invalidPatience = value.scripting.patience !== undefined
     && (!Number.isFinite(value.scripting.patience) || value.scripting.patience < 1 || value.scripting.patience > 5)
   const invalidLengthPenalty = value.scripting.lengthPenalty !== undefined
@@ -61,7 +64,7 @@ export function loadVocalSeparationConfig (
     && (!Number.isInteger(value.scripting.minLineWidth) || value.scripting.minLineWidth < 1)
   const invalidInitialPrompt = value.scripting.initialPrompt !== undefined
     && typeof value.scripting.initialPrompt !== 'string'
-  if (invalidVadOnset || invalidVadOffset || invalidVadChunkSeconds || invalidBeamSize || invalidPatience || invalidLengthPenalty || invalidMaxLineWidth
+  if (invalidVadOnset || invalidVadOffset || invalidVadChunkSeconds || invalidBeamSize || invalidBatchSize || invalidPatience || invalidLengthPenalty || invalidMaxLineWidth
     || invalidMaxLineCount || invalidMinLineWidth || invalidInitialPrompt) {
     throw new Error(`${configPath}: invalid scripting tuning configuration`)
   }

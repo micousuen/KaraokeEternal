@@ -18,6 +18,7 @@ const requestTimeoutMs = Number.isFinite(configuredRequestTimeoutMs) && configur
 export interface WhisperXSettings {
   model: string
   beamSize: number
+  batchSize: number
   vadOnset: number
   vadOffset: number
   vadChunkSeconds: number

@@ -62,9 +62,74 @@ class SubtitleFormatTests(unittest.TestCase):
             }],
         }
         self.assertEqual(rolling_cues(result, 36, 12), [
-            (0, 1, "One.\nTwo."),
-            (1, 2, "Three.\nTwo."),
-            (2, 3, "Three."),
+            (0, 1, "One.\nTwo.", 0),
+            (1, 2, "Three.\nTwo.", 1),
+            (2, 3, "Three.", 0),
+        ])
+
+    def test_repeated_lines_report_structural_active_row(self):
+        # Identical text on both rows must not confuse the client. The emitted
+        # active_row is computed structurally, so repeats alternate cleanly and
+        # single-line tail cues report 0 (only line visible).
+        result = {
+            "language": "en",
+            "segments": [{
+                "start": 0,
+                "end": 5,
+                "words": [
+                    {"word": "Chorus.", "start": 0, "end": 1},
+                    {"word": "Chorus.", "start": 1, "end": 2},
+                    {"word": "Chorus.", "start": 2, "end": 3},
+                    {"word": "Chorus.", "start": 3, "end": 4},
+                    {"word": "Chorus.", "start": 4, "end": 5},
+                ],
+            }],
+        }
+        active_rows = [active for _, _, _, active in rolling_cues(result, 36, 12)]
+        # 5 identical lines → 5 cues. Cues 1..4 show both rows with alternating
+        # active_row; cue 5 shows only the trailing line at displayed index 0.
+        self.assertEqual(active_rows, [0, 1, 0, 1, 0])
+
+    def test_single_line_group_after_gap_reports_row_zero(self):
+        # A > 2s gap starts a fresh group. A group with only one line emits a
+        # single cue where the only visible line is at displayed index 0.
+        result = {
+            "language": "en",
+            "segments": [{
+                "start": 0,
+                "end": 1,
+                "words": [{"word": "Solo.", "start": 0, "end": 1}],
+            }, {
+                "start": 10,
+                "end": 11,
+                "words": [{"word": "Alone.", "start": 10, "end": 11}],
+            }],
+        }
+        cues = rolling_cues(result, 36, 12)
+        # Two groups, each one line → two cues, each with active_row=0.
+        self.assertEqual([(text, active) for _, _, text, active in cues], [
+            ("Solo.", 0),
+            ("Alone.", 0),
+        ])
+
+    def test_two_line_group_tail_reports_row_zero(self):
+        # A 2-line group's second cue drops the top slot as the top line ends;
+        # the surviving bottom line slides to displayed index 0.
+        result = {
+            "language": "en",
+            "segments": [{
+                "start": 0,
+                "end": 2,
+                "words": [
+                    {"word": "First.", "start": 0, "end": 1},
+                    {"word": "Second.", "start": 1, "end": 2},
+                ],
+            }],
+        }
+        cues = rolling_cues(result, 36, 12)
+        self.assertEqual([(text, active) for _, _, text, active in cues], [
+            ("First.\nSecond.", 0),
+            ("Second.", 0),
         ])
 
 
