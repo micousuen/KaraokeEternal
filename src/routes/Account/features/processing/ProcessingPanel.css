@@ -112,6 +112,26 @@
   }
 }
 
+.bulkAction {
+  margin-top: var(--space-m);
+}
+
+.bulkAction button {
+  width: 100%;
+}
+
+.bulkResult {
+  margin-top: var(--space-s);
+  color: #aaa;
+  font-size: 80%;
+}
+
+.modalActions {
+  display: flex;
+  gap: var(--space-m);
+  margin-top: var(--space-m);
+}
+
 .listModal {
   width: min(700px, 90vw);
   height: min(700px, 85vh);

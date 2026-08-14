@@ -9,6 +9,7 @@ import { forceMediaProcessing } from '../Media/AudioTrackAnalysis.js'
 import { getExt } from '../lib/util.js'
 import pushQueuesAndLibrary from '../lib/pushQueuesAndLibrary.js'
 import { LIBRARY_PUSH_SONG } from '../../shared/actionTypes.js'
+import { findScriptRegenerationCandidates } from './ScriptRegeneration.js'
 const router = new KoaRouter({ prefix: '/api' })
 const compressBrotli = promisify(brotliCompress)
 const compressGzip = promisify(gzip)
@@ -133,6 +134,48 @@ router.post('/song/:songId/regenerate', async (ctx) => {
     ctx.body = { mediaId: preferredId, output }
   } catch (err) {
     ctx.throw(422, err instanceof Error ? err.message : String(err))
+  }
+})
+
+router.post('/library/scripts/regenerate', async (ctx) => {
+  if (!ctx.user.isAdmin) ctx.throw(401)
+
+  const candidates = findScriptRegenerationCandidates(Media.search({}))
+  const io = ctx.io
+  const suppressWatcher = ctx.suppressWatcher
+  let queued = 0
+  let skipped = 0
+  const errors: string[] = []
+  for (const candidate of candidates) {
+    try {
+      await forceMediaProcessing(
+        candidate.mediaId,
+        candidate.pathId,
+        candidate.source,
+        'script',
+        () => {
+          Library.invalidate()
+          io.emit('action', {
+            type: LIBRARY_PUSH_SONG,
+            payload: Library.getSong(candidate.songId),
+          })
+        },
+        suppressWatcher,
+        false,
+      )
+      queued++
+    } catch (err) {
+      skipped++
+      if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  ctx.status = 202
+  ctx.body = {
+    eligible: candidates.length,
+    queued,
+    skipped,
+    errors,
   }
 })
 

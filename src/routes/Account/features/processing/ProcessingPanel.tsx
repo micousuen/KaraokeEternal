@@ -11,8 +11,17 @@ import {
   unmountWhisperXModels,
 } from 'store/modules/vocalSeparation'
 import styles from './ProcessingPanel.css'
+import HttpApi from 'lib/HttpApi'
 
 const formatSpeed = (speed: number | null) => speed === null ? 'Waiting for first result' : `${speed.toFixed(2)}× realtime`
+const api = new HttpApi()
+
+interface BulkRegenerationResult {
+  eligible: number
+  queued: number
+  skipped: number
+  errors: string[]
+}
 
 const ProcessingPanel = () => {
   const status = useAppSelector(state => state.vocalSeparation)
@@ -20,6 +29,10 @@ const ProcessingPanel = () => {
   const dispatch = useAppDispatch()
   const [now, setNow] = useState(0)
   const [openList, setOpenList] = useState<'queued' | 'completed' | null>(null)
+  const [isRegenerateOpen, setRegenerateOpen] = useState(false)
+  const [isRegenerating, setRegenerating] = useState(false)
+  const [regenerationError, setRegenerationError] = useState('')
+  const [regenerationResult, setRegenerationResult] = useState<BulkRegenerationResult | null>(null)
 
   useEffect(() => {
     if (status.currentStartedAt === null) return
@@ -35,6 +48,19 @@ const ProcessingPanel = () => {
   const elapsed = status.currentStartedAt === null || now === 0
     ? null
     : Math.max(0, Math.floor((now - status.currentStartedAt) / 1000))
+  const handleRegenerateScripts = async () => {
+    setRegenerating(true)
+    setRegenerationError('')
+    try {
+      const result = await api.post<BulkRegenerationResult>('library/scripts/regenerate')
+      setRegenerationResult(result)
+      setRegenerateOpen(false)
+    } catch (err) {
+      setRegenerationError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRegenerating(false)
+    }
+  }
   return (
     <Panel title='Media processing' contentClassName={styles.content}>
       <div>
@@ -110,6 +136,25 @@ const ProcessingPanel = () => {
             {status.isPaused ? 'Resume processing' : 'Stop processing'}
           </Button>
         </div>
+        <div className={styles.bulkAction}>
+          <Button
+            variant='default'
+            disabled={!status.enabled || isRegenerating}
+            onClick={() => {
+              setRegenerationError('')
+              setRegenerateOpen(true)
+            }}
+          >
+            {isRegenerating ? 'Queuing existing scripts…' : 'Regenerate existing scripts'}
+          </Button>
+        </div>
+        {regenerationResult && (
+          <div className={styles.bulkResult} role='status'>
+            {`Queued ${regenerationResult.queued} of ${regenerationResult.eligible} existing scripts.`}
+            {regenerationResult.skipped > 0 && ` ${regenerationResult.skipped} skipped.`}
+            {regenerationResult.errors.length > 0 && ` ${regenerationResult.errors[0]}`}
+          </div>
+        )}
         <div className={styles.primaryAction}>
           <Button
             variant='primary'
@@ -154,6 +199,21 @@ const ProcessingPanel = () => {
                   )}
                 </div>
               ))}
+            </div>
+          </Modal>
+        )}
+        {isRegenerateOpen && (
+          <Modal title='Regenerate existing scripts' onClose={() => !isRegenerating && setRegenerateOpen(false)}>
+            <p>
+              This queues every song that already has an SRT script. Vocal separation and scripting will run again,
+              and each existing script will only be replaced after its new script succeeds.
+            </p>
+            {regenerationError && <div className={styles.error} role='alert'>{regenerationError}</div>}
+            <div className={styles.modalActions}>
+              <Button variant='primary' disabled={isRegenerating} onClick={handleRegenerateScripts}>
+                {isRegenerating ? 'Queuing…' : 'Regenerate all existing scripts'}
+              </Button>
+              <Button disabled={isRegenerating} onClick={() => setRegenerateOpen(false)}>Cancel</Button>
             </div>
           </Modal>
         )}

@@ -60,6 +60,16 @@ describe('song rename', () => {
       .toEqual({ isManagedDownload: 1 })
   })
 
+  it('returns all media when the search filter is empty', () => {
+    db.run('INSERT INTO songs (songId, artistId, title, titleNorm) VALUES (2, 1, ?, ?)', ['Second song', 'Second song'])
+    db.run(`
+      INSERT INTO media (mediaId, songId, pathId, relPath, duration)
+      VALUES (2, 2, 1, 'second.mp4', 60)
+    `)
+
+    expect(Media.search({}).result).toEqual([1, 2])
+  })
+
   it('rejects collisions without changing the file or database', async () => {
     fs.writeFileSync(path.join(tempDir, 'YouTube-Existing.mp4'), 'other')
 

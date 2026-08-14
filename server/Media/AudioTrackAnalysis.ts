@@ -69,6 +69,7 @@ export async function forceMediaProcessing (
   output: 'instrumental' | 'script',
   onComplete?: () => void,
   onSourceReplacing: (pathId: number) => void = () => {},
+  prioritize = true,
 ): Promise<void> {
   const record = await ensureAudioTrackAnalysis(mediaId, source)
   if (record.audioTrackCount < 1) throw new Error('The selected media has no audio track')
@@ -93,7 +94,7 @@ export async function forceMediaProcessing (
       ? () => scheduleAudioTrackAnalysis(mediaId, source, { onAnalysisComplete: onComplete })
       : onComplete,
     onSourceReplacing,
-  }, true)
+  }, prioritize)
 
   if (!queued) throw new Error('Media processing is disabled or this song is already queued')
 }

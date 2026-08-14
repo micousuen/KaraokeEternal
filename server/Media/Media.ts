@@ -141,9 +141,12 @@ class Media {
       entities: {},
     }
 
-    const whereClause = typeof filter !== 'object'
+    const filterEntries = typeof filter === 'object' && filter !== null
+      ? Object.entries(filter)
+      : []
+    const whereClause = filterEntries.length === 0
       ? sql`true`
-      : sql`${sql.tuple(Object.keys(filter).map(sql.column))} = ${sql.tuple(Object.values(filter))}`
+      : sql`${sql.tuple(filterEntries.map(([key]) => sql.column(key)))} = ${sql.tuple(filterEntries.map(([, value]) => value))}`
 
     const query = sql`
       SELECT
