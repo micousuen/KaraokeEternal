@@ -38,11 +38,11 @@ scripting:
   # those regions are then split losslessly to this maximum ASR duration.
   vadChunkSeconds: 15
 
-  # More decoding candidates and patient beam search recover more sung and
-  # repeated phrases at the cost of CPU time.
-  beamSize: 12
-  patience: 1.5
-  lengthPenalty: 1.1
+  # Keep the beam moderate, but let it retain more finished candidates and
+  # slightly favor complete lyric phrases over prematurely short hypotheses.
+  beamSize: 8
+  patience: 2
+  lengthPenalty: 1.2
 
   # Subtitle layout. Long lyric phrases are split into timed SRT cues after
   # two readable lines instead of preserving WhisperX's entire segment.

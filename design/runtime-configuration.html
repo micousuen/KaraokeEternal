@@ -266,9 +266,9 @@
           <tr><td><code>scripting.language</code></td><td>unset</td><td>Unset means automatic language detection. A configured value forces that language.</td></tr>
           <tr><td><code>scripting.vadOnset</code></td><td><code>0.15</code></td><td>Silero voice threshold, strictly between 0 and 1. Lower values retain quieter sung vocals but may increase false lyric lines.</td></tr>
           <tr><td><code>scripting.vadChunkSeconds</code></td><td><code>15</code></td><td>VAD/transcription chunk duration, constrained to 5–30 seconds.</td></tr>
-          <tr><td><code>scripting.beamSize</code></td><td><code>12</code></td><td>Positive integer decoding beam size. Higher values cost more CPU.</td></tr>
-          <tr><td><code>scripting.patience</code></td><td><code>1.5</code></td><td>Beam-search patience from 1 to 5. Higher values explore more candidates before stopping.</td></tr>
-          <tr><td><code>scripting.lengthPenalty</code></td><td><code>1.1</code></td><td>Positive decoding length penalty up to 3. Values slightly above 1 favor more complete lyric output.</td></tr>
+          <tr><td><code>scripting.beamSize</code></td><td><code>8</code></td><td>Positive integer decoding beam size. Higher values cost more CPU.</td></tr>
+          <tr><td><code>scripting.patience</code></td><td><code>2</code></td><td>Beam-search patience from 1 to 5. Higher values retain more completed candidates before stopping.</td></tr>
+          <tr><td><code>scripting.lengthPenalty</code></td><td><code>1.2</code></td><td>Positive decoding length penalty up to 3. Values slightly above 1 favor more complete lyric output.</td></tr>
           <tr><td><code>scripting.maxLineWidth</code></td><td><code>36</code></td><td>Preferred Latin-script subtitle width. Chinese and Cantonese use approximately half this width.</td></tr>
           <tr><td><code>scripting.maxLineCount</code></td><td><code>2</code></td><td>Maximum composed subtitle lines per cue.</td></tr>
           <tr><td><code>scripting.minLineWidth</code></td><td><code>12</code></td><td>Minimum preferred phrase length before retaining text after punctuation; Chinese and Cantonese use approximately half.</td></tr>
