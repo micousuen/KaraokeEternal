@@ -8,7 +8,7 @@
  from whisperx.vads.vad import Vad as Vad
 --- a/whisperx/vads/silero.py
 +++ b/whisperx/vads/silero.py
-@@ -1,13 +1,14 @@
+@@ -1,13 +1,15 @@
  from io import IOBase
  from pathlib import Path
  from typing import Mapping, Text
@@ -18,6 +18,7 @@
  
  import torch
 +from silero_vad import get_speech_timestamps, load_silero_vad
++from vad_chunks import lossless_speech_chunks
 
 -from whisperx.diarize import Segment as SegmentX
  from whisperx.vads.vad import Vad
@@ -34,7 +35,14 @@
          self.vad_pipeline, vad_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                                        model='silero_vad',
                                                        force_reload=False,
-@@ -49,7 +52,7 @@
+@@ -43,14 +46,13 @@
+         timestamps = self.get_speech_timestamps(audio["waveform"],
+                                                 model=self.vad_pipeline,
+                                                 sampling_rate=sample_rate,
+-                                                max_speech_duration_s=self.chunk_size,
+                                                 threshold=self.vad_onset
+                                                 # min_silence_duration_ms = self.min_duration_off/1000
+                                                 # min_speech_duration_ms = self.min_duration_on/1000
                                                  # ...
                                                  # See silero documentation for full option list
                                                  )
@@ -43,6 +51,12 @@
  
      @staticmethod
      def preprocess_audio(audio):
+@@ -67,4 +71,4 @@
+             logger.warning("No active speech found in audio")
+             return []
+         assert segments_list, "segments_list is empty."
+-        return Vad.merge_chunks(segments_list, chunk_size, onset, offset)
++        return lossless_speech_chunks(segments_list, chunk_size)
 --- a/whisperx/transcribe.py
 +++ b/whisperx/transcribe.py
 @@ -9,7 +9,6 @@

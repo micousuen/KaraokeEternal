@@ -30,7 +30,7 @@ FROM node:24-bookworm-slim
 ARG PIXI_VERSION=0.75.0
 COPY python/processing/pixi.toml python/processing/pixi.lock /opt/processing/
 COPY python/processing/whisperx-cpu.patch /tmp/whisperx-cpu.patch
-COPY python/processing/whisperx_worker.py python/processing/whisperx_transcriber.py python/processing/subtitle_format.py /opt/processing/
+COPY python/processing/whisperx_worker.py python/processing/whisperx_transcriber.py python/processing/subtitle_format.py python/processing/vad_chunks.py /opt/processing/
 
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends build-essential ca-certificates curl ffmpeg python3-dev python3-pip \
@@ -61,6 +61,7 @@ COPY package.json ./
 
 ENV NODE_ENV=production \
   PATH=/opt/processing/.pixi/envs/default/bin:$PATH \
+  PYTHONPATH=/opt/processing \
   KES_PATH_DATA=/config \
   KES_PATH_DOWNLOADS=/media/downloads \
   KES_PATH_TRANSCODE=/transcode \
