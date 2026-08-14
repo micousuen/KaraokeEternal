@@ -27,12 +27,15 @@ def handle(request):
         transcriber.mount(request["settings"])
         respond(request, "mounted")
     elif command == "transcribe":
-        transcriber.mount(request["settings"])
+        if not request.get("caption"):
+            transcriber.mount(request["settings"])
         result = transcriber.transcribe(
             request["audio"],
             request["outputDir"],
             request["settings"],
             lambda event, **fields: respond(request, event, **fields),
+            request.get("caption"),
+            request.get("captionLanguage"),
         )
         respond(request, "complete", **result)
     elif command in {"unmount", "shutdown"}:

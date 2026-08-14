@@ -1,9 +1,25 @@
+import os
+import tempfile
 import unittest
 
-from subtitle_format import lyric_lines, preserve_unaligned_text, rolling_cues
+from subtitle_format import lyric_lines, preserve_unaligned_text, read_srt_segments, rolling_cues
 
 
 class SubtitleFormatTests(unittest.TestCase):
+    def test_reads_creator_srt_and_removes_music_markup(self):
+        content = "1\n00:00:01,000 --> 00:00:02,000\n[Music]\n\n2\n00:00:07,133 --> 00:00:12,266\n♪ <b>SPENT 24 HOURS</b> ♪\n\n"
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as source:
+            source.write(content)
+            filename = source.name
+        try:
+            self.assertEqual(read_srt_segments(filename), [{
+                "start": 7.133,
+                "end": 12.266,
+                "text": "SPENT 24 HOURS",
+            }])
+        finally:
+            os.unlink(filename)
+
     def test_preserves_raw_segment_when_alignment_drops_text(self):
         raw = [{"start": 0, "end": 2, "text": "complete lyric"}]
         aligned = [{"start": 0, "end": 1, "text": "complete", "words": []}]

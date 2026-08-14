@@ -8,6 +8,7 @@ import whisperxWorker, { type WhisperXSettings } from './WhisperXWorker.js'
 import { loadVocalSeparationConfig } from './VocalSeparationConfig.js'
 import { VocalSeparationHistory, type SeparationHistoryItem } from './VocalSeparationHistory.js'
 import { MediaProcessingQueue } from './MediaProcessingQueue.js'
+import { downloadCreatorCaption, youtubeVideoIdFromFilename, type CreatorCaption } from '../YouTube/YouTubeCaptions.js'
 
 const log = getLogger('VocalSeparation')
 const downloadsPath = process.env.KES_PATH_DOWNLOADS || '/media/downloads'
@@ -361,6 +362,16 @@ async function generateScript (job: Job, vocal: string | undefined, workDir: str
   currentScriptingProgress = 0
   currentProgress = 0
   emitStatus()
+  let caption: CreatorCaption | undefined
+  const youtubeVideoId = youtubeVideoIdFromFilename(job.source)
+  if (youtubeVideoId) {
+    try {
+      caption = await downloadCreatorCaption(youtubeVideoId, workDir)
+      if (caption) log.info('Using creator-provided YouTube captions for mediaId=%s', job.mediaId)
+    } catch (error) {
+      log.warn('Could not load creator captions for mediaId=%s; using WhisperX: %s', job.mediaId, errorMessage(error))
+    }
+  }
   // Give WhisperX a simple, decoder-independent audio input. This also
   // matches the sample rate required by its Silero VAD implementation.
   const scriptingInput = path.join(workDir, 'vocals-for-whisperx.wav')
@@ -370,7 +381,7 @@ async function generateScript (job: Job, vocal: string | undefined, workDir: str
     ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
   ])
-  const { language, srt } = await runWhisperX(scriptingInput, workDir)
+  const { language, srt } = await runWhisperX(scriptingInput, workDir, caption)
   await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
   await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
   db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = ?', [job.mediaId])
@@ -418,14 +429,18 @@ function scriptPath (source: string): string {
   return path.join(path.dirname(source), `${path.basename(source, path.extname(source))}.srt`)
 }
 
-async function runWhisperX (vocal: string, outputDir: string): Promise<{ language: string, srt: string }> {
+async function runWhisperX (
+  vocal: string,
+  outputDir: string,
+  caption?: CreatorCaption,
+): Promise<{ language: string, srt: string }> {
   // The worker mounts itself on demand and stays alive for subsequent songs,
   // avoiding repeated ASR/VAD model startup.
   const result = await whisperxWorker.transcribe(vocal, outputDir, whisperXSettings(), (progress) => {
     setScriptingProgress(Math.min(99, Math.round(progress)))
   }, () => {
     emitStatus()
-  })
+  }, caption)
   return result
 }
 
@@ -436,6 +451,8 @@ function whisperXSettings (): WhisperXSettings {
     vadOnset: config.scripting.vadOnset ?? 0.35,
     vadChunkSeconds: config.scripting.vadChunkSeconds ?? 15,
     beamSize: config.scripting.beamSize ?? 8,
+    patience: config.scripting.patience ?? 1,
+    lengthPenalty: config.scripting.lengthPenalty ?? 1,
     maxLineWidth: config.scripting.maxLineWidth ?? 36,
     maxLineCount: config.scripting.maxLineCount ?? 2,
     minLineWidth: config.scripting.minLineWidth ?? 12,

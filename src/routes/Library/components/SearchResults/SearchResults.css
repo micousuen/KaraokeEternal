@@ -1,9 +1,154 @@
-.artistsHeading,
-.songsHeading {
+.resultHeading {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-color);
   background-color: hsl(var(--hue-blue), 90%, 25%);
   font-size: 18px;
+}
+
+.sourceAction {
+  padding: 4px 0 0;
+}
+
+.sourceAction button {
+  display: flex;
+  width: 100%;
+  height: calc(100% - 4px);
+  padding: var(--space-s) var(--space-m);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid hsl(var(--hue-blue), 55%, 48%);
+  border-radius: var(--border-radius);
+  background: rgba(0, 110, 210, .18);
+  color: var(--text-color);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sourceAction button:hover,
+.sourceAction button:focus-visible {
+  background: rgba(0, 110, 210, .32);
+  outline: none;
+}
+
+.sourceAction strong,
+.sourceAction span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourceAction span {
+  color: #bbb;
+  font-size: 80%;
+}
+
+.sourceAction button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+.status,
+.errorStatus {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-m);
+  color: #b9e1b9;
+  overflow-wrap: anywhere;
+}
+
+.errorStatus {
+  color: var(--danger-color, #ff9b9b);
+}
+
+.youtubeResult {
+  padding-top: 4px;
+}
+
+.youtubeCard {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-s) var(--space-m);
+  width: min(100%, 48rem);
+  height: calc(100% - 4px);
+  margin: 0 auto;
+  padding: var(--space-s);
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid hsl(var(--hue-blue), 20%, 30%);
+  border-radius: var(--border-radius);
+  background: rgba(0, 0, 0, .25);
+}
+
+.youtubeCard > img {
+  width: 8rem;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: calc(var(--border-radius) / 2);
+  background: rgba(0, 0, 0, .35);
+}
+
+.youtubeMetadata {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.youtubeMetadata strong,
+.youtubeMetadata span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.youtubeMetadata span {
+  color: #bbb;
+  font-size: 80%;
+}
+
+.youtubeButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xs);
+}
+
+.youtubePreview {
+  width: 100%;
+  max-width: 48rem;
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--border-radius);
+  background: #000;
+}
+
+.youtubePreviewRow {
+  padding: 4px 0;
+}
+
+.youtubePreview iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (max-width: 500px) {
+  .youtubeCard {
+    grid-template-columns: 6rem minmax(0, 1fr);
+  }
+
+  .youtubeCard > img {
+    width: 6rem;
+  }
+
+  .youtubeButtons {
+    grid-column: 1 / -1;
+  }
 }

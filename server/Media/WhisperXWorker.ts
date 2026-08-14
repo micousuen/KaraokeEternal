@@ -23,6 +23,8 @@ export interface WhisperXSettings {
   maxLineWidth: number
   maxLineCount: number
   minLineWidth: number
+  patience: number
+  lengthPenalty: number
   language?: string
   initialPrompt?: string
 }
@@ -71,9 +73,18 @@ class WhisperXWorker {
     settings: WhisperXSettings,
     onProgress: (progress: number) => void,
     onStage: (stage: string) => void,
+    caption?: { file: string, language: string },
   ): Promise<{ language: string, srt: string }> {
-    await this.mount(settings)
-    return this.#request<{ language: string, srt: string }>({ command: 'transcribe', audio, outputDir, settings }, onProgress, onStage)
+    if (!caption) await this.mount(settings)
+    else this.#start()
+    return this.#request<{ language: string, srt: string }>({
+      command: 'transcribe',
+      audio,
+      outputDir,
+      settings,
+      caption: caption?.file,
+      captionLanguage: caption?.language,
+    }, onProgress, onStage)
   }
 
   async unmount (): Promise<void> {

@@ -29,6 +29,7 @@ interface SongItemProps {
   isAdmin: boolean
   isManagedDownload?: boolean
   hasSingleAudioTrack?: boolean
+  isProcessing?: boolean
   numStars: number
   numMedia: number
   filterKeywords: string[]
@@ -49,6 +50,7 @@ const SongItem = ({
   isAdmin,
   isManagedDownload,
   hasSingleAudioTrack,
+  isProcessing,
   numStars,
   numMedia,
   filterKeywords,
@@ -103,7 +105,7 @@ const SongItem = ({
       ignoreMouseupRef.current = false
       return
     }
-    if (isUpcoming) return
+    if (isUpcoming || isProcessing) return
     onSongQueue(songId)
   }
   const handleContextMenu = (event: React.MouseEvent) => {
@@ -153,6 +155,7 @@ const SongItem = ({
           isUpcoming && styles.upcoming,
           isStarred && styles.starred,
           isExpanded && styles.expanded,
+          isProcessing && styles.processing,
           artist && styles.withArtist,
         )}
         onContextMenu={handleContextMenu}
@@ -165,11 +168,15 @@ const SongItem = ({
             {...(canManage ? bindActionPressHandlers() : {})}
             onClick={handleClick}
             className={styles.primary}
-            title={canManage ? 'Right-click or long-press for song actions' : undefined}
+            aria-disabled={isProcessing || undefined}
+            title={isProcessing
+              ? 'Preparing script and instrumental track before queueing'
+              : canManage ? 'Right-click or long-press for song actions' : undefined}
           >
             <div className={styles.title}>
               {filterKeywords?.length ? <Highlighter autoEscape textToHighlight={title} searchWords={filterKeywords} /> : title}
               {isManagedDownload && <span className={styles.source}>YouTube download</span>}
+              {isProcessing && <span className={styles.processingBadge}>Preparing</span>}
               {hasSingleAudioTrack && <span className={styles.singleTrack}>Single audio track</span>}
               {isAdmin && numMedia > 1 && (
                 <i>

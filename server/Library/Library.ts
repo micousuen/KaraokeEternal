@@ -5,6 +5,7 @@ import { performance } from 'perf_hooks'
 import { Worker } from 'node:worker_threads'
 import { Song, Artist } from '../../shared/types.js'
 import Media from '../Media/Media.js'
+import { getSongQueueReadiness } from '../Media/MediaQueueReadiness.js'
 import type { LibrarySnapshot } from './LibrarySnapshot.js'
 
 const log = getLogger('Library')
@@ -64,6 +65,7 @@ class Library {
       if (entities[mediaId].isPreferred) media = entities[mediaId]
     }
 
+    const isManagedDownload = result.some(mediaId => !!entities[mediaId].isManagedDownload || isManagedDownloadPath(entities[mediaId].pathData))
     return {
       [songId]: {
         artistId: media.artistId,
@@ -72,11 +74,12 @@ class Library {
         songId: media.songId,
         title: media.title,
         numMedia: result.length,
-        isManagedDownload: result.some(mediaId => !!entities[mediaId].isManagedDownload || isManagedDownloadPath(entities[mediaId].pathData)),
+        isManagedDownload,
         hasSingleAudioTrack: db.get<{ audioTrackCount: number }>(
           'SELECT audioTrackCount FROM audioTrackAnalysis WHERE mediaId = ?',
           [media.mediaId],
         )?.audioTrackCount === 1,
+        isProcessing: isManagedDownload && getSongQueueReadiness(songId) !== 'ready',
       },
     }
   }
@@ -94,7 +97,12 @@ class Library {
       SELECT artists.artistId, artists.name, songs.songId, songs.title, songs.language,
         MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia,
         MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
-        MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack
+        MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack,
+        MAX(CASE WHEN
+          (media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) = 0
+          OR (COALESCE(audioTrackAnalysis.audioTrackCount, 0) >= 2 AND COALESCE(audioTrackAnalysis.scriptReady, 0) = 1)
+          THEN 1 ELSE 0
+        END) AS isQueueReady
       FROM songs
         INNER JOIN artists USING (artistId)
         INNER JOIN media USING (songId)
@@ -104,20 +112,22 @@ class Library {
       GROUP BY songs.songId
       ORDER BY songs.titleNorm
     `
-    const rows = db.all<Omit<Song, 'isManagedDownload' | 'hasSingleAudioTrack'> & {
+    const rows = db.all<Omit<Song, 'isManagedDownload' | 'hasSingleAudioTrack' | 'isProcessing'> & {
       name: string
       isManagedDownload: number
       hasSingleAudioTrack: number
+      isQueueReady: number
     }>(String(query), query.parameters)
 
     for (const row of rows) {
-      const { artistId, name, ...song } = row
+      const { artistId, name, isQueueReady, ...song } = row
       songs.result.push(song.songId)
       songs.entities[song.songId] = {
         artistId,
         ...song,
         isManagedDownload: !!song.isManagedDownload,
         hasSingleAudioTrack: !!song.hasSingleAudioTrack,
+        isProcessing: !!song.isManagedDownload && !isQueueReady,
       }
 
       if (!artists.entities[artistId]) {

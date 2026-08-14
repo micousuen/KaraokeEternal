@@ -2,6 +2,7 @@ import { db } from '../lib/Database.js'
 import sql from 'sqlate'
 import { QueueItem } from '../../shared/types.js'
 import getLogger from '../lib/Log.js'
+import { getSongQueueReadiness } from '../Media/MediaQueueReadiness.js'
 
 const log = getLogger('Queue')
 
@@ -10,6 +11,11 @@ class Queue {
    * Add a songId to a room's queue
    */
   static add ({ roomId, songId, userId }: { roomId: number, songId: number, userId: number }): void {
+    const readiness = getSongQueueReadiness(songId)
+    if (readiness === 'missing') throw new Error('Song not found')
+    if (readiness === 'processing') {
+      throw new Error('This YouTube download is still preparing its script and instrumental track')
+    }
     const fields = new Map()
     fields.set('roomId', roomId)
     fields.set('songId', songId)

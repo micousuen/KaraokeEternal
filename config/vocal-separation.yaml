@@ -19,7 +19,7 @@ outputBitrate: 192k
 
 # Keep a light vocal presence in generated instrumental tracks. 0 is a fully
 # stripped backing track; 0.1 blends the separated vocal stem at 10% level.
-instrumentalVocalMix: 0.1
+instrumentalVocalMix: 0.05
 
 # Generate an SRT sidecar beside the original media. WhisperX is deliberately
 # CPU-only so no CUDA runtime or GPU is required.
@@ -38,8 +38,11 @@ scripting:
   # those regions are then split losslessly to this maximum ASR duration.
   vadChunkSeconds: 15
 
-  # More decoding candidates improve difficult lyrics at the cost of CPU time.
-  beamSize: 8
+  # More decoding candidates and patient beam search recover more sung and
+  # repeated phrases at the cost of CPU time.
+  beamSize: 12
+  patience: 1.5
+  lengthPenalty: 1.1
 
   # Subtitle layout. Long lyric phrases are split into timed SRT cues after
   # two readable lines instead of preserving WhisperX's entire segment.

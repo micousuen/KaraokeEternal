@@ -1,5 +1,7 @@
 """Pure lyric line wrapping and rolling-SRT formatting."""
 
+import re
+
 
 def format_srt_timestamp(seconds):
     milliseconds = max(0, round(seconds * 1000))
@@ -11,6 +13,32 @@ def format_srt_timestamp(seconds):
 
 def normalized_text(text):
     return "".join(character.casefold() for character in text if character.isalnum())
+
+
+def read_srt_segments(filename):
+    """Read creator captions as alignment-ready segments, removing music markup."""
+    with open(filename, encoding="utf-8-sig") as source:
+        content = source.read().replace("\r\n", "\n")
+
+    segments = []
+    for block in re.split(r"\n{2,}", content.strip()):
+        lines = block.splitlines()
+        timing_index = next((index for index, line in enumerate(lines) if "-->" in line), None)
+        if timing_index is None:
+            continue
+        match = re.match(r"\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", lines[timing_index])
+        if not match:
+            continue
+        values = [int(value) for value in match.groups()]
+        start = values[0] * 3600 + values[1] * 60 + values[2] + values[3] / 1000
+        end = values[4] * 3600 + values[5] * 60 + values[6] + values[7] / 1000
+        text = " ".join(lines[timing_index + 1:])
+        text = re.sub(r"<[^>]+>", " ", text).replace("♪", " ")
+        text = re.sub(r"\[[^\]]+\]", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if end > start and normalized_text(text):
+            segments.append({"start": start, "end": end, "text": text})
+    return segments
 
 
 def preserve_unaligned_text(raw_segments, aligned_segments):

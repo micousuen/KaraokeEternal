@@ -3,7 +3,6 @@ import clsx from 'clsx'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { setFilterStr, resetFilterStr, toggleFilterStarred } from '../../modules/library'
 import Button from 'components/Button/Button'
-import YouTubeImport from '../YouTubeImport/YouTubeImport'
 import styles from './LibraryHeader.css'
 
 const LibraryHeader = () => {
@@ -12,7 +11,6 @@ const LibraryHeader = () => {
 
   const searchInput = useRef<HTMLInputElement>(null)
   const [value, setValue] = useState(filterStr)
-  const [isYouTubeOpen, setYouTubeOpen] = useState(false)
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setValue(event.target.value)
@@ -56,14 +54,6 @@ const LibraryHeader = () => {
         icon='STAR_FULL'
         onClick={() => dispatch(toggleFilterStarred())}
       />
-      <Button
-        className={styles.btnYouTube}
-        icon='TELEVISION_PLAY'
-        title='Add a public YouTube video'
-        aria-label='Add a public YouTube video'
-        onClick={() => setYouTubeOpen(true)}
-      />
-      {isYouTubeOpen && <YouTubeImport onClose={() => setYouTubeOpen(false)} />}
     </div>
   )
 }

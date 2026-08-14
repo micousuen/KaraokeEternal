@@ -8,7 +8,7 @@ import whisperx
 from whisperx.asr import FasterWhisperPipeline
 from whisperx.audio import N_SAMPLES, log_mel_spectrogram
 
-from subtitle_format import preserve_unaligned_text, write_rolling_srt
+from subtitle_format import preserve_unaligned_text, read_srt_segments, write_rolling_srt
 
 
 def detect_language_from_middle(self, audio):
@@ -45,6 +45,8 @@ class WhisperXTranscriber:
             language=settings.get("language"),
             asr_options={
                 "beam_size": settings["beamSize"],
+                "patience": settings.get("patience", 1),
+                "length_penalty": settings.get("lengthPenalty", 1),
                 "initial_prompt": settings.get("initialPrompt") or None,
                 "condition_on_previous_text": False,
             },
@@ -56,8 +58,16 @@ class WhisperXTranscriber:
             download_root=self.model_root,
         )
 
-    def transcribe(self, audio_path, output_dir, settings, emit):
-        if self.model is None:
+    def transcribe(
+        self,
+        audio_path,
+        output_dir,
+        settings,
+        emit,
+        caption_path=None,
+        caption_language=None,
+    ):
+        if self.model is None and not caption_path:
             self.mount(settings)
 
         def transcription_progress(percent):
@@ -66,17 +76,30 @@ class WhisperXTranscriber:
         def alignment_progress(percent):
             emit("progress", progress=round(50 + percent * 0.5, 2))
 
-        emit("stage", stage="Detecting vocals and language")
         audio = whisperx.load_audio(audio_path)
-        result = self.model.transcribe(
-            audio,
-            batch_size=1,
-            chunk_size=settings["vadChunkSeconds"],
-            print_progress=False,
-            progress_callback=transcription_progress,
-        )
-        language = result["language"]
-        raw_segments = result["segments"]
+        if caption_path:
+            emit("stage", stage="Loading creator-provided captions")
+            raw_segments = read_srt_segments(caption_path)
+        else:
+            raw_segments = []
+        if raw_segments:
+            language = caption_language or "en"
+            emit("progress", progress=50)
+        else:
+            if caption_path:
+                emit("stage", stage="Creator captions contain no lyrics; using WhisperX")
+                self.mount(settings)
+            else:
+                emit("stage", stage="Detecting vocals and language")
+            result = self.model.transcribe(
+                audio,
+                batch_size=1,
+                chunk_size=settings["vadChunkSeconds"],
+                print_progress=False,
+                progress_callback=transcription_progress,
+            )
+            language = result["language"]
+            raw_segments = result["segments"]
         emit("stage", stage="Aligning lyric timings")
         alignment_language = language
         if alignment_language not in self.alignment_models:

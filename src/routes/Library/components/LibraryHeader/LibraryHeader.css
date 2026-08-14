@@ -44,11 +44,3 @@
     height: 3rem;
   }
 }
-
-.btnYouTube {
-  margin-right: var(--space-s);
-
-  svg {
-    height: 3rem;
-  }
-}

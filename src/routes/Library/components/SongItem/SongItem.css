@@ -31,6 +31,11 @@
     }
   }
 
+  &.processing .primary {
+    cursor: wait;
+    opacity: .65;
+  }
+
 
 }
 
@@ -89,6 +94,12 @@
   composes: source;
   border-color: var(--color-gray-5);
   color: var(--color-gray-6);
+}
+
+.processingBadge {
+  composes: source;
+  border-color: hsl(var(--hue-blue), 65%, 52%);
+  color: hsl(var(--hue-blue), 85%, 75%);
 }
 
 /* Buttons */

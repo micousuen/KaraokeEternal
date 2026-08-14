@@ -13,6 +13,7 @@ export interface Song {
   numMedia: number
   isManagedDownload?: boolean
   hasSingleAudioTrack?: boolean
+  isProcessing?: boolean
 }
 
 export interface YouTubeJob {
@@ -22,7 +23,7 @@ export interface YouTubeJob {
   userDateUpdated: number
   roomId: number
   title: string
-  status: 'queued' | 'downloading' | 'scanning' | 'complete' | 'error'
+  status: 'queued' | 'downloading' | 'scanning' | 'processing' | 'complete' | 'error'
   progress: number | null
   message: string
   file?: string

@@ -5,6 +5,7 @@ import getLogger from '../lib/Log.js'
 import Prefs from '../Prefs/Prefs.js'
 import Media from '../Media/Media.js'
 import Queue from '../Queue/Queue.js'
+import { getMediaQueueReadiness } from '../Media/MediaQueueReadiness.js'
 import type { YouTubeJob, YouTubeSearchResult } from '../../shared/types.js'
 import { ProcessExecutionError, runProcessText } from '../lib/runProcess.js'
 
@@ -15,6 +16,7 @@ const SEARCH_CACHE_MS = 5 * 60 * 1000
 const SEARCH_CONCURRENCY = 3
 const SEARCH_LIMIT = 10
 const SEARCH_TIMEOUT_MS = 15 * 1000
+const MEDIA_PREPARATION_TIMEOUT_MS = positiveInteger(process.env.KES_YOUTUBE_PROCESSING_TIMEOUT_MS, 60 * 60 * 1000)
 const DOWNLOAD_FORMAT = [
   `bv*[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]+ba[ext=m4a]`,
   `b[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]`,
@@ -299,9 +301,14 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
 
     const relPath = path.relative(libraryPath.basePath, job.file).replace(/\\/g, '/')
     const media = await waitForMedia(libraryPath.pathId, relPath)
+    job.status = 'processing'
+    job.progress = null
+    job.message = 'Preparing script and instrumental track before queueing'
+    options.pushJobs()
+    await waitForMediaPreparation(media.mediaId)
     Queue.add({ roomId: job.roomId, songId: media.songId, userId: job.userId })
     job.status = 'complete'
-    job.message = 'Downloaded and added to the queue.'
+    job.message = 'Processing complete; added to the queue.'
     options.pushJobs()
     options.pushQueue()
     log.info('Downloaded %s', job.file)
@@ -403,7 +410,7 @@ async function spawnYtDlp (args: string[], job: YouTubeJob, pushJobs: () => void
   }
 }
 
-async function waitForMedia (pathId: number, relPath: string): Promise<{ songId: number }> {
+async function waitForMedia (pathId: number, relPath: string): Promise<{ mediaId: number, songId: number }> {
   const deadline = Date.now() + 10 * 60 * 1000
 
   while (Date.now() < deadline) {
@@ -413,6 +420,24 @@ async function waitForMedia (pathId: number, relPath: string): Promise<{ songId:
   }
 
   throw new Error('The download finished, but the library scan did not complete in time')
+}
+
+async function waitForMediaPreparation (mediaId: number): Promise<void> {
+  const deadline = Date.now() + MEDIA_PREPARATION_TIMEOUT_MS
+
+  while (Date.now() < deadline) {
+    const readiness = getMediaQueueReadiness(mediaId)
+    if (readiness === 'ready') return
+    if (readiness === 'missing') throw new Error('The downloaded media disappeared during processing')
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+
+  throw new Error('The download finished, but its script and instrumental track did not finish in time')
+}
+
+function positiveInteger (value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function friendlyError (message: string): string {

@@ -22,11 +22,18 @@ const ACTION_HANDLERS = {
       })
     }
 
-    Queue.add({
-      roomId: sock.user.roomId,
-      songId,
-      userId: sock.user.userId,
-    })
+    try {
+      Queue.add({
+        roomId: sock.user.roomId,
+        songId,
+        userId: sock.user.userId,
+      })
+    } catch (err) {
+      return acknowledge({
+        type: QUEUE_ADD + '_ERROR',
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
 
     // success
     acknowledge({ type: QUEUE_ADD + '_SUCCESS' })
