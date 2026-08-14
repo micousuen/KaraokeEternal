@@ -29,8 +29,9 @@ scripting:
   # Leave unset to detect the language for every song.
   # language: en
 
-  # Lower values retain quieter sung vocals. Raise this if it produces too
-  # many false lyric lines from the instrumental.
+  # Silero speech-probability threshold to START a speech region. Lower values
+  # retain quieter sung vocals; raise if it produces too many false lyric lines
+  # from residual instrumental bleed in the stem.
   vadOnset: 0.15
 
   # Shorter chunks reduce Whisper skipping repeated lyric phrases inside long,
@@ -40,9 +41,9 @@ scripting:
 
   # Keep the beam moderate, but let it retain more finished candidates and
   # slightly favor complete lyric phrases over prematurely short hypotheses.
-  beamSize: 8
-  patience: 2
-  lengthPenalty: 1.2
+  beamSize: 6
+  patience: 3
+  lengthPenalty: 1.6
 
   # Subtitle layout. Long lyric phrases are split into timed SRT cues after
   # two readable lines instead of preserving WhisperX's entire segment.

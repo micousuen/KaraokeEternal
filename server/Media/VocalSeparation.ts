@@ -449,6 +449,7 @@ function whisperXSettings (): WhisperXSettings {
     model: config.scripting.model,
     language: config.scripting.language,
     vadOnset: config.scripting.vadOnset ?? 0.35,
+    vadOffset: config.scripting.vadOffset ?? Math.max(0.01, (config.scripting.vadOnset ?? 0.35) - 0.15),
     vadChunkSeconds: config.scripting.vadChunkSeconds ?? 15,
     beamSize: config.scripting.beamSize ?? 8,
     patience: config.scripting.patience ?? 1,

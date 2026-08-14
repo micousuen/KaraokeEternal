@@ -53,6 +53,7 @@ class WhisperXTranscriber:
             vad_method="silero",
             vad_options={
                 "vad_onset": settings["vadOnset"],
+                "vad_offset": settings.get("vadOffset", settings["vadOnset"] - 0.15),
                 "chunk_size": settings["vadChunkSeconds"],
             },
             download_root=self.model_root,
