@@ -45,7 +45,7 @@ export async function downloadCreatorCaption (
   ]
   const providerUrl = process.env.KES_YOUTUBE_POT_PROVIDER_URL
   if (providerUrl) {
-    args.push('--extractor-args', 'youtube:player-client=mweb')
+    args.push('--extractor-args', 'youtube:player-client=web_embedded')
     args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${providerUrl}`)
   }
   args.push(`https://www.youtube.com/watch?v=${videoId}`)

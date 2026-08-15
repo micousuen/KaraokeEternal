@@ -17,15 +17,16 @@ const SEARCH_CONCURRENCY = 3
 const SEARCH_LIMIT = 10
 const SEARCH_TIMEOUT_MS = 15 * 1000
 const MEDIA_PREPARATION_TIMEOUT_MS = positiveInteger(process.env.KES_YOUTUBE_PROCESSING_TIMEOUT_MS, 60 * 60 * 1000)
+// yt-dlp fallback chain. The mp4/m4a pairing at the top gives cleanly
+// re-muxable streams when YouTube offers them. The height-unrestricted tail
+// catches videos where every ≤1080p option only exists as VP9/AV1/Opus, letting
+// ffmpeg pick a compatible container during remux.
 const DOWNLOAD_FORMAT = [
   `bv*[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]+ba[ext=m4a]`,
-  `b[height<=${MAX_DOWNLOAD_HEIGHT}][ext=mp4]`,
   `bv*[height<=${MAX_DOWNLOAD_HEIGHT}]+ba`,
   `b[height<=${MAX_DOWNLOAD_HEIGHT}]`,
-].join('/')
-const HLS_DOWNLOAD_FORMAT = [
-  `bv*[height<=${MAX_DOWNLOAD_HEIGHT}][protocol^=m3u8]+ba[protocol^=m3u8]`,
-  `b[height<=${MAX_DOWNLOAD_HEIGHT}][protocol^=m3u8]`,
+  `bv*+ba`,
+  `b`,
 ].join('/')
 const ALLOWED_HOSTS = new Set([
   'youtube.com',
@@ -202,7 +203,7 @@ async function runYouTubeSearch (
     '--js-runtimes', 'node',
   ]
   if (options.providerUrl) {
-    args.push('--extractor-args', 'youtube:player-client=mweb')
+    args.push('--extractor-args', 'youtube:player-client=web_embedded')
     args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${options.providerUrl}`)
   }
   args.push(`ytsearch${SEARCH_LIMIT}:${query}`)
@@ -261,38 +262,44 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
     ]
 
     if (options.providerUrl) {
-      args.push('--extractor-args', 'youtube:player-client=mweb')
+      args.push('--extractor-args', 'youtube:player-client=web_embedded')
       args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${options.providerUrl}`)
     }
     args.push(url)
 
-    try {
-      job.file = await spawnYtDlp(args, job, options.pushJobs)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (!isRetryableFormatError(message)) throw error
+    // YouTube's default `web` client streams DASH manifests protected by SABR /
+    // PO tokens; without a provider running, those return HTTP 403 partway
+    // through the download even when format extraction succeeded. The android
+    // and ios clients still hand out pre-muxed MP4s that download without a
+    // token — lower resolution, but reliable. `recode` re-encodes to H.264/AAC
+    // MP4 locally as a last-ditch compatibility fallback.
+    const attempts: Array<{ label: string, message: string, transform: (a: string[]) => string[] }> = [
+      { label: 'preferred', message: '', transform: a => a },
+      { label: 'no-provider', message: 'Retrying without extractor hints', transform: argsWithoutProvider },
+      { label: 'android', message: 'Retrying with the YouTube android client', transform: a => withPlayerClient(argsWithoutProvider(a), 'android') },
+      { label: 'ios', message: 'Retrying with the YouTube ios client', transform: a => withPlayerClient(argsWithoutProvider(a), 'ios') },
+      { label: 'recode', message: 'Downloading a compatibility source for local transcoding', transform: a => withRecode(withPlayerClient(argsWithoutProvider(a), 'android')) },
+    ]
 
-      job.progress = 0
-      job.message = 'YouTube rejected the first format; trying an alternate client'
-      options.pushJobs()
-      const directArgs = argsWithoutProvider(args)
-
-      try {
-        job.file = await spawnYtDlp(directArgs, job, options.pushJobs)
-      } catch (directError) {
-        const directMessage = directError instanceof Error ? directError.message : String(directError)
-        if (!/HTTP Error 403|Forbidden/i.test(directMessage)) throw directError
-
+    let downloadError: Error | undefined
+    for (let index = 0; index < attempts.length; index++) {
+      const attempt = attempts[index]
+      if (index > 0) {
         job.progress = 0
-        job.message = 'YouTube rejected the alternate format; retrying with HLS'
+        job.message = attempt.message
         options.pushJobs()
-        const hlsArgs = [...directArgs]
-        const formatIndex = hlsArgs.indexOf('--format')
-        hlsArgs[formatIndex + 1] = HLS_DOWNLOAD_FORMAT
-        hlsArgs.splice(hlsArgs.length - 1, 0, '--extractor-args', 'youtube:player-client=web_safari')
-        job.file = await spawnYtDlp(hlsArgs, job, options.pushJobs)
+      }
+      try {
+        job.file = await spawnYtDlp(attempt.transform(args), job, options.pushJobs)
+        downloadError = undefined
+        break
+      } catch (error) {
+        downloadError = error instanceof Error ? error : new Error(String(error))
+        if (!isRetryableDownloadError(downloadError.message)) throw downloadError
+        log.warn('YouTube download attempt "%s" failed: %s', attempt.label, downloadError.message.split(/\r?\n/)[0])
       }
     }
+    if (downloadError) throw downloadError
     job.status = 'scanning'
     job.progress = 100
     job.message = 'Download complete; scanning the library'
@@ -326,21 +333,39 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
   }
 }
 
-function isRetryableFormatError (message: string): boolean {
-  return /HTTP Error 403|Forbidden|requested format|format.+(?:not available|unavailable|unsupported)/i.test(message)
+function isRetryableDownloadError (message: string): boolean {
+  return /HTTP Error 403|Forbidden|requested format|format.+(?:not available|unavailable|unsupported)|no video formats found|Only images are available|SABR/i.test(message)
 }
 
 function argsWithoutProvider (args: string[]): string[] {
   const result: string[] = []
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--extractor-args' && /^(?:youtube:player-client=mweb|youtubepot-)/.test(args[i + 1] || '')) {
+    // Strip any `youtube:player-client=...` or `youtubepot-...` extractor arg
+    // so later retries can layer their own client selection cleanly.
+    if (args[i] === '--extractor-args' && /^(?:youtube:player-client=|youtubepot-)/.test(args[i + 1] || '')) {
       i++
       continue
     }
     result.push(args[i])
   }
 
+  return result
+}
+
+function withPlayerClient (args: string[], client: string): string[] {
+  const result = [...args]
+  result.splice(result.length - 1, 0, '--extractor-args', `youtube:player-client=${client}`)
+  return result
+}
+
+function withRecode (args: string[]): string[] {
+  const result = [...args]
+  const formatIndex = result.indexOf('--format')
+  if (formatIndex !== -1) result[formatIndex + 1] = 'best'
+  const remuxIndex = result.indexOf('--remux-video')
+  if (remuxIndex !== -1) result.splice(remuxIndex, 2)
+  result.splice(result.length - 1, 0, '--recode-video', 'mp4')
   return result
 }
 

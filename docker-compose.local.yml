@@ -6,6 +6,8 @@ services:
     image: karaoke-eternal:transcode
     restart: unless-stopped
     init: true
+    depends_on:
+      - youtube-pot-provider
 
     environment:
       PUID: "1000"
@@ -20,6 +22,7 @@ services:
       KES_TRANSCODE_MAX_SIZE_GB: "8"
       KES_PRECACHE_COUNT: "5"
       KES_PATH_DOWNLOADS: /downloads
+      KES_YOUTUBE_POT_PROVIDER_URL: http://youtube-pot-provider:4416
 
     ports:
       - "8080:8080"
@@ -29,3 +32,13 @@ services:
       - ./test_folder/media:/media
       - ./test_folder/downloads:/downloads
       - ./test_folder/transcode:/transcode
+
+  # Sidecar that runs BotGuard on demand so yt-dlp can attach a valid PO token
+  # to YouTube download requests. Without this, YouTube's SABR gate returns
+  # HTTP 403 mid-stream for higher-quality DASH formats.
+  youtube-pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.1
+    pull_policy: if_not_present
+    restart: unless-stopped
+    init: true
+    # Port 4416 deliberately remains private to this Compose application.
