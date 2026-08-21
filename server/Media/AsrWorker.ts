@@ -3,21 +3,22 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import getLogger from '../lib/Log.js'
+import type { ScriptTimings } from './VocalSeparationHistory.js'
 
-const log = getLogger('WhisperXWorker')
+const log = getLogger('AsrWorker')
 const pythonPath = process.env.KES_PATH_PYTHON || 'python'
-const workerPath = process.env.KES_PATH_WHISPERX_WORKER || '/opt/processing/whisperx_worker.py'
+const workerPath = process.env.KES_PATH_ASR_WORKER || '/opt/processing/qwen_worker.py'
 const modelRoot = path.join(process.env.KES_PATH_DOWNLOADS || '/media/downloads', '.karaoke-eternal-models')
 const pixiLibPath = '/opt/processing/.pixi/envs/default/lib'
 const defaultRequestTimeoutMs = 10 * 60 * 1000
-const configuredRequestTimeoutMs = Number(process.env.KES_WHISPERX_TIMEOUT_MS)
+const configuredRequestTimeoutMs = Number(process.env.KES_ASR_TIMEOUT_MS)
 const requestTimeoutMs = Number.isFinite(configuredRequestTimeoutMs) && configuredRequestTimeoutMs > 0
   ? configuredRequestTimeoutMs
   : defaultRequestTimeoutMs
 
-export interface WhisperXSettings {
+export interface AsrSettings {
   model: string
-  beamSize: number
+  alignerModel: string
   batchSize: number
   vadOnset: number
   vadOffset: number
@@ -25,10 +26,7 @@ export interface WhisperXSettings {
   maxLineWidth: number
   maxLineCount: number
   minLineWidth: number
-  patience: number
-  lengthPenalty: number
   language?: string
-  initialPrompt?: string
 }
 
 interface PendingRequest {
@@ -39,32 +37,26 @@ interface PendingRequest {
   onStage?: (stage: string) => void
 }
 
-class WhisperXWorker {
+class AsrWorker {
   #child: childProcess.ChildProcessWithoutNullStreams | undefined
   #pending = new Map<number, PendingRequest>()
   #nextId = 0
   #mounted = false
-  #loading = false
   #mountPromise: Promise<void> | undefined
   #stderr = ''
 
-  get mounted (): boolean { return this.#mounted }
-  get loading (): boolean { return this.#loading }
-
-  async mount (settings: WhisperXSettings): Promise<void> {
+  async mount (settings: AsrSettings): Promise<void> {
     if (this.#mounted) return
     if (this.#mountPromise) return this.#mountPromise
-    this.#loading = true
     this.#start()
     this.#mountPromise = (async () => {
       await this.#request({ command: 'mount', settings })
       this.#mounted = true
-      log.info('WhisperX models mounted')
+      log.info('Qwen3-ASR models mounted')
     })()
     try {
       await this.#mountPromise
     } finally {
-      this.#loading = false
       this.#mountPromise = undefined
     }
   }
@@ -72,14 +64,14 @@ class WhisperXWorker {
   async transcribe (
     audio: string,
     outputDir: string,
-    settings: WhisperXSettings,
+    settings: AsrSettings,
     onProgress: (progress: number) => void,
     onStage: (stage: string) => void,
     caption?: { file: string, language: string },
-  ): Promise<{ language: string, srt: string }> {
+  ): Promise<{ language: string, srt: string, timings?: ScriptTimings }> {
     if (!caption) await this.mount(settings)
     else this.#start()
-    return this.#request<{ language: string, srt: string }>({
+    return this.#request<{ language: string, srt: string, timings?: ScriptTimings }>({
       command: 'transcribe',
       audio,
       outputDir,
@@ -87,16 +79,6 @@ class WhisperXWorker {
       caption: caption?.file,
       captionLanguage: caption?.language,
     }, onProgress, onStage)
-  }
-
-  async unmount (): Promise<void> {
-    if (!this.#child || this.#pending.size) throw new Error('WhisperX is busy processing a script')
-    const child = this.#child
-    await this.#request({ command: 'unmount' })
-    this.#mounted = false
-    child.kill()
-    if (this.#child === child) this.#child = undefined
-    log.info('WhisperX models unmounted')
   }
 
   #start (): void {
@@ -122,16 +104,15 @@ class WhisperXWorker {
     child.stderr.on('data', (chunk) => {
       const output = chunk.toString()
       this.#stderr = (this.#stderr + output).slice(-12_000)
-      log.info('[WhisperX] %s', output.trim())
+      log.info('[ASR] %s', output.trim())
     })
     child.on('error', err => this.#abort(child, err))
     child.on('close', (code, signal) => {
       if (this.#child !== child) return
       this.#child = undefined
       this.#mounted = false
-      this.#loading = false
       const reason = code === null ? `signal ${signal || 'unknown'}` : `code ${code}`
-      this.#failAll(new Error(`WhisperX worker exited with ${reason}${this.#stderr ? `\n${this.#stderr}` : ''}`))
+      this.#failAll(new Error(`ASR worker exited with ${reason}${this.#stderr ? `\n${this.#stderr}` : ''}`))
     })
   }
 
@@ -140,7 +121,7 @@ class WhisperXWorker {
     onProgress?: (progress: number) => void,
     onStage?: (stage: string) => void,
   ): Promise<T> {
-    if (!this.#child?.stdin.writable) return Promise.reject(new Error('WhisperX worker is unavailable'))
+    if (!this.#child?.stdin.writable) return Promise.reject(new Error('ASR worker is unavailable'))
     const child = this.#child
     const id = ++this.#nextId
     return new Promise<T>((resolve, reject) => {
@@ -149,7 +130,7 @@ class WhisperXWorker {
         if (!this.#pending.has(id)) return
         // A timed-out inference may leave Python permanently occupied. Kill it
         // so the next request starts a clean worker and mounts models again.
-        this.#abort(child, new Error(`WhisperX ${command} timed out after ${Math.round(requestTimeoutMs / 1000)} seconds`))
+        this.#abort(child, new Error(`ASR ${command} timed out after ${Math.round(requestTimeoutMs / 1000)} seconds`))
       }, requestTimeoutMs)
       timeout.unref()
       this.#pending.set(id, { resolve: value => resolve(value as T), reject, timeout, onProgress, onStage })
@@ -167,7 +148,7 @@ class WhisperXWorker {
     try {
       message = JSON.parse(line) as typeof message
     } catch {
-      log.info('[WhisperX] %s', line)
+      log.info('[ASR] %s', line)
       return
     }
     const pending = message.id === undefined ? undefined : this.#pending.get(message.id)
@@ -201,10 +182,9 @@ class WhisperXWorker {
     // racing the old process's asynchronous close event.
     this.#child = undefined
     this.#mounted = false
-    this.#loading = false
     this.#failAll(error)
     child.kill('SIGKILL')
   }
 }
 
-export default new WhisperXWorker()
+export default new AsrWorker()

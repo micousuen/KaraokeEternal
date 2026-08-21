@@ -18,7 +18,7 @@ describe('YouTube creator captions', () => {
     })
   })
 
-  it('defers to WhisperX when manual captions contain multiple languages', () => {
+  it('defers to ASR when manual captions contain multiple languages', () => {
     expect(selectCreatorCaption([
       'youtube-creator-caption.en.srt',
       'youtube-creator-caption.es.srt',

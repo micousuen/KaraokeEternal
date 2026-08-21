@@ -15,8 +15,6 @@ import {
   QUEUE_SHUFFLE,
   QUEUE_SYNC,
   SERVER_INSTANCE,
-  VOCAL_SEPARATION_MODELS_MOUNT,
-  VOCAL_SEPARATION_MODELS_UNMOUNT,
 } from 'shared/actionTypes'
 import { syncLibrary } from './librarySync'
 
@@ -123,7 +121,7 @@ export default function createSocketMiddleware (socket: Socket, prefix: string):
           error: 'The server did not acknowledge the request. State will be resynchronized.',
         })
         if (QUEUE_MUTATIONS.has(action.type)) socket.emit('action', { type: QUEUE_SYNC })
-      }, durablePolicy(action.type))
+      }, durablePolicy())
 
       if (!isOptimistic) {
         return next(action)
@@ -214,10 +212,7 @@ function emitDurable (
   send()
 }
 
-function durablePolicy (type: string) {
-  if (type === VOCAL_SEPARATION_MODELS_MOUNT || type === VOCAL_SEPARATION_MODELS_UNMOUNT) {
-    return { deadlineMs: 10 * 60_000, acknowledgementMs: 5 * 60_000, attempts: 2 }
-  }
+function durablePolicy () {
   return { deadlineMs: 15_000, acknowledgementMs: 5_000, attempts: 2 }
 }
 

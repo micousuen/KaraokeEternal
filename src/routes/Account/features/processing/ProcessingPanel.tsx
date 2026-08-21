@@ -5,15 +5,14 @@ import Panel from 'components/Panel/Panel'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { requestScanAll } from 'store/modules/prefs'
 import {
-  mountWhisperXModels,
   pauseVocalSeparation,
   resumeVocalSeparation,
-  unmountWhisperXModels,
 } from 'store/modules/vocalSeparation'
 import styles from './ProcessingPanel.css'
 import HttpApi from 'lib/HttpApi'
 
 const formatSpeed = (speed: number | null) => speed === null ? 'Waiting for first result' : `${speed.toFixed(2)}× realtime`
+const formatStepSeconds = (seconds: number | null) => seconds === null ? '—' : `${seconds.toFixed(1)}s`
 const api = new HttpApi()
 
 interface BulkRegenerationResult {
@@ -77,10 +76,6 @@ const ProcessingPanel = () => {
             <span>Average speed</span>
             <strong>{formatSpeed(status.averageSpeed)}</strong>
           </div>
-          <div>
-            <span>WhisperX models</span>
-            <strong>{status.modelsLoading ? 'Mounting…' : status.modelsMounted ? 'Mounted' : 'Unmounted'}</strong>
-          </div>
         </div>
         <div className={styles.current}>
           <span>Currently processing</span>
@@ -121,13 +116,6 @@ const ProcessingPanel = () => {
           </div>
         )}
         <div className={styles.secondaryActions}>
-          <Button
-            variant='default'
-            disabled={status.modelsLoading}
-            onClick={() => dispatch(status.modelsMounted ? unmountWhisperXModels() : mountWhisperXModels())}
-          >
-            {status.modelsLoading ? 'Mounting WhisperX models…' : status.modelsMounted ? 'Unmount WhisperX models' : 'Mount WhisperX models'}
-          </Button>
           <Button
             variant={status.isPaused ? 'primary' : 'default'}
             disabled={!status.enabled || (!status.isPaused && !status.currentSong && status.queuedSongs === 0)}
@@ -195,6 +183,25 @@ const ProcessingPanel = () => {
                     <details className={styles.errorDetails}>
                       <summary>Show failure details</summary>
                       <pre>{item.error}</pre>
+                    </details>
+                  )}
+                  {(item.vadSeconds !== null || item.transcribeSeconds !== null || item.alignSeconds !== null) && (
+                    <details className={styles.timingDetails}>
+                      <summary>Show step timings</summary>
+                      <dl className={styles.timingList}>
+                        <div>
+                          <dt>VAD</dt>
+                          <dd>{formatStepSeconds(item.vadSeconds)}</dd>
+                        </div>
+                        <div>
+                          <dt>Transcribe</dt>
+                          <dd>{formatStepSeconds(item.transcribeSeconds)}</dd>
+                        </div>
+                        <div>
+                          <dt>Align</dt>
+                          <dd>{formatStepSeconds(item.alignSeconds)}</dd>
+                        </div>
+                      </dl>
                     </details>
                   )}
                 </div>

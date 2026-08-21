@@ -11,8 +11,9 @@ python = "3.11.*"
 [pypi-dependencies]
 audio-separator = { version = "==0.44.5", extras = ["cpu"] }
 bgutil-ytdlp-pot-provider = "==1.3.1"
+qwen-asr = "==0.0.6"
+silero-vad = "==5.1.2"
 torch = { version = "==2.8.0", index = "https://download.pytorch.org/whl/cpu" }
 torchaudio = { version = "==2.8.0", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = "==0.23.0", index = "https://download.pytorch.org/whl/cpu" }
-whisperx = "==3.8.6"
 yt-dlp = { version = "*", extras = ["default"] }

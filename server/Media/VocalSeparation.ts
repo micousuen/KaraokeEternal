@@ -4,9 +4,9 @@ import path from 'node:path'
 import getLogger from '../lib/Log.js'
 import { db } from '../lib/Database.js'
 import { runProcess, runProcessText } from '../lib/runProcess.js'
-import whisperxWorker, { type WhisperXSettings } from './WhisperXWorker.js'
+import asrWorker, { type AsrSettings } from './AsrWorker.js'
 import { loadVocalSeparationConfig } from './VocalSeparationConfig.js'
-import { VocalSeparationHistory, type SeparationHistoryItem } from './VocalSeparationHistory.js'
+import { VocalSeparationHistory, type ScriptTimings, type SeparationHistoryItem } from './VocalSeparationHistory.js'
 import { MediaProcessingQueue } from './MediaProcessingQueue.js'
 import { downloadCreatorCaption, youtubeVideoIdFromFilename, type CreatorCaption } from '../YouTube/YouTubeCaptions.js'
 
@@ -39,8 +39,6 @@ interface Job {
 export interface VocalSeparationStatus {
   enabled: boolean
   isPaused: boolean
-  modelsMounted: boolean
-  modelsLoading: boolean
   queuedSongs: number
   currentSong: string | null
   currentStartedAt: number | null
@@ -102,21 +100,6 @@ export function scheduleVocalSeparation (job: Job, prioritize = false): boolean 
   return true
 }
 
-export async function mountWhisperXModels (): Promise<void> {
-  const mounting = whisperxWorker.mount(whisperXSettings())
-  emitStatus()
-  try {
-    await mounting
-  } finally {
-    emitStatus()
-  }
-}
-
-export async function unmountWhisperXModels (): Promise<void> {
-  await whisperxWorker.unmount()
-  emitStatus()
-}
-
 export function pauseVocalSeparation (): void {
   paused = true
   emitStatus()
@@ -134,8 +117,6 @@ export function getVocalSeparationStatus (): VocalSeparationStatus {
   return {
     enabled: config.enabled,
     isPaused: paused,
-    modelsMounted: whisperxWorker.mounted,
-    modelsLoading: whisperxWorker.loading,
     queuedSongs: jobs.length,
     currentSong: currentJob ? path.basename(currentJob.source, path.extname(currentJob.source)) : null,
     currentStartedAt: currentStartedAt || null,
@@ -179,12 +160,12 @@ async function drain (): Promise<void> {
       refreshHistory()
       emitStatus()
       try {
-        const audioSeconds = await separate(job)
+        const { audioSeconds, timings } = await separate(job)
         const elapsedSeconds = (Date.now() - currentStartedAt) / 1000
         completedThisRun.add(job.mediaId)
         processedAudioSeconds += audioSeconds
         processingSeconds += elapsedSeconds
-        history.markFinished(job, 'succeeded', audioSeconds, elapsedSeconds, null)
+        history.markFinished(job, 'succeeded', audioSeconds, elapsedSeconds, null, timings)
         refreshHistory()
         job.onComplete?.()
         job.sourceReplaced = false
@@ -216,7 +197,7 @@ async function drain (): Promise<void> {
   }
 }
 
-async function separate (job: Job): Promise<number> {
+async function separate (job: Job): Promise<{ audioSeconds: number, timings?: ScriptTimings }> {
   const initialStats = await fsPromises.stat(job.source)
   const audioSeconds = await mediaDuration(job.source)
   const workDir = path.join(tempRoot, String(job.mediaId))
@@ -266,6 +247,7 @@ async function separate (job: Job): Promise<number> {
       emitStatus()
     }
 
+    let scriptTimings: ScriptTimings | undefined
     const finishingTasks: Array<Promise<void>> = []
     if (job.generateInstrumental) {
       if (!vocal) throw new Error('HTDemucs produced no vocal stem')
@@ -274,6 +256,10 @@ async function separate (job: Job): Promise<number> {
     }
     if (job.needsScript && (job.forceScript || !fs.existsSync(scriptPath(job.source)))) {
       finishingTasks.push(generateScript(job, vocal, workDir)
+        .then((timings) => {
+          scriptTimings = timings
+          return undefined
+        })
         .catch((err) => { throw markProcessingStage(err, 'scripting') }))
     }
 
@@ -284,7 +270,7 @@ async function separate (job: Job): Promise<number> {
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
     if (failure) throw failure.reason
     setProgress(100)
-    return audioSeconds
+    return { audioSeconds, timings: scriptTimings }
   } finally {
     // Success, inference failure, FFmpeg failure, and validation failure all clean up here.
     await Promise.all([
@@ -357,7 +343,7 @@ async function generateInstrumental (
   log.info('%s generated instrumental as A2 for mediaId=%s', job.replaceInstrumental ? 'Replaced' : 'Added', job.mediaId)
 }
 
-async function generateScript (job: Job, vocal: string | undefined, workDir: string): Promise<void> {
+async function generateScript (job: Job, vocal: string | undefined, workDir: string): Promise<ScriptTimings | undefined> {
   currentStage = 'scripting'
   currentScriptingProgress = 0
   currentProgress = 0
@@ -369,19 +355,19 @@ async function generateScript (job: Job, vocal: string | undefined, workDir: str
       caption = await downloadCreatorCaption(youtubeVideoId, workDir)
       if (caption) log.info('Using creator-provided YouTube captions for mediaId=%s', job.mediaId)
     } catch (error) {
-      log.warn('Could not load creator captions for mediaId=%s; using WhisperX: %s', job.mediaId, errorMessage(error))
+      log.warn('Could not load creator captions for mediaId=%s; using Qwen3-ASR: %s', job.mediaId, errorMessage(error))
     }
   }
-  // Give WhisperX a simple, decoder-independent audio input. This also
+  // Give the ASR pipeline a simple, decoder-independent audio input. This also
   // matches the sample rate required by its Silero VAD implementation.
-  const scriptingInput = path.join(workDir, 'vocals-for-whisperx.wav')
+  const scriptingInput = path.join(workDir, 'vocals-for-asr.wav')
   await execFile(ffmpegPath, [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
     '-i', vocal || job.source,
     ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
   ])
-  const { language, srt } = await runWhisperX(scriptingInput, workDir, caption)
+  const { language, srt, timings } = await runTranscription(scriptingInput, workDir, caption)
   await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
   await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
   db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = ?', [job.mediaId])
@@ -393,6 +379,7 @@ async function generateScript (job: Job, vocal: string | undefined, workDir: str
   currentProgress = 100
   emitStatus()
   log.info('Generated script for mediaId=%s: %s', job.mediaId, scriptPath(job.source))
+  return timings
 }
 
 function tasksForJob (
@@ -416,7 +403,7 @@ function tasksForJob (
   })
   if (job.needsScript) tasks.push({
     type: 'scripting',
-    label: 'Create SRT script (WhisperX CPU)',
+    label: 'Create SRT script (Qwen3-ASR CPU)',
     status: !live || currentScriptingProgress === undefined
       ? 'queued'
       : currentScriptingProgress >= 100 ? 'completed' : 'processing',
@@ -429,14 +416,14 @@ function scriptPath (source: string): string {
   return path.join(path.dirname(source), `${path.basename(source, path.extname(source))}.srt`)
 }
 
-async function runWhisperX (
+async function runTranscription (
   vocal: string,
   outputDir: string,
   caption?: CreatorCaption,
-): Promise<{ language: string, srt: string }> {
+): Promise<{ language: string, srt: string, timings?: ScriptTimings }> {
   // The worker mounts itself on demand and stays alive for subsequent songs,
   // avoiding repeated ASR/VAD model startup.
-  const result = await whisperxWorker.transcribe(vocal, outputDir, whisperXSettings(), (progress) => {
+  const result = await asrWorker.transcribe(vocal, outputDir, asrSettings(), (progress) => {
     setScriptingProgress(Math.min(99, Math.round(progress)))
   }, () => {
     emitStatus()
@@ -444,21 +431,18 @@ async function runWhisperX (
   return result
 }
 
-function whisperXSettings (): WhisperXSettings {
+function asrSettings (): AsrSettings {
   return {
     model: config.scripting.model,
+    alignerModel: config.scripting.alignerModel,
     language: config.scripting.language,
     vadOnset: config.scripting.vadOnset ?? 0.35,
     vadOffset: config.scripting.vadOffset ?? Math.max(0.01, (config.scripting.vadOnset ?? 0.35) - 0.15),
     vadChunkSeconds: config.scripting.vadChunkSeconds ?? 15,
-    beamSize: config.scripting.beamSize ?? 8,
     batchSize: config.scripting.batchSize ?? 2,
-    patience: config.scripting.patience ?? 1,
-    lengthPenalty: config.scripting.lengthPenalty ?? 1,
     maxLineWidth: config.scripting.maxLineWidth ?? 36,
     maxLineCount: config.scripting.maxLineCount ?? 2,
     minLineWidth: config.scripting.minLineWidth ?? 12,
-    initialPrompt: config.scripting.initialPrompt,
   }
 }
 

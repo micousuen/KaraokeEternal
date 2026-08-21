@@ -22,8 +22,6 @@ import {
   ROOM_PREFS_PUSH_REQUEST,
   STAR_SONG,
   UNSTAR_SONG,
-  VOCAL_SEPARATION_MODELS_MOUNT,
-  VOCAL_SEPARATION_MODELS_UNMOUNT,
   VOCAL_SEPARATION_PAUSE,
   VOCAL_SEPARATION_RESUME,
 } from './actionTypes.js'
@@ -51,8 +49,6 @@ export interface SocketRequestPayloads {
   [ROOM_PREFS_PUSH_REQUEST]: { roomId: number, prefs: IRoomPrefs }
   [STAR_SONG]: { songId: number }
   [UNSTAR_SONG]: { songId: number }
-  [VOCAL_SEPARATION_MODELS_MOUNT]: undefined
-  [VOCAL_SEPARATION_MODELS_UNMOUNT]: undefined
   [VOCAL_SEPARATION_PAUSE]: undefined
   [VOCAL_SEPARATION_RESUME]: undefined
 }

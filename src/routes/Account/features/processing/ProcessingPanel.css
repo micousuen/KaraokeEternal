@@ -4,7 +4,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-m);
 }
 
@@ -97,10 +97,11 @@
 }
 
 .secondaryActions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-m);
   margin-top: var(--space-m);
+}
+
+.secondaryActions button {
+  width: 100%;
 }
 
 .primaryAction {
@@ -179,6 +180,37 @@
   overflow-wrap: anywhere;
 }
 
+.timingDetails {
+  margin-top: var(--space-s);
+  color: #aaa;
+}
+
+.timingDetails summary {
+  cursor: pointer;
+  font-size: 80%;
+}
+
+.timingList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-s) var(--space-m);
+  margin: var(--space-s) 0 0;
+}
+
+.timingList > div {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.timingList dt {
+  color: #aaa;
+}
+
+.timingList dd {
+  margin: 0;
+  color: inherit;
+}
+
 .songList small {
   flex: none;
   color: #aaa;
@@ -187,9 +219,5 @@
 @media (max-width: 600px) {
   .grid {
     grid-template-columns: 1fr;
-  }
-
-  .secondaryActions {
-    gap: var(--space-s);
   }
 }

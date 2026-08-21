@@ -7,7 +7,7 @@ services:
     image: karaoke-eternal:transcode
     pull_policy: never
     restart: unless-stopped
-    # Reap FFmpeg, separator, and WhisperX subprocesses reliably. Without an
+    # Reap FFmpeg, separator, and ASR subprocesses reliably. Without an
     # init process, long preprocessing runs can eventually fail with ECHILD.
     init: true
     depends_on:

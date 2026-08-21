@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Long-lived JSON-lines protocol for the WhisperX transcriber."""
+"""Long-lived JSON-lines protocol for the Qwen3-ASR transcriber."""
 
 import json
 import os
 import sys
 import traceback
 
-from whisperx_transcriber import WhisperXTranscriber
+from qwen_transcriber import QwenTranscriber
 
 
 model_root = os.environ.get("HF_HOME", "/media/downloads/.karaoke-eternal-models")
-transcriber = WhisperXTranscriber(model_root)
+transcriber = QwenTranscriber(model_root)
 
 
 def emit(message):

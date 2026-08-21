@@ -21,11 +21,16 @@ outputBitrate: 192k
 # stripped backing track; 0.1 blends the separated vocal stem at 10% level.
 instrumentalVocalMix: 0.05
 
-# Generate an SRT sidecar beside the original media. WhisperX is deliberately
-# CPU-only so no CUDA runtime or GPU is required.
+# Generate an SRT sidecar beside the original media. Qwen3-ASR and
+# Qwen3-ForcedAligner are deliberately run CPU-only so no CUDA runtime or GPU
+# is required.
 scripting:
   enabled: true
-  model: large-v3
+  # HuggingFace repo id for the ASR model (transcription only, no timing).
+  model: Qwen/Qwen3-ASR-1.7B
+  # HuggingFace repo id for the forced-alignment model that turns the ASR
+  # text back into word-level timestamps against the same audio.
+  alignerModel: Qwen/Qwen3-ForcedAligner-0.6B
   # Leave unset to detect the language for every song.
   # language: en
 
@@ -34,29 +39,31 @@ scripting:
   # from residual instrumental bleed in the stem.
   vadOnset: 0.10
 
-  # Shorter chunks reduce Whisper skipping repeated lyric phrases inside long,
-  # continuous vocal sections. Silero first detects complete vocal regions;
-  # those regions are then split losslessly to this maximum ASR duration.
+  # Shorter chunks reduce the ASR model skipping or repeating phrases inside
+  # long, continuous vocal sections, and keep every forced-alignment call well
+  # under its documented 5-minute-per-call limit. Silero first detects
+  # complete vocal regions; those regions are then split losslessly to this
+  # maximum ASR duration.
   vadChunkSeconds: 15
 
-  # Number of VAD chunks Whisper transcribes in a single forward pass. Higher
-  # values improve throughput at the cost of proportionally more memory (each
-  # item allocates its own KV cache). 1 is safest on constrained CPU/RAM;
-  # 2-4 is typical for a laptop CPU.
-  batchSize: 2
-
-  # Keep the beam moderate, but let it retain more finished candidates and
-  # slightly favor complete lyric phrases over prematurely short hypotheses.
-  beamSize: 6
-  patience: 3
-  lengthPenalty: 1.5
+  # Number of VAD chunks transcribed in a single forward pass. Higher values
+  # improve throughput at the cost of proportionally more memory (each item
+  # allocates its own KV cache) - CPU inference here is memory-bandwidth-bound
+  # per token, so batching more chunks into one pass amortizes weight reads
+  # across more work instead of paying that cost once per chunk. bf16 weights
+  # and never loading both models at once free up headroom to spend on this.
+  #
+  # Benchmarked at 8 on uniform 15s chunks: ~4.6s/chunk, vs ~8.0s/chunk at 2.
+  # A real song's VAD-derived chunks vary a lot in length though (silence
+  # trimmed, not all 15s), and a batch gets padded to its longest member -
+  # measured ~15s/chunk at 16 on a real song, i.e. *worse* than unbatched,
+  # almost certainly from padding waste across that much length variance.
+  # Raising this past 8 isn't safe until chunks are length-bucketed before
+  # batching; lower it back toward 2 if a run runs out of memory.
+  batchSize: 8
 
   # Subtitle layout. Long lyric phrases are split into timed SRT cues after
-  # two readable lines instead of preserving WhisperX's entire segment.
+  # two readable lines instead of preserving the ASR model's entire segment.
   maxLineWidth: 36
   maxLineCount: 2
   minLineWidth: 12
-
-  # Leave unset: a generic prompt can be hallucinated as a lyric in short,
-  # low-energy vocal regions.
-  # initialPrompt: Karaoke song lyrics.
