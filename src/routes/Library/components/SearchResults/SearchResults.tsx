@@ -10,7 +10,7 @@ import Button from 'components/Button/Button'
 import PaddedList from 'components/PaddedList/PaddedList'
 import ArtistItem from '../ArtistItem/ArtistItem'
 import SongList from '../SongList/SongList'
-import type { YouTubeSearchResult } from 'shared/types'
+import type { YouTubeSearchResponse, YouTubeSearchResult } from 'shared/types'
 import type { ListImperativeAPI, RowComponentProps } from 'react-window'
 import styles from './SearchResults.css'
 
@@ -20,6 +20,7 @@ const ROW_HEIGHT_SONG = 56 // 52px + 4px margin
 const ROW_HEIGHT_SONG_WITH_ARTIST = 68 // 64px + 4px margin
 const ROW_HEIGHT_SOURCE_ACTION = 64
 const ROW_HEIGHT_STATUS = 48
+const ROW_HEIGHT_PAGINATION = 52
 const ROW_HEIGHT_YOUTUBE_RESULT = 116
 const ROW_HEIGHT_YOUTUBE_RESULT_MOBILE = 156
 const api = new HttpApi('youtube')
@@ -33,6 +34,7 @@ type SearchRow
     | { type: 'status', key: string, message: string, isError?: boolean }
     | { type: 'youtube-result', result: YouTubeSearchResult }
     | { type: 'youtube-preview', result: YouTubeSearchResult }
+    | { type: 'youtube-pagination', page: number, hasNextPage: boolean }
 
 interface SearchResultsProps {
   ui: RootState['ui']
@@ -52,6 +54,7 @@ interface CustomRowProps {
   onDownload(url: string, id: string): void
   onPreview(id: string): void
   onSearchYouTube(query: string): void
+  onYouTubePage(page: number): void
 }
 
 const looksLikeUrl = (value: string) => /^https?:\/\//i.test(value)
@@ -84,6 +87,7 @@ const RowComponent = ({
   onDownload,
   onPreview,
   onSearchYouTube,
+  onYouTubePage,
 }: RowComponentProps<CustomRowProps>) => {
   const row = rows[index]
 
@@ -201,6 +205,23 @@ const RowComponent = ({
           </div>
         </div>
       )
+
+    case 'youtube-pagination':
+      return (
+        <div style={style} className={styles.youtubePagination}>
+          <Button variant='default' disabled={isYouTubeSearching || row.page === 1} onClick={() => onYouTubePage(row.page - 1)}>
+            Previous
+          </Button>
+          <span>
+            Page
+            {' '}
+            {row.page}
+          </span>
+          <Button variant='default' disabled={isYouTubeSearching || !row.hasNextPage} onClick={() => onYouTubePage(row.page + 1)}>
+            Next
+          </Button>
+        </div>
+      )
   }
 }
 
@@ -214,6 +235,8 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
   const { queued: queuedSongs } = useAppSelector(getSongsStatus)
   const [youtubeResults, setYouTubeResults] = useState<YouTubeSearchResult[]>([])
   const [youtubeQuery, setYouTubeQuery] = useState('')
+  const [youtubePage, setYouTubePage] = useState(1)
+  const [hasNextYouTubePage, setHasNextYouTubePage] = useState(false)
   const [youtubeError, setYouTubeError] = useState('')
   const [downloadMessage, setDownloadMessage] = useState('')
   const [previewId, setPreviewId] = useState<string | null>(null)
@@ -230,6 +253,8 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     searchRequestId.current++
     setYouTubeResults([])
     setYouTubeQuery('')
+    setYouTubePage(1)
+    setHasNextYouTubePage(false)
     setYouTubeError('')
     setDownloadMessage('')
     setPreviewId(null)
@@ -237,7 +262,7 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     setYouTubeSearching(false)
   }, [query])
 
-  const searchYouTube = useCallback(async (searchQuery: string) => {
+  const searchYouTube = useCallback(async (searchQuery: string, page = 1) => {
     const requestId = ++searchRequestId.current
     setYouTubeSearching(true)
     setYouTubeQuery(searchQuery)
@@ -246,16 +271,22 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     setYouTubeResults([])
     setPreviewId(null)
     try {
-      const results = await api.get<YouTubeSearchResult[]>(`/search?q=${encodeURIComponent(searchQuery)}`)
+      const response = await api.get<YouTubeSearchResponse>(`/search?q=${encodeURIComponent(searchQuery)}&page=${page}`)
       if (searchRequestId.current !== requestId) return
-      setYouTubeResults(results)
-      if (!results.length) setYouTubeError('No downloadable YouTube videos matched that search.')
+      setYouTubeResults(response.results)
+      setYouTubePage(response.page)
+      setHasNextYouTubePage(response.hasNextPage)
+      if (!response.results.length) setYouTubeError('No downloadable YouTube videos matched that search page.')
     } catch (err) {
       if (searchRequestId.current === requestId) setYouTubeError(err instanceof Error ? err.message : String(err))
     } finally {
       if (searchRequestId.current === requestId) setYouTubeSearching(false)
     }
   }, [])
+
+  const changeYouTubePage = useCallback((page: number) => {
+    void searchYouTube(youtubeQuery, page)
+  }, [searchYouTube, youtubeQuery])
 
   const download = useCallback(async (url: string, id: string) => {
     const requestQuery = activeQuery.current
@@ -299,15 +330,18 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
       resultRows.push({
         type: 'heading',
         key: 'youtube',
-        label: `${youtubeResults.length} YouTube ${youtubeResults.length === 1 ? 'video' : 'videos'}`,
+        label: `${youtubeResults.length} YouTube ${youtubeResults.length === 1 ? 'video' : 'videos'} · Page ${youtubePage}`,
       })
+      resultRows.push({ type: 'youtube-pagination', page: youtubePage, hasNextPage: hasNextYouTubePage })
       for (const result of youtubeResults) {
         resultRows.push({ type: 'youtube-result', result })
         if (previewId === result.id) resultRows.push({ type: 'youtube-preview', result })
       }
+    } else if (youtubeQuery && youtubePage > 1) {
+      resultRows.push({ type: 'youtube-pagination', page: youtubePage, hasNextPage: false })
     }
     return resultRows
-  }, [artistsResult, downloadMessage, filterStarred, previewId, query, songsResult, youtubeError, youtubeQuery, youtubeResults])
+  }, [artistsResult, downloadMessage, filterStarred, hasNextYouTubePage, previewId, query, songsResult, youtubeError, youtubePage, youtubeQuery, youtubeResults])
 
   useEffect(() => {
     if (isYouTubeSearching || (!youtubeError && !youtubeResults.length)) return
@@ -333,6 +367,7 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     }
     if (row.type === 'song') return ROW_HEIGHT_SONG_WITH_ARTIST
     if (row.type === 'status') return ROW_HEIGHT_STATUS
+    if (row.type === 'youtube-pagination') return ROW_HEIGHT_PAGINATION
     if (row.type === 'youtube-preview') {
       return Math.round(ui.contentWidth * 9 / 16) + 8
     }
@@ -358,6 +393,7 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
         onDownload: download,
         onPreview: togglePreview,
         onSearchYouTube: searchYouTube,
+        onYouTubePage: changeYouTubePage,
         previewId,
         queuedSongs,
         rows,

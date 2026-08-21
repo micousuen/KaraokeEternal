@@ -50,4 +50,13 @@ describe('parseYouTubeSearchResults', () => {
   it('rejects malformed yt-dlp output', () => {
     expect(() => parseYouTubeSearchResults('not json', 300)).toThrow('invalid search response')
   })
+
+  it('does not impose a fixed ten-result parsing cap', () => {
+    const entries = Array.from({ length: 12 }, (_, index) => ({
+      id: `video${String(index).padStart(6, '0')}`,
+      title: `Song ${index}`,
+      duration: 120,
+    }))
+    expect(parseYouTubeSearchResults(JSON.stringify({ entries }), 300)).toHaveLength(12)
+  })
 })

@@ -17,14 +17,15 @@ router.get('/search', async (ctx) => {
   enforceSearchRate(ctx)
 
   const query = typeof ctx.query.q === 'string' ? ctx.query.q : ''
+  const page = typeof ctx.query.page === 'string' ? Number(ctx.query.page) : 1
   try {
-    ctx.body = await searchYouTube(query, {
+    ctx.body = await searchYouTube(query, page, {
       maxDuration: ctx.env.KES_YOUTUBE_MAX_DURATION,
       providerUrl: ctx.env.KES_YOUTUBE_POT_PROVIDER_URL,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    if (/at least two|limited to 120/.test(message)) ctx.throw(422, message)
+    if (/at least two|limited to 120|pages must be between/.test(message)) ctx.throw(422, message)
     if (/search service is busy/.test(message)) ctx.throw(429, message)
     if (/timed out/.test(message)) ctx.throw(504, message)
     if (/ENOENT.*yt-dlp|spawn yt-dlp|Could not start yt-dlp/i.test(message)) {

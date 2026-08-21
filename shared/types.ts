@@ -38,6 +38,12 @@ export interface YouTubeSearchResult {
   url: string
 }
 
+export interface YouTubeSearchResponse {
+  results: YouTubeSearchResult[]
+  page: number
+  hasNextPage: boolean
+}
+
 export interface QueueItem {
   queueId: number
   songId: number

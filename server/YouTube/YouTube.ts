@@ -6,7 +6,7 @@ import Prefs from '../Prefs/Prefs.js'
 import Media from '../Media/Media.js'
 import Queue from '../Queue/Queue.js'
 import { getMediaQueueReadiness } from '../Media/MediaQueueReadiness.js'
-import type { YouTubeJob, YouTubeSearchResult } from '../../shared/types.js'
+import type { YouTubeJob, YouTubeSearchResponse, YouTubeSearchResult } from '../../shared/types.js'
 import { ProcessExecutionError, runProcessText } from '../lib/runProcess.js'
 
 const log = getLogger('YouTube')
@@ -14,7 +14,9 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
 const MAX_DOWNLOAD_HEIGHT = 1080
 const SEARCH_CACHE_MS = 5 * 60 * 1000
 const SEARCH_CONCURRENCY = 3
-const SEARCH_LIMIT = 10
+const SEARCH_PAGE_SIZE = 10
+const SEARCH_CANDIDATES_PER_PAGE = 20
+const MAX_SEARCH_PAGE = 10
 const SEARCH_TIMEOUT_MS = 15 * 1000
 const MEDIA_PREPARATION_TIMEOUT_MS = positiveInteger(process.env.KES_YOUTUBE_PROCESSING_TIMEOUT_MS, 60 * 60 * 1000)
 // yt-dlp fallback chain. The mp4/m4a pairing at the top gives cleanly
@@ -46,8 +48,8 @@ interface YouTubeOptions {
 }
 
 const jobs = new Map<string, YouTubeJob>()
-const searchCache = new Map<string, { expiresAt: number, results: YouTubeSearchResult[] }>()
-const pendingSearches = new Map<string, Promise<YouTubeSearchResult[]>>()
+const searchCache = new Map<string, { expiresAt: number, response: YouTubeSearchResponse }>()
+const pendingSearches = new Map<string, Promise<YouTubeSearchResponse>>()
 let activeDownloads = 0
 let activeSearches = 0
 
@@ -120,12 +122,16 @@ export function getRoomYouTubeJobs (roomId: number): YouTubeJob[] {
 
 export async function searchYouTube (
   input: string,
+  page: number,
   options: Pick<YouTubeOptions, 'maxDuration' | 'providerUrl'>,
-): Promise<YouTubeSearchResult[]> {
+): Promise<YouTubeSearchResponse> {
   const query = normalizeSearchQuery(input)
-  const cacheKey = query.toLowerCase()
+  if (!Number.isInteger(page) || page < 1 || page > MAX_SEARCH_PAGE) {
+    throw new Error(`YouTube search pages must be between 1 and ${MAX_SEARCH_PAGE}`)
+  }
+  const cacheKey = `${query.toLowerCase()}\n${page}`
   const cached = searchCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) return cached.results
+  if (cached && cached.expiresAt > Date.now()) return cached.response
 
   const pending = pendingSearches.get(cacheKey)
   if (pending) return pending
@@ -134,13 +140,13 @@ export async function searchYouTube (
   }
 
   activeSearches++
-  const request = runYouTubeSearch(query, options).finally(() => activeSearches--)
+  const request = runYouTubeSearch(query, page, options).finally(() => activeSearches--)
   pendingSearches.set(cacheKey, request)
   try {
-    const results = await request
-    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_MS, results })
+    const response = await request
+    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_MS, response })
     pruneSearchCache()
-    return results
+    return response
   } finally {
     pendingSearches.delete(cacheKey)
   }
@@ -179,7 +185,7 @@ export function parseYouTubeSearchResults (output: string, maxDuration: number):
       title: rawTitle || 'Untitled YouTube video',
       url: `https://www.youtube.com/watch?v=${id}`,
     }]
-  }).slice(0, SEARCH_LIMIT)
+  })
 }
 
 function normalizeSearchQuery (input: string): string {
@@ -191,14 +197,18 @@ function normalizeSearchQuery (input: string): string {
 
 async function runYouTubeSearch (
   query: string,
+  page: number,
   options: Pick<YouTubeOptions, 'maxDuration' | 'providerUrl'>,
-): Promise<YouTubeSearchResult[]> {
+): Promise<YouTubeSearchResponse> {
+  // Fetch extra candidates because duration/live filtering can otherwise make a
+  // ten-item YouTube result set appear arbitrarily shorter.
+  const candidateLimit = page * SEARCH_CANDIDATES_PER_PAGE
   const args = [
     '--ignore-config',
     '--flat-playlist',
     '--skip-download',
     '--dump-single-json',
-    '--playlist-end', String(SEARCH_LIMIT),
+    '--playlist-end', String(candidateLimit),
     '--force-ipv4',
     '--js-runtimes', 'node',
   ]
@@ -206,7 +216,7 @@ async function runYouTubeSearch (
     args.push('--extractor-args', 'youtube:player-client=web_embedded')
     args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${options.providerUrl}`)
   }
-  args.push(`ytsearch${SEARCH_LIMIT}:${query}`)
+  args.push(`ytsearch${candidateLimit}:${query}`)
 
   try {
     const { stdout } = await runProcessText('yt-dlp', args, {
@@ -215,13 +225,32 @@ async function runYouTubeSearch (
       maxStderrBytes: 16 * 1024,
       rejectOnStdoutOverflow: true,
     })
-    return parseYouTubeSearchResults(stdout, options.maxDuration)
+    const eligible = parseYouTubeSearchResults(stdout, options.maxDuration)
+    const start = (page - 1) * SEARCH_PAGE_SIZE
+    return {
+      results: eligible.slice(start, start + SEARCH_PAGE_SIZE),
+      page,
+      // A full candidate batch means yt-dlp may have more results even when
+      // filtering left fewer than a full next page of eligible videos.
+      hasNextPage: page < MAX_SEARCH_PAGE && (
+        eligible.length > start + SEARCH_PAGE_SIZE || countSearchEntries(stdout) >= candidateLimit
+      ),
+    }
   } catch (error) {
     if (error instanceof ProcessExecutionError) {
       if (/timed out/.test(error.message)) throw new Error('YouTube search timed out')
       throw new Error(error.stderr.toString().trim() || error.message, { cause: error })
     }
     throw error
+  }
+}
+
+function countSearchEntries (output: string): number {
+  try {
+    const data = JSON.parse(output) as { entries?: unknown[] }
+    return Array.isArray(data.entries) ? data.entries.length : 0
+  } catch {
+    return 0
   }
 }
 

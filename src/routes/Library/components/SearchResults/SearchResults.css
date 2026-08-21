@@ -139,6 +139,20 @@
   border: 0;
 }
 
+.youtubePagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-m);
+  padding-top: 4px;
+}
+
+.youtubePagination span {
+  min-width: 4.5rem;
+  color: #bbb;
+  text-align: center;
+}
+
 @media (max-width: 500px) {
   .youtubeCard {
     grid-template-columns: 6rem minmax(0, 1fr);
