@@ -339,7 +339,7 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
     const media = await waitForMedia(libraryPath.pathId, relPath)
     job.status = 'processing'
     job.progress = null
-    job.message = 'Preparing script and instrumental track before queueing'
+    job.message = 'Preparing instrumental track before queueing'
     options.pushJobs()
     await waitForMediaPreparation(media.mediaId)
     Queue.add({ roomId: job.roomId, songId: media.songId, userId: job.userId })
@@ -486,7 +486,7 @@ async function waitForMediaPreparation (mediaId: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 500))
   }
 
-  throw new Error('The download finished, but its script and instrumental track did not finish in time')
+  throw new Error('The download finished, but its instrumental track did not finish in time')
 }
 
 function positiveInteger (value: string | undefined, fallback: number): number {

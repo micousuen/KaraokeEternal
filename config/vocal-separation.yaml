@@ -25,7 +25,9 @@ instrumentalVocalMix: 0.05
 # Qwen3-ForcedAligner are deliberately run CPU-only so no CUDA runtime or GPU
 # is required.
 scripting:
-  enabled: true
+  # Temporarily disabled: CPU transcription is too slow on the server. Managed
+  # downloads are queued as soon as their instrumental/transcode work finishes.
+  enabled: false
   # HuggingFace repo id for the ASR model (transcription only, no timing).
   model: Qwen/Qwen3-ASR-1.7B
   # HuggingFace repo id for the forced-alignment model that turns the ASR

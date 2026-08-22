@@ -1,4 +1,5 @@
 import { db } from '../lib/Database.js'
+import { loadVocalSeparationConfig } from './VocalSeparationConfig.js'
 
 export type MediaQueueReadiness = 'missing' | 'processing' | 'ready'
 
@@ -8,6 +9,8 @@ interface ReadinessRow {
   pathData: string
   scriptReady: number | null
 }
+
+export const managedDownloadsRequireScript = loadVocalSeparationConfig().scripting.enabled
 
 export function getMediaQueueReadiness (mediaId: number): MediaQueueReadiness {
   const row = db.get<ReadinessRow>(`
@@ -37,7 +40,7 @@ export function getSongQueueReadiness (songId: number): MediaQueueReadiness {
 
 function isReady (row: ReadinessRow): boolean {
   if (!row.isManagedDownload && !isManagedDownloadPath(row.pathData)) return true
-  return (row.audioTrackCount ?? 0) >= 2 && row.scriptReady === 1
+  return (row.audioTrackCount ?? 0) >= 2 && (!managedDownloadsRequireScript || row.scriptReady === 1)
 }
 
 function isManagedDownloadPath (data: string): boolean {

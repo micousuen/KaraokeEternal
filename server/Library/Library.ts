@@ -5,7 +5,7 @@ import { performance } from 'perf_hooks'
 import { Worker } from 'node:worker_threads'
 import { Song, Artist } from '../../shared/types.js'
 import Media from '../Media/Media.js'
-import { getSongQueueReadiness } from '../Media/MediaQueueReadiness.js'
+import { getSongQueueReadiness, managedDownloadsRequireScript } from '../Media/MediaQueueReadiness.js'
 import type { LibrarySnapshot } from './LibrarySnapshot.js'
 
 const log = getLogger('Library')
@@ -100,7 +100,8 @@ class Library {
         MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack,
         MAX(CASE WHEN
           (media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) = 0
-          OR (COALESCE(audioTrackAnalysis.audioTrackCount, 0) >= 2 AND COALESCE(audioTrackAnalysis.scriptReady, 0) = 1)
+          OR (COALESCE(audioTrackAnalysis.audioTrackCount, 0) >= 2
+            AND (${Number(managedDownloadsRequireScript)} = 0 OR COALESCE(audioTrackAnalysis.scriptReady, 0) = 1))
           THEN 1 ELSE 0
         END) AS isQueueReady
       FROM songs

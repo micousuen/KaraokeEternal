@@ -1,5 +1,6 @@
 import type { DatabaseWrapper } from '../lib/Database.js'
 import type { Artist, Song } from '../../shared/types.js'
+import { managedDownloadsRequireScript } from '../Media/MediaQueueReadiness.js'
 
 export interface LibrarySnapshot {
   version: number
@@ -24,7 +25,8 @@ export function buildLibrarySnapshot (database: DatabaseWrapper, version: number
       MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack,
       MAX(CASE WHEN
         (media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) = 0
-        OR (COALESCE(audioTrackAnalysis.audioTrackCount, 0) >= 2 AND COALESCE(audioTrackAnalysis.scriptReady, 0) = 1)
+        OR (COALESCE(audioTrackAnalysis.audioTrackCount, 0) >= 2
+          AND (? = 0 OR COALESCE(audioTrackAnalysis.scriptReady, 0) = 1))
         THEN 1 ELSE 0
       END) AS isQueueReady
     FROM media
@@ -33,7 +35,7 @@ export function buildLibrarySnapshot (database: DatabaseWrapper, version: number
       LEFT JOIN audioTrackAnalysis USING (mediaId)
     GROUP BY songId
     ORDER BY songs.titleNorm, paths.priority ASC
-  `)
+  `, [Number(managedDownloadsRequireScript)])
 
   for (const row of songRows) {
     const song = { ...row }

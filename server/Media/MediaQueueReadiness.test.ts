@@ -31,18 +31,18 @@ describe('YouTube media queue readiness', () => {
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
 
-  it('blocks a managed download until both A2 and its script are ready', () => {
+  it('blocks a managed download until A2 is ready when scripting is disabled', () => {
     expect(getMediaQueueReadiness(1)).toBe('processing')
     expect(getSongQueueReadiness(1)).toBe('processing')
     expect(buildLibrarySnapshot(db, 1).songs.entities[1].isProcessing).toBe(true)
     expect(() => Queue.add({ roomId: 1, songId: 1, userId: 1 }))
-      .toThrow('still preparing its script and instrumental track')
+      .toThrow('still preparing its instrumental track')
 
     db.run(`
       INSERT INTO audioTrackAnalysis
         (mediaId, audioTrackCount, ktvTrack, confidence, sourceSize, sourceMtimeMs,
           dateAnalyzed, duration, scriptReady)
-      VALUES (1, 2, 1, 1, 100, 1000, 1000, 240, 1)
+      VALUES (1, 2, 1, 1, 100, 1000, 1000, 240, 0)
     `)
 
     expect(getMediaQueueReadiness(1)).toBe('ready')

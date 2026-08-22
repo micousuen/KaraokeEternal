@@ -170,7 +170,7 @@ const SongItem = ({
             className={styles.primary}
             aria-disabled={isProcessing || undefined}
             title={isProcessing
-              ? 'Preparing script and instrumental track before queueing'
+              ? 'Preparing instrumental track before queueing'
               : canManage ? 'Right-click or long-press for song actions' : undefined}
           >
             <div className={styles.title}>

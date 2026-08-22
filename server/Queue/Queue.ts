@@ -14,7 +14,7 @@ class Queue {
     const readiness = getSongQueueReadiness(songId)
     if (readiness === 'missing') throw new Error('Song not found')
     if (readiness === 'processing') {
-      throw new Error('This YouTube download is still preparing its script and instrumental track')
+      throw new Error('This YouTube download is still preparing its instrumental track')
     }
     const fields = new Map()
     fields.set('roomId', roomId)
