@@ -1,6 +1,10 @@
 import type { DatabaseWrapper } from '../lib/Database.js'
 import type { Artist, Song } from '../../shared/types.js'
-import { managedDownloadsRequireScript } from '../Media/MediaQueueReadiness.js'
+import { loadVocalSeparationConfig } from '../Media/VocalSeparationConfig.js'
+
+// Keep this worker-safe: importing MediaQueueReadiness here would eagerly load
+// Database and its logger before librarySnapshotWorker initializes either one.
+const managedDownloadsRequireScript = loadVocalSeparationConfig().scripting.enabled
 
 export interface LibrarySnapshot {
   version: number
