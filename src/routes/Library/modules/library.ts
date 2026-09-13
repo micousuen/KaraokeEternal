@@ -54,7 +54,7 @@ const initialState: LibraryState = {
   version: 0,
   filterStr: '',
   filterStarred: false,
-  sortMode: 'alphabetical',
+  sortMode: 'requested',
   scrollRow: 0,
   expandedArtists: [],
   expandedArtistResults: [],
