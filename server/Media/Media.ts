@@ -140,6 +140,48 @@ class Media {
     return { songId }
   }
 
+  /** Permanently delete a song's files and database records; returns the deleted mediaIds. */
+  static async deleteSong (songId: number): Promise<number[]> {
+    if (!Number.isInteger(songId)) throw new Error('Invalid songId')
+    const result = Media.search({ songId })
+    if (!result.result.length) throw new Error('Song not found')
+    const mediaItems = result.result.map(mediaId => result.entities[mediaId])
+
+    // Delete the files first; if any media file cannot be deleted, the song
+    // stays fully intact instead of being resurrected by the next scan.
+    for (const media of mediaItems) {
+      const file = path.resolve(media.path, media.relPath)
+      const extension = path.extname(media.relPath)
+      const script = path.join(path.dirname(file), `${path.basename(file, extension)}.srt`)
+      await fsPromises.rm(script, { force: true }).catch(() => undefined)
+      try {
+        await fsPromises.rm(file)
+      } catch (err) {
+        throw new Error(`Could not delete ${path.basename(file)}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
+    // Queue items first; Queue.remove repairs each room's linked list.
+    const queueIds = db.all<{ queueId: number }>('SELECT queueId FROM queue WHERE songId = ?', [songId])
+    for (const row of queueIds) Queue.remove(row.queueId)
+
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      // Deleting media cascades audioTrackAnalysis, mediaMetadataAnalysis and
+      // vocalSeparationHistory.
+      db.run('DELETE FROM media WHERE songId = ?', [songId])
+      db.run('DELETE FROM songStars WHERE songId = ?', [songId])
+      db.run('DELETE FROM songs WHERE songId = ?', [songId])
+      db.exec('COMMIT')
+    } catch (err) {
+      db.exec('ROLLBACK')
+      throw err
+    }
+
+    log.info(`deleted songId=${songId} (${mediaItems.length} media file(s))`)
+    return mediaItems.map(media => media.mediaId as number)
+  }
+
   /**
    * Get media matching all search criteria
    */

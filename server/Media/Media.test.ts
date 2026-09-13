@@ -96,4 +96,28 @@ describe('song rename', () => {
     expect(db.get('SELECT requestCount FROM songs WHERE songId = 2')).toEqual({ requestCount: 8 })
     expect(db.get('SELECT songId FROM songs WHERE songId = 1')).toBeUndefined()
   })
+
+  it('deletes the media file, script, and database records', async () => {
+    fs.writeFileSync(path.join(tempDir, 'YouTube-Old title-YouTube [12345678901].srt'), 'script')
+    db.run('INSERT INTO queue (queueId, roomId, songId, userId) VALUES (1, 1, 1, 1)')
+    db.run('INSERT INTO songStars (userId, songId) VALUES (1, 1)')
+
+    const mediaIds = await Media.deleteSong(1)
+
+    expect(mediaIds).toEqual([1])
+    expect(fs.existsSync(path.join(tempDir, oldName))).toBe(false)
+    expect(fs.existsSync(path.join(tempDir, 'YouTube-Old title-YouTube [12345678901].srt'))).toBe(false)
+    expect(db.get('SELECT * FROM media WHERE songId = 1')).toBeUndefined()
+    expect(db.get('SELECT * FROM songs WHERE songId = 1')).toBeUndefined()
+    expect(db.get('SELECT * FROM songStars WHERE songId = 1')).toBeUndefined()
+    expect(db.get('SELECT * FROM queue WHERE songId = 1')).toBeUndefined()
+  })
+
+  it('keeps the song intact when its file cannot be deleted', async () => {
+    fs.rmSync(path.join(tempDir, oldName))
+
+    await expect(Media.deleteSong(1)).rejects.toThrow('Could not delete')
+    expect(db.get('SELECT relPath FROM media WHERE mediaId = 1')).toEqual({ relPath: oldName })
+    expect(db.get('SELECT title FROM songs WHERE songId = 1')).toEqual({ title: 'Old title' })
+  })
 })

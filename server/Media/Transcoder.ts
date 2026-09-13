@@ -487,6 +487,23 @@ async function removeStaleVersions (mediaId: number, keep: string): Promise<void
     .map(entry => fsPromises.rm(path.join(cacheDir, entry.name), { recursive: true, force: true })))
 }
 
+/** Remove every cached transcode artifact for the given media ids. */
+export async function removeMediaArtifacts (mediaIds: number[]): Promise<void> {
+  if (!mediaIds.length) return
+  let entries: fs.Dirent[]
+  try {
+    entries = await fsPromises.readdir(cacheDir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  await Promise.all(entries
+    .filter(entry => entry.isDirectory()
+      && /^\d+-[a-f0-9]+(?:-audio|-source-audio-\d+)?$/.test(entry.name)
+      && mediaIds.some(mediaId => entry.name.startsWith(`${mediaId}-`))
+      && !activeCacheDirectories.has(path.join(cacheDir, entry.name)))
+    .map(entry => fsPromises.rm(path.join(cacheDir, entry.name), { recursive: true, force: true })))
+}
+
 /** Serialize background pruning so cache accounting never delays playback. */
 async function pruneCache (): Promise<void> {
   const prune = async () => {

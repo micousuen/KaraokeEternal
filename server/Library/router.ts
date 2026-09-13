@@ -6,7 +6,9 @@ import Media from '../Media/Media.js'
 import Library from './Library.js'
 import fileTypes from '../Media/fileTypes.js'
 import { forceMediaProcessing } from '../Media/AudioTrackAnalysis.js'
-import { renameManagedDownloadWithAi } from '../YouTube/AiSongNaming.js'
+import { renameManagedDownloadWithAi, isManagedDownloadSong } from '../YouTube/AiSongNaming.js'
+import { getSongQueueReadiness } from '../Media/MediaQueueReadiness.js'
+import { removeMediaArtifacts } from '../Media/Transcoder.js'
 import {
   findInstrumentalRegenerationCandidates,
   findNameReparsingCandidates,
@@ -14,8 +16,10 @@ import {
 } from './DownloadRegeneration.js'
 import Prefs from '../Prefs/Prefs.js'
 import { getExt } from '../lib/util.js'
+import getLogger from '../lib/Log.js'
 import pushQueuesAndLibrary from '../lib/pushQueuesAndLibrary.js'
 import { LIBRARY_PUSH_SONG } from '../../shared/actionTypes.js'
+const log = getLogger('Library')
 const router = new KoaRouter({ prefix: '/api' })
 const compressBrotli = promisify(brotliCompress)
 const compressGzip = promisify(gzip)
@@ -116,6 +120,29 @@ router.post('/song/:songId/ai-rename', async (ctx) => {
       ctx.throw(502, message)
     }
     ctx.throw(422, message)
+  }
+})
+
+// permanently delete a managed YouTube download song
+router.delete('/song/:songId', async (ctx) => {
+  if (!ctx.user.isAdmin) ctx.throw(401)
+  const songId = parseInt(ctx.params.songId, 10)
+  if (!Number.isInteger(songId)) ctx.throw(422, 'Invalid songId')
+
+  if (!isManagedDownloadSong(songId)) ctx.throw(422, 'Only YouTube downloads can be deleted')
+  if (getSongQueueReadiness(songId) === 'processing') {
+    ctx.throw(422, 'This download is still processing; wait for it to finish')
+  }
+
+  try {
+    const mediaIds = await Media.deleteSong(songId)
+    void removeMediaArtifacts(mediaIds).catch((error) => {
+      log.warn('Could not remove transcode cache for songId=%s: %s', songId, error.message)
+    })
+    pushQueuesAndLibrary(ctx.io)
+    ctx.status = 204
+  } catch (err) {
+    ctx.throw(422, err instanceof Error ? err.message : String(err))
   }
 })
 

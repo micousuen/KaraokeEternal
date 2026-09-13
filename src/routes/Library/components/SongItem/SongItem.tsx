@@ -14,6 +14,7 @@ import styles from './SongItem.css'
 import RenameSongModal from './RenameSongModal'
 import RegenerateSongModal, { type RegenerateOutput } from './RegenerateSongModal'
 import AiRenameSongModal from './AiRenameSongModal'
+import DeleteSongModal from './DeleteSongModal'
 
 interface SongItemProps {
   songId: number
@@ -59,6 +60,7 @@ const SongItem = ({
   const [isExpanded, setExpanded] = useState(false)
   const [isRenameOpen, setRenameOpen] = useState(false)
   const [isAiRenameOpen, setAiRenameOpen] = useState(false)
+  const [isDeleteOpen, setDeleteOpen] = useState(false)
   const [regenerateOutput, setRegenerateOutput] = useState<RegenerateOutput | null>(null)
   const [actionMenu, setActionMenu] = useState<{ x: number, y: number } | null>(null)
   const actionMenuRef = useRef<HTMLDivElement>(null)
@@ -91,7 +93,7 @@ const SongItem = ({
   const closeActionMenu = () => setActionMenu(null)
   const openActionMenu = (x: number, y: number) => {
     const menuWidth = 240
-    const menuHeight = isManagedDownload ? 176 : 132
+    const menuHeight = isManagedDownload ? 220 : 132
     setActionMenu({
       x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
       y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
@@ -132,6 +134,11 @@ const SongItem = ({
   const handleAiRename = () => {
     closeActionMenu()
     setAiRenameOpen(true)
+  }
+
+  const handleDelete = () => {
+    closeActionMenu()
+    setDeleteOpen(true)
   }
 
   const handleRegenerate = (output: RegenerateOutput) => {
@@ -228,6 +235,9 @@ const SongItem = ({
           <button type='button' role='menuitem' onClick={() => handleRegenerate('script')}>
             Regenerate script
           </button>
+          {isManagedDownload && (
+            <button type='button' role='menuitem' onClick={handleDelete}>Delete</button>
+          )}
         </div>,
         document.body,
       )}
@@ -243,6 +253,14 @@ const SongItem = ({
         <AiRenameSongModal
           songId={songId}
           onClose={() => setAiRenameOpen(false)}
+        />
+      )}
+      {isDeleteOpen && (
+        <DeleteSongModal
+          songId={songId}
+          title={title}
+          artist={author}
+          onClose={() => setDeleteOpen(false)}
         />
       )}
       {regenerateOutput && (
