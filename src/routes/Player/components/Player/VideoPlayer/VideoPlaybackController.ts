@@ -27,12 +27,24 @@ interface ControllerOptions {
 const mediaVersion = `&v=${BROWSER_MEDIA_VERSION}`
 const audioFormat = /Web0S|webOS|NetCast/i.test(navigator.userAgent) ? '&audioFormat=aac' : ''
 
+// Audio is the playback master; the muted video follows it. Phone hardware
+// decodes video slowly, so a tight seek threshold causes a seek-storm (the
+// video visibly flickers in quick bursts). Small drift converges invisibly
+// through playback-rate nudges; only large drift hard-seeks, and even then
+// only after the previous seek had time to settle.
+const SYNC_RATE_THRESHOLD = 0.05
+const SYNC_STRONG_DRIFT = 0.25
+const SYNC_SEEK_THRESHOLD = 0.5
+const SEEK_SETTLE_MS = 750
+
 export class VideoPlaybackController {
   #audio: HTMLAudioElement
   #audioReady = false
   #getProps: () => VideoPlaybackProps
+  #lastSeekAt = 0
   #options: ControllerOptions
   #pendingPosition = 0
+  #playRetries = 0
   #playRequest = 0
   #sourceInfo: SourceMediaInfo | undefined
   #sourceRequest = 0
@@ -57,9 +69,12 @@ export class VideoPlaybackController {
     this.#options.onStopped?.()
     this.#pendingPosition = 0
     this.#playRequest++
+    this.#playRetries = 0
+    this.#lastSeekAt = 0
     this.#videoReady = false
     this.#audioReady = false
     this.#sourceInfo = undefined
+    this.#video.playbackRate = 1
     this.#video.pause()
     this.#audio.pause()
     if (this.#options.combinedPlayback) {
@@ -130,8 +145,10 @@ export class VideoPlaybackController {
     }
 
     if (props.isPlaying) {
-      if (!this.#videoReady || !this.#audioReady) return
-      this.#video.currentTime = this.#audio.currentTime
+      if (!this.#isReadyToPlay()) return
+      // An unnecessary pre-play seek shows as a black flash on phones.
+      const position = this.#audio.currentTime
+      if (Math.abs(this.#video.currentTime - position) > 0.1) this.setCurrentTime(position)
       const request = ++this.#playRequest
       Promise.all([this.#video.play(), this.#audio.play()])
         .catch(error => this.#handlePlayError(error, request))
@@ -140,6 +157,7 @@ export class VideoPlaybackController {
 
   stop (): void {
     this.#playRequest++
+    this.#video.playbackRate = 1
     this.#video.pause()
     this.#audio.pause()
     this.#options.onStopped?.()
@@ -155,6 +173,8 @@ export class VideoPlaybackController {
   }
 
   setCurrentTime (position: number): void {
+    this.#lastSeekAt = Date.now()
+    this.#video.playbackRate = 1
     this.#video.currentTime = position
     this.#audio.currentTime = position
   }
@@ -211,13 +231,27 @@ export class VideoPlaybackController {
   }
 
   handlePlay = (): void => {
+    this.#playRetries = 0
     this.#getProps().onPlay()
     this.#options.onPlaybackStarted?.()
   }
 
   handleTimeUpdate = (): void => {
     const position = this.#audio.currentTime
-    if (Math.abs(this.#video.currentTime - position) > 0.2) this.#video.currentTime = position
+    const drift = position - this.#video.currentTime
+    const behind = Math.abs(drift)
+    if (behind > SYNC_SEEK_THRESHOLD && Date.now() - this.#lastSeekAt > SEEK_SETTLE_MS) {
+      this.#lastSeekAt = Date.now()
+      this.#video.playbackRate = 1
+      this.#video.currentTime = position
+    } else if (behind > SYNC_RATE_THRESHOLD) {
+      // Video-only correction; the audible track is untouched.
+      const strong = behind > SYNC_STRONG_DRIFT
+      const rate = drift > 0 ? (strong ? 1.1 : 1.05) : (strong ? 0.9 : 0.95)
+      if (this.#video.playbackRate !== rate) this.#video.playbackRate = rate
+    } else if (this.#video.playbackRate !== 1) {
+      this.#video.playbackRate = 1
+    }
     this.#getProps().onStatus({ position })
   }
 
@@ -238,8 +272,27 @@ export class VideoPlaybackController {
   }
 
   #handlePlayError (error: unknown, request: number): void {
-    if (request !== this.#playRequest || isPlayInterruption(error)) return
+    if (request !== this.#playRequest) return
+    if (isPlayInterruption(error)) {
+      // A load or pause interrupted the request. A follow-up event usually
+      // restarts playback, but when none arrives the elements stay idle —
+      // a permanent black screen on phones until the page is refreshed.
+      const retryRequest = this.#playRequest
+      setTimeout(() => {
+        if (retryRequest !== this.#playRequest) return
+        if (!this.#getProps().isPlaying || !this.#isReadyToPlay()) return
+        if (++this.#playRetries > 3) return
+        this.updateIsPlaying()
+      }, 250)
+      return
+    }
     this.#getProps().onError(error instanceof Error ? error.message : String(error))
+  }
+
+  #isReadyToPlay (): boolean {
+    return this.#options.combinedPlayback
+      ? this.#videoReady
+      : this.#videoReady && this.#audioReady
   }
 
   #reportMediaError (element: HTMLMediaElement, kind: 'audio' | 'video'): void {

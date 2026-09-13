@@ -45,6 +45,7 @@ class VideoPlayer extends React.Component<VideoPlayerProps> {
         <video
           className={styles.video}
           muted={!isWebOs}
+          playsInline
           preload='auto'
           width={width}
           height={height}

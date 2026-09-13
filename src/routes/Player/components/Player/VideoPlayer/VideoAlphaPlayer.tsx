@@ -34,6 +34,7 @@ class VideoAlphaPlayer extends React.Component<VideoAlphaPlayerProps> {
     this.props.onAudioElement(this.audio)
     this.audio.preload = 'auto'
     this.video.muted = true
+    this.video.playsInline = true
     this.video.preload = 'auto'
 
     if (this.canvas.current) {
