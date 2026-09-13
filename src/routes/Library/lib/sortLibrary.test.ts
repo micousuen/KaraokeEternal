@@ -46,6 +46,26 @@ describe('library ordering', () => {
 
     expect(sortSongIds([1, 2, 3, 4], songs, 'requested')).toEqual([1, 3, 4, 2])
   })
+
+  it('orders songs by download date, newest first, with romanized ties', () => {
+    const songs = {
+      1: { ...song(1, 9, 'Zhou', 'Z'), dateAdded: 100 },
+      2: { ...song(2, 0, 'Beyonce', 'B'), dateAdded: 300 },
+      3: { ...song(3, 0, 'Adele', 'A'), dateAdded: 300 },
+      4: { ...song(4, 0, 'Old', 'O'), dateAdded: 50 },
+    }
+
+    expect(sortSongIds([1, 2, 3, 4], songs, 'downloads')).toEqual([3, 2, 1, 4])
+  })
+
+  it('falls back to alphabetical order in downloads mode when dates are missing', () => {
+    const songs = {
+      1: song(1, 9, 'Zhou', 'Z'),
+      2: song(2, 0, 'Adele', 'A'),
+    }
+
+    expect(sortSongIds([1, 2], songs, 'downloads')).toEqual([2, 1])
+  })
 })
 
 function artist (artistId: number, name: string, requestCount: number, sortKey: string, sortLetter: string): Artist {

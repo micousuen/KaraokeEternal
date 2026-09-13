@@ -12,13 +12,14 @@ function compareAlphabetical (
   return leftBucket - rightBucket || collator.compare(left.sortKey, right.sortKey)
 }
 
-function compareByMode<T extends { requestCount: number, sortKey: string, sortLetter: string }> (
+function compareByMode<T extends { dateAdded?: number, requestCount: number, sortKey: string, sortLetter: string }> (
   left: T,
   right: T,
   mode: LibrarySortMode,
 ): number {
-  return (mode === 'requested' ? right.requestCount - left.requestCount : 0)
-    || compareAlphabetical(left, right)
+  if (mode === 'requested') return right.requestCount - left.requestCount || compareAlphabetical(left, right)
+  if (mode === 'downloads') return (right.dateAdded || 0) - (left.dateAdded || 0) || compareAlphabetical(left, right)
+  return compareAlphabetical(left, right)
 }
 
 export function sortArtistIds (

@@ -67,6 +67,7 @@ class Library {
     }
 
     const isManagedDownload = result.some(mediaId => !!entities[mediaId].isManagedDownload || isManagedDownloadPath(entities[mediaId].pathData))
+    const dateAdded = result.reduce((latest, mediaId) => Math.max(latest, entities[mediaId].dateAdded || 0), 0)
     const requestCount = db.get<{ requestCount: number }>(
       'SELECT requestCount FROM songs WHERE songId = ?',
       [songId],
@@ -74,6 +75,7 @@ class Library {
     return {
       [songId]: {
         artistId: media.artistId,
+        dateAdded,
         duration: media.duration,
         language: media.language,
         songId: media.songId,
@@ -103,6 +105,7 @@ class Library {
     const query = sql`
       SELECT artists.artistId, artists.name, songs.songId, songs.title, songs.language,
         songs.requestCount, MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia,
+        MAX(media.dateAdded) AS dateAdded,
         MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
         MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack,
         MAX(CASE WHEN

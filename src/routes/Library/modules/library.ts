@@ -36,7 +36,7 @@ export const setFilterStr = createAction(LIBRARY_FILTER_STRING, (payload: string
 // ------------------------------------
 // Reducer
 // ------------------------------------
-export type LibrarySortMode = 'alphabetical' | 'requested'
+export type LibrarySortMode = 'alphabetical' | 'requested' | 'downloads'
 
 interface LibraryState {
   isLoading: boolean
@@ -72,7 +72,9 @@ const libraryReducer = createReducer(initialState, (builder) => {
       state.filterStarred = !state.filterStarred
     })
     .addCase(toggleLibrarySort, (state) => {
-      state.sortMode = state.sortMode === 'alphabetical' ? 'requested' : 'alphabetical'
+      state.sortMode = state.sortMode === 'alphabetical'
+        ? 'requested'
+        : state.sortMode === 'requested' ? 'downloads' : 'alphabetical'
       state.scrollRow = 0
     })
     .addCase(scrollArtists, (state, { payload }) => {

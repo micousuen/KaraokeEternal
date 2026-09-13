@@ -26,6 +26,7 @@ export function buildLibrarySnapshot (database: DatabaseWrapper, version: number
     SELECT media.duration AS duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
       songs.language AS language, songs.requestCount AS requestCount,
       MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia,
+      MAX(media.dateAdded) AS dateAdded,
       MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
       MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack,
       MAX(CASE WHEN

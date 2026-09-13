@@ -9,6 +9,7 @@ export interface Artist {
 
 export interface Song {
   artistId: number
+  dateAdded?: number
   duration: number
   language: string | null
   songId: number

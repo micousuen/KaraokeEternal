@@ -5,9 +5,31 @@ import { setFilterStr, resetFilterStr, toggleFilterStarred, toggleLibrarySort } 
 import Button from 'components/Button/Button'
 import styles from './LibraryHeader.css'
 
+const SORT_MODES = {
+  requested: {
+    active: true,
+    label: 'Top',
+    next: 'downloads',
+    description: 'most requested',
+  },
+  alphabetical: {
+    active: false,
+    label: 'A–Z',
+    next: 'requested',
+    description: 'alphabetical',
+  },
+  downloads: {
+    active: true,
+    label: 'New',
+    next: 'alphabetical',
+    description: 'YouTube downloads, newest first',
+  },
+} as const
+
 const LibraryHeader = () => {
   const dispatch = useAppDispatch()
   const { filterStr, filterStarred, sortMode } = useAppSelector(state => state.library)
+  const mode = SORT_MODES[sortMode]
 
   const searchInput = useRef<HTMLInputElement>(null)
   const [value, setValue] = useState(filterStr)
@@ -55,13 +77,13 @@ const LibraryHeader = () => {
         onClick={() => dispatch(toggleFilterStarred())}
       />
       <Button
-        aria-label={sortMode === 'alphabetical' ? 'Sort by most requested' : 'Sort alphabetically'}
-        className={clsx(styles.btnSort, sortMode === 'requested' && styles.active)}
+        aria-label={`Currently ${mode.description}; switch to ${SORT_MODES[mode.next].description}`}
+        className={clsx(styles.btnSort, mode.active && styles.active)}
         icon='TUNE'
         onClick={() => dispatch(toggleLibrarySort())}
-        title={sortMode === 'alphabetical' ? 'Currently A–Z; switch to most requested' : 'Currently most requested; switch to A–Z'}
+        title={`Currently ${mode.description}; switch to ${SORT_MODES[mode.next].description}`}
       >
-        <span>{sortMode === 'alphabetical' ? 'A–Z' : 'Top'}</span>
+        <span>{mode.label}</span>
       </Button>
     </div>
   )

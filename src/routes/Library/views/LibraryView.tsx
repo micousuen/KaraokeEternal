@@ -2,6 +2,7 @@ import React from 'react'
 import { useAppSelector } from 'store/hooks'
 import { Link } from 'react-router'
 import ArtistList from '../components/ArtistList/ArtistList'
+import DownloadsList from '../components/DownloadsList/DownloadsList'
 import SearchResults from '../components/SearchResults/SearchResults'
 import TextOverlay from 'components/TextOverlay/TextOverlay'
 import Spinner from 'components/Spinner/Spinner'
@@ -9,7 +10,7 @@ import styles from './LibraryView.css'
 
 const LibraryView = () => {
   const { isAdmin } = useAppSelector(state => state.user)
-  const { isLoading, filterStr, filterStarred } = useAppSelector(state => state.library)
+  const { isLoading, filterStr, filterStarred, sortMode } = useAppSelector(state => state.library)
   const songsResult = useAppSelector(state => state.songs.result)
   const ui = useAppSelector(state => state.ui)
 
@@ -20,7 +21,9 @@ const LibraryView = () => {
 
   return (
     <>
-      {!isSearching && <ArtistList ui={ui} />}
+      {!isSearching && (sortMode === 'downloads'
+        ? <DownloadsList ui={ui} />
+        : <ArtistList ui={ui} />)}
 
       {isSearching && <SearchResults ui={ui} />}
 
