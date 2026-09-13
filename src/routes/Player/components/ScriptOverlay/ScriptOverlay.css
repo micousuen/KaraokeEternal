@@ -27,3 +27,21 @@
   color: var(--link-color);
   text-shadow: 0 2px 4px black, 0 0 12px black, 0 0 18px hsl(var(--hue-blue), 90%, 50%);
 }
+
+.currentWord {
+  position: relative;
+  display: inline-block;
+}
+
+.script .currentWordFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  color: var(--link-color);
+  text-align: left;
+  text-shadow: 0 2px 4px black, 0 0 12px black, 0 0 18px hsl(var(--hue-blue), 90%, 50%);
+  white-space: nowrap;
+  will-change: width;
+}

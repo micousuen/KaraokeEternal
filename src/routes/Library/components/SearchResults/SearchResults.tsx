@@ -189,7 +189,9 @@ const RowComponent = ({
               </Button>
               <Button
                 variant='primary'
+                className={isQueued ? styles.youtubeAddedButton : undefined}
                 icon={isQueued ? 'CHECK' : undefined}
+                size={isQueued ? 20 : undefined}
                 disabled={downloadingId !== null || isQueued}
                 onClick={() => onDownload(result.url, result.id, result.title)}
                 aria-label={isQueued ? 'Added to processing queue' : 'Download'}

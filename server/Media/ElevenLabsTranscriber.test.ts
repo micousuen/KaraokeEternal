@@ -27,8 +27,8 @@ describe('transcribeWithElevenLabs', () => {
         minLineWidth: 12,
       })
       expect(result.language).toBe('en')
-      expect(result.srt).toContain('00:00:01,000 --> 00:00:01,500 A0 C0-5\nHello world!')
-      expect(result.srt).toContain('00:00:01,500 --> 00:00:02,000 A0 C6-12\nHello world!')
+      expect(result.srt).toContain('00:00:01,000 --> 00:00:01,500 A0 C0-5 P1000-1500\nHello world!')
+      expect(result.srt).toContain('00:00:01,500 --> 00:00:02,000 A0 C6-12 P1500-2000\nHello world!')
 
       const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit]
       expect(url).toBe('https://api.elevenlabs.io/v1/speech-to-text')

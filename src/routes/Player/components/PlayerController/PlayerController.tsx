@@ -146,6 +146,7 @@ const PlayerController = (props: PlayerControllerProps) => {
         <ScriptOverlay
           mediaId={queueItem.mediaId}
           mediaKey={queueItem.queueId}
+          isPlaying={player.isPlaying}
           position={player.position}
         />
       )}

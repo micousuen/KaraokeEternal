@@ -142,6 +142,20 @@
   gap: var(--space-xs);
 }
 
+.youtubeButtons .youtubeAddedButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  background: linear-gradient(180deg, hsl(135, 58%, 43%) 0%, hsl(135, 62%, 34%) 100%);
+  cursor: default;
+  opacity: 1;
+}
+
+.youtubeAddedButton svg {
+  flex: 0 0 auto;
+}
+
 .youtubePreview {
   width: 100%;
   max-width: 48rem;

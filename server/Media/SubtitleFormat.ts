@@ -24,6 +24,8 @@ export interface RollingCue extends TimedWord {
   activeEnd: number
   activeRow: number
   activeStart: number
+  activeWordEnd: number
+  activeWordStart: number
 }
 
 const NO_SPACE_LANGUAGES = new Set([
@@ -39,7 +41,7 @@ export function createRollingSrt (
   return rollingCues(words, language, maxWidth, minWidth)
     .map((cue, index) => [
       index + 1,
-      `${formatSrtTimestamp(cue.start)} --> ${formatSrtTimestamp(cue.end)} A${cue.activeRow} C${cue.activeStart}-${cue.activeEnd}`,
+      `${formatSrtTimestamp(cue.start)} --> ${formatSrtTimestamp(cue.end)} A${cue.activeRow} C${cue.activeStart}-${cue.activeEnd} P${Math.round(cue.activeWordStart * 1000)}-${Math.round(cue.activeWordEnd * 1000)}`,
       cue.text,
       '',
     ].join('\n'))
@@ -82,6 +84,8 @@ export function rollingCues (
               activeEnd: word.characterEnd,
               activeRow,
               activeStart: word.characterStart,
+              activeWordEnd: word.end,
+              activeWordStart: word.start,
               end: wordEnd,
               start: wordStart,
               text,
