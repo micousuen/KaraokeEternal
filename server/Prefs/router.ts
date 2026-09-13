@@ -49,6 +49,22 @@ router.put('/elevenlabs', (ctx) => {
   ctx.io.to(ADMIN_SOCKETS).emit('action', { type: PREFS_PUSH, payload: prefs })
 })
 
+// Store the song naming credential without returning or logging its value.
+router.put('/deepseek', (ctx) => {
+  if (!ctx.user.isAdmin) ctx.throw(401)
+  const { apiKey } = (ctx.request as unknown as RequestWithBody).body
+  if (typeof apiKey !== 'string') {
+    ctx.throw(422, 'Invalid DeepSeek API key')
+    return
+  }
+
+  Prefs.setDeepSeekApiKey(apiKey)
+  log.info('%s updated the DeepSeek API key', ctx.user.name)
+  const prefs = Prefs.get()
+  ctx.body = prefs
+  ctx.io.to(ADMIN_SOCKETS).emit('action', { type: PREFS_PUSH, payload: prefs })
+})
+
 // add a media path
 router.post('/path', (ctx) => {
   const dir = decodeURIComponent(ctx.query.dir as string)

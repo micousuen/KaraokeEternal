@@ -6,10 +6,16 @@ import Media from '../Media/Media.js'
 import Library from './Library.js'
 import fileTypes from '../Media/fileTypes.js'
 import { forceMediaProcessing } from '../Media/AudioTrackAnalysis.js'
+import { renameManagedDownloadWithAi } from '../YouTube/AiSongNaming.js'
+import {
+  findInstrumentalRegenerationCandidates,
+  findNameReparsingCandidates,
+  findScriptRegenerationCandidates,
+} from './DownloadRegeneration.js'
+import Prefs from '../Prefs/Prefs.js'
 import { getExt } from '../lib/util.js'
 import pushQueuesAndLibrary from '../lib/pushQueuesAndLibrary.js'
 import { LIBRARY_PUSH_SONG } from '../../shared/actionTypes.js'
-import { findScriptRegenerationCandidates } from './ScriptRegeneration.js'
 const router = new KoaRouter({ prefix: '/api' })
 const compressBrotli = promisify(brotliCompress)
 const compressGzip = promisify(gzip)
@@ -94,6 +100,25 @@ router.put('/song/:songId/name', async (ctx) => {
   }
 })
 
+// rename a managed YouTube download using AI
+router.post('/song/:songId/ai-rename', async (ctx) => {
+  if (!ctx.user.isAdmin) ctx.throw(401)
+  const songId = parseInt(ctx.params.songId, 10)
+  if (!Number.isInteger(songId)) ctx.throw(422, 'Invalid songId')
+
+  try {
+    const result = await renameManagedDownloadWithAi(songId)
+    pushQueuesAndLibrary(ctx.io)
+    ctx.body = result
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (/Could not reach DeepSeek|timed out|DeepSeek song naming failed/.test(message)) {
+      ctx.throw(502, message)
+    }
+    ctx.throw(422, message)
+  }
+})
+
 router.post('/song/:songId/regenerate', async (ctx) => {
   if (!ctx.user.isAdmin) ctx.throw(401)
   const songId = parseInt(ctx.params.songId, 10)
@@ -137,42 +162,72 @@ router.post('/song/:songId/regenerate', async (ctx) => {
   }
 })
 
-router.post('/library/scripts/regenerate', async (ctx) => {
+// bulk regenerate processing outputs for managed YouTube downloads
+router.post('/library/downloads/regenerate', async (ctx) => {
   if (!ctx.user.isAdmin) ctx.throw(401)
+  const body = (ctx.request.body || {}) as { output?: unknown }
+  const output = body.output
+  if (output !== 'script' && output !== 'instrumental' && output !== 'name') {
+    ctx.throw(422, 'Invalid output type')
+  }
+  const outputType = output as 'script' | 'instrumental' | 'name'
+  if (outputType === 'name' && !Prefs.getDeepSeekApiKey()) {
+    ctx.throw(422, 'Configure a DeepSeek API key in Admin > Preferences > Song Naming')
+  }
 
-  const candidates = findScriptRegenerationCandidates(Media.search({}))
   const io = ctx.io
   const suppressWatcher = ctx.suppressWatcher
+  let eligible = 0
   let queued = 0
   let skipped = 0
   const errors: string[] = []
-  for (const candidate of candidates) {
-    try {
-      await forceMediaProcessing(
-        candidate.mediaId,
-        candidate.pathId,
-        candidate.source,
-        'script',
-        () => {
-          Library.invalidate()
-          io.emit('action', {
-            type: LIBRARY_PUSH_SONG,
-            payload: Library.getSong(candidate.songId),
-          })
-        },
-        suppressWatcher,
-        false,
-      )
-      queued++
-    } catch (err) {
-      skipped++
-      if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err))
+
+  if (outputType === 'name') {
+    const songIds = findNameReparsingCandidates(Media.search({}))
+    eligible = songIds.length
+    for (const songId of songIds) {
+      try {
+        await renameManagedDownloadWithAi(songId)
+        queued++
+      } catch (err) {
+        skipped++
+        if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err))
+      }
+    }
+    if (queued > 0) pushQueuesAndLibrary(io)
+  } else {
+    const candidates = outputType === 'script'
+      ? findScriptRegenerationCandidates(Media.search({}))
+      : findInstrumentalRegenerationCandidates(Media.search({}))
+    eligible = candidates.length
+    for (const candidate of candidates) {
+      try {
+        await forceMediaProcessing(
+          candidate.mediaId,
+          candidate.pathId,
+          candidate.source,
+          outputType,
+          () => {
+            Library.invalidate()
+            io.emit('action', {
+              type: LIBRARY_PUSH_SONG,
+              payload: Library.getSong(candidate.songId),
+            })
+          },
+          suppressWatcher,
+          false,
+        )
+        queued++
+      } catch (err) {
+        skipped++
+        if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err))
+      }
     }
   }
 
   ctx.status = 202
   ctx.body = {
-    eligible: candidates.length,
+    eligible,
     queued,
     skipped,
     errors,

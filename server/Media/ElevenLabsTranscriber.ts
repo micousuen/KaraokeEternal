@@ -21,6 +21,7 @@ export async function transcribeWithElevenLabs (
   audio: string,
   apiKey: string,
   settings: ElevenLabsSettings,
+  signal?: AbortSignal,
 ): Promise<{ language: string, srt: string, timings: ScriptTimings }> {
   const startedAt = performance.now()
   const audioData = await fsPromises.readFile(audio)
@@ -36,15 +37,17 @@ export async function transcribeWithElevenLabs (
   const timeoutMs = Number.isInteger(configuredTimeout) && configuredTimeout > 0
     ? configuredTimeout
     : defaultTimeoutMs
+  const timeoutSignal = AbortSignal.timeout(timeoutMs)
   let response: Response
   try {
     response = await fetch(endpoint, {
       body: form,
       headers: { 'xi-api-key': apiKey },
       method: 'POST',
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal,
     })
   } catch (error) {
+    if (signal?.aborted) throw new Error('ElevenLabs transcription was canceled')
     if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
       throw new Error(`ElevenLabs transcription timed out after ${Math.round(timeoutMs / 1000)} seconds`)
     }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeYouTubeUrl, parseYouTubeSearchResults } from './YouTube.js'
+import { normalizeYouTubeUrl, parseYouTubeSearchResults, songNamingInput } from './YouTube.js'
+import type { YouTubeJob } from '../../shared/types.js'
 
 describe('normalizeYouTubeUrl', () => {
   it.each([
@@ -58,5 +59,23 @@ describe('parseYouTubeSearchResults', () => {
       duration: 120,
     }))
     expect(parseYouTubeSearchResults(JSON.stringify({ entries }), 300)).toHaveLength(12)
+  })
+})
+
+describe('songNamingInput', () => {
+  it('uses the video title when it is known', () => {
+    expect(songNamingInput({ title: 'Queen  Bohemian\nRhapsody Karaoke HD' } as YouTubeJob))
+      .toBe('Queen Bohemian Rhapsody Karaoke HD')
+  })
+
+  it('falls back to the downloaded filename when the title is unknown', () => {
+    expect(songNamingInput({
+      title: 'YouTube video',
+      file: '/media/downloads/YouTube-Some Song-YouTube [dQw4w9WgXcQ].mp4',
+    } as YouTubeJob)).toBe('Some Song')
+  })
+
+  it('returns an empty string when nothing is known', () => {
+    expect(songNamingInput({ title: 'YouTube video' } as YouTubeJob)).toBe('')
   })
 })

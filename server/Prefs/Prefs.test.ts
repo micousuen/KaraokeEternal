@@ -36,6 +36,23 @@ describe('private preferences', () => {
 
   it('rejects private keys through the generic preference setter', () => {
     expect(() => Prefs.set('elevenLabsApiKey', 'secret')).toThrow('dedicated setter')
+    expect(() => Prefs.set('deepSeekApiKey', 'secret')).toThrow('dedicated setter')
     expect(() => Prefs.set('jwtKey', 'secret')).toThrow('dedicated setter')
+  })
+
+  it('stores the DeepSeek API key without exposing it in public preferences', () => {
+    expect(Prefs.setDeepSeekApiKey('  sk_test_deepseek  ')).toBe(true)
+    expect(Prefs.getDeepSeekApiKey()).toBe('sk_test_deepseek')
+    expect(Prefs.get()).toMatchObject({ isDeepSeekApiKeyConfigured: true })
+    expect(JSON.stringify(Prefs.get())).not.toContain('sk_test_deepseek')
+    expect(db.get<{ data: string }>('SELECT data FROM prefs WHERE key = ?', ['deepSeekApiKey']))
+      .toEqual({ data: '"sk_test_deepseek"' })
+  })
+
+  it('clears the stored DeepSeek key when given a blank value', () => {
+    Prefs.setDeepSeekApiKey('sk_test_deepseek')
+    Prefs.setDeepSeekApiKey(' ')
+    expect(Prefs.getDeepSeekApiKey()).toBeUndefined()
+    expect(Prefs.get()).toMatchObject({ isDeepSeekApiKeyConfigured: false })
   })
 })

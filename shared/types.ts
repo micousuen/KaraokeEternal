@@ -225,6 +225,7 @@ export interface Media {
 export interface Prefs {
   isFirstRun?: boolean
   isElevenLabsApiKeyConfigured: boolean
+  isDeepSeekApiKeyConfigured: boolean
   isScanning: boolean
   isReplayGainEnabled: boolean
   paths: {

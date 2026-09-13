@@ -192,6 +192,8 @@ The Preferences panel allows admins to set these global preferences:
   - **ReplayGain (clip-safe)**: [ReplayGain](https://en.wikipedia.org/wiki/ReplayGain){{% icon-external %}} metadata tags allow the player to automatically minimize volume differences between songs, resulting in a better experience for all, and without affecting the dynamic range of each song (no compression). This option should generally only be enabled when you know all of your media is properly tagged. It normally reduces the player's overall volume significantly, so just turn your output up, and/or your mics down.
 - **Transcription**
   - Add or replace the ElevenLabs API key used by Scribe v2 to generate timed karaoke SRT files. The key is stored in the server database and is not sent back to the browser after it is saved.
+- **Song Naming**
+  - Add or replace the DeepSeek API key used to automatically rename YouTube downloads into the library's Artist-Title filename format. The key is stored in the server database and is not sent back to the browser after it is saved.
 
 ### My Account
 

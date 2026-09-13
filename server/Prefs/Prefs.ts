@@ -6,7 +6,8 @@ import getLogger from '../lib/Log.js'
 
 const log = getLogger('Prefs')
 const ELEVENLABS_API_KEY = 'elevenLabsApiKey'
-const PRIVATE_KEYS = new Set(['jwtKey', ELEVENLABS_API_KEY])
+const DEEPSEEK_API_KEY = 'deepSeekApiKey'
+const PRIVATE_KEYS = new Set(['jwtKey', ELEVENLABS_API_KEY, DEEPSEEK_API_KEY])
 
 class Prefs {
   /**
@@ -15,6 +16,7 @@ class Prefs {
   static get () {
     const prefs = {
       isElevenLabsApiKeyConfigured: false,
+      isDeepSeekApiKeyConfigured: false,
       paths: { result: [], entities: {} },
       roles: { result: [], entities: {} },
     }
@@ -22,7 +24,7 @@ class Prefs {
     {
       const query = sql`
         SELECT * FROM prefs
-        WHERE key NOT IN ('jwtKey', 'elevenLabsApiKey')
+        WHERE key NOT IN ('jwtKey', 'elevenLabsApiKey', 'deepSeekApiKey')
       `
       const rows = db.all<{ key: string, data: string }>(String(query), query.parameters)
 
@@ -33,6 +35,7 @@ class Prefs {
     }
 
     prefs.isElevenLabsApiKeyConfigured = !!Prefs.getElevenLabsApiKey()
+    prefs.isDeepSeekApiKeyConfigured = !!Prefs.getDeepSeekApiKey()
 
     // include roles
     {
@@ -109,6 +112,36 @@ class Prefs {
     const query = sql`
       REPLACE INTO prefs (key, data)
       VALUES (${ELEVENLABS_API_KEY}, ${JSON.stringify(value)})
+    `
+    return db.run(String(query), query.parameters).changes === 1
+  }
+
+  /** Read the DeepSeek credential without exposing it through get(). */
+  static getDeepSeekApiKey (): string | undefined {
+    const query = sql`
+      SELECT data FROM prefs
+      WHERE key = ${DEEPSEEK_API_KEY}
+    `
+    const row = db.get<{ data: string }>(String(query), query.parameters)
+    if (!row) return undefined
+    try {
+      const value = JSON.parse(row.data)
+      return typeof value === 'string' && value.trim() ? value.trim() : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** Store or clear the database-backed DeepSeek credential. */
+  static setDeepSeekApiKey (apiKey: string): boolean {
+    const value = apiKey.trim()
+    if (value.length > 512) throw new Error('DeepSeek API key is too long')
+    if (!value) {
+      return db.run('DELETE FROM prefs WHERE key = ?', [DEEPSEEK_API_KEY]).changes <= 1
+    }
+    const query = sql`
+      REPLACE INTO prefs (key, data)
+      VALUES (${DEEPSEEK_API_KEY}, ${JSON.stringify(value)})
     `
     return db.run(String(query), query.parameters).changes === 1
   }

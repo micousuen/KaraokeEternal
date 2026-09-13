@@ -79,6 +79,7 @@ export const requestScanStop = createAsyncThunk(
 interface PrefsState {
   isFirstRun?: boolean
   isElevenLabsApiKeyConfigured: boolean
+  isDeepSeekApiKeyConfigured: boolean
   isScanning: boolean
   isReplayGainEnabled: boolean
   paths: {
@@ -95,6 +96,7 @@ interface PrefsState {
 
 const initialState: PrefsState = {
   isElevenLabsApiKeyConfigured: false,
+  isDeepSeekApiKeyConfigured: false,
   isScanning: false,
   isReplayGainEnabled: false,
   paths: {

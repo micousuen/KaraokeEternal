@@ -22,8 +22,9 @@ import {
   ROOM_PREFS_PUSH_REQUEST,
   STAR_SONG,
   UNSTAR_SONG,
-  VOCAL_SEPARATION_PAUSE,
+  VOCAL_SEPARATION_STOP,
   VOCAL_SEPARATION_RESUME,
+  VOCAL_SEPARATION_RETRY,
 } from './actionTypes.js'
 /** Payloads accepted by the client-to-server Redux transport. */
 export interface SocketRequestPayloads {
@@ -49,8 +50,9 @@ export interface SocketRequestPayloads {
   [ROOM_PREFS_PUSH_REQUEST]: { roomId: number, prefs: IRoomPrefs }
   [STAR_SONG]: { songId: number }
   [UNSTAR_SONG]: { songId: number }
-  [VOCAL_SEPARATION_PAUSE]: undefined
+  [VOCAL_SEPARATION_STOP]: undefined
   [VOCAL_SEPARATION_RESUME]: undefined
+  [VOCAL_SEPARATION_RETRY]: { mediaId: number }
 }
 
 export type SocketRequestType = keyof SocketRequestPayloads

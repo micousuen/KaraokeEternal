@@ -10,7 +10,7 @@ const log = getLogger(`server[${process.pid}]`)
 const ACTION_HANDLERS = {
   [PREFS_SET]: (sock, { payload }, acknowledge) => {
     if (!requireAdmin(sock, acknowledge, PREFS_SET)) return
-    if (payload.key === 'elevenLabsApiKey' || payload.key === 'jwtKey') {
+    if (payload.key === 'elevenLabsApiKey' || payload.key === 'deepSeekApiKey' || payload.key === 'jwtKey') {
       throw new Error('Private preferences cannot be changed over the socket')
     }
 

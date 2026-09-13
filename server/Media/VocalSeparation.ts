@@ -63,9 +63,11 @@ export type { SeparationHistoryItem } from './VocalSeparationHistory.js'
 const config = loadVocalSeparationConfig()
 const history = new VocalSeparationHistory()
 const jobs = new MediaProcessingQueue<Job>()
+const recentJobs = new Map<number, Job>()
 let active = false
 let paused = false
 let currentJob: Job | undefined
+let currentAbort: AbortController | undefined
 let currentStartedAt: number | undefined
 let currentProgress: number | undefined
 let currentStage: 'separating' | 'scripting' | undefined
@@ -100,8 +102,9 @@ export function scheduleVocalSeparation (job: Job, prioritize = false): boolean 
   return true
 }
 
-export function pauseVocalSeparation (): void {
+export function stopVocalSeparation (): void {
   paused = true
+  currentAbort?.abort()
   emitStatus()
 }
 
@@ -110,6 +113,13 @@ export function resumeVocalSeparation (): void {
   paused = false
   emitStatus()
   void drain()
+}
+
+export function retryVocalSeparation (mediaId: number): boolean {
+  if (!Number.isInteger(mediaId)) return false
+  const job = recentJobs.get(mediaId)
+  if (!job) return false
+  return scheduleVocalSeparation(job, true)
 }
 
 export function getVocalSeparationStatus (): VocalSeparationStatus {
@@ -148,6 +158,9 @@ async function drain (): Promise<void> {
     await startupCleanup
     while (jobs.length && !paused) {
       const job = jobs.dequeue()!
+      const controller = new AbortController()
+      currentAbort = controller
+      recentJobs.set(job.mediaId, job)
       currentJob = job
       currentStartedAt = Date.now()
       currentProgress = 0
@@ -160,7 +173,7 @@ async function drain (): Promise<void> {
       refreshHistory()
       emitStatus()
       try {
-        const { audioSeconds, timings } = await separate(job)
+        const { audioSeconds, timings } = await separate(job, controller.signal)
         const elapsedSeconds = (Date.now() - currentStartedAt) / 1000
         completedThisRun.add(job.mediaId)
         processedAudioSeconds += audioSeconds
@@ -170,18 +183,26 @@ async function drain (): Promise<void> {
         job.onComplete?.()
         job.sourceReplaced = false
       } catch (err) {
-        lastError = errorMessage(err, processingStage(err) || currentStage)
+        const interrupted = controller.signal.aborted
+        lastError = interrupted
+          ? 'Stopped while processing'
+          : errorMessage(err, processingStage(err) || currentStage)
         const elapsedSeconds = currentStartedAt ? (Date.now() - currentStartedAt) / 1000 : 0
-        history.markFinished(job, 'failed', null, elapsedSeconds, lastError)
+        history.markFinished(job, interrupted ? 'interrupted' : 'failed', null, elapsedSeconds, lastError)
         completedThisRun.add(job.mediaId)
         refreshHistory()
         // The instrumental replacement may have succeeded before scripting
         // failed. Re-analyze that changed source even though the overall job failed.
         if (job.sourceReplaced) job.onComplete?.()
         job.sourceReplaced = false
-        log.warn('Could not generate instrumental for mediaId=%s: %s', job.mediaId, lastError)
+        if (interrupted) {
+          log.info('Stopped mediaId=%s mid-process', job.mediaId)
+        } else {
+          log.warn('Could not generate instrumental for mediaId=%s: %s', job.mediaId, lastError)
+        }
       } finally {
         jobs.complete(job.mediaId)
+        currentAbort = undefined
         currentJob = undefined
         currentStartedAt = undefined
         currentProgress = undefined
@@ -197,7 +218,7 @@ async function drain (): Promise<void> {
   }
 }
 
-async function separate (job: Job): Promise<{ audioSeconds: number, timings?: ScriptTimings }> {
+async function separate (job: Job, signal: AbortSignal): Promise<{ audioSeconds: number, timings?: ScriptTimings }> {
   const initialStats = await fsPromises.stat(job.source)
   const audioSeconds = await mediaDuration(job.source)
   const workDir = path.join(tempRoot, String(job.mediaId))
@@ -220,7 +241,7 @@ async function separate (job: Job): Promise<{ audioSeconds: number, timings?: Sc
         '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
         '-i', job.source, '-map', `0:a:${job.vocalTrack}`, '-vn', '-ac', '2', '-ar', '44100',
         '-c:a', 'pcm_s16le', separatorInput,
-      ])
+      ], signal)
       setProgress(3)
       await runSeparator([
         separatorInput,
@@ -231,7 +252,7 @@ async function separate (job: Job): Promise<{ audioSeconds: number, timings?: Sc
         '--demucs_segment_size', String(config.segmentSeconds),
         '--demucs_shifts', String(config.shifts),
         '--demucs_overlap', String(config.overlap),
-      ])
+      ], signal)
 
       const files = await fsPromises.readdir(workDir)
       const vocalName = files.find(file => /_\(Vocals\)_.*\.flac$/i.test(file))
@@ -251,11 +272,11 @@ async function separate (job: Job): Promise<{ audioSeconds: number, timings?: Sc
     const finishingTasks: Array<Promise<void>> = []
     if (job.generateInstrumental) {
       if (!vocal) throw new Error('HTDemucs produced no vocal stem')
-      finishingTasks.push(generateInstrumental(job, vocal, stems, workDir, replacement, initialStats)
+      finishingTasks.push(generateInstrumental(job, vocal, stems, workDir, replacement, initialStats, signal)
         .catch((err) => { throw markProcessingStage(err, 'separating') }))
     }
     if (job.needsScript && (job.forceScript || !fs.existsSync(scriptPath(job.source)))) {
-      finishingTasks.push(generateScript(job, vocal, workDir)
+      finishingTasks.push(generateScript(job, vocal, workDir, signal)
         .then((timings) => {
           scriptTimings = timings
           return undefined
@@ -287,6 +308,7 @@ async function generateInstrumental (
   workDir: string,
   replacement: string,
   initialStats: Stats,
+  signal: AbortSignal,
 ): Promise<void> {
   currentInstrumentalProgress = 0
   emitStatus()
@@ -299,7 +321,7 @@ async function generateInstrumental (
     ...mixInputs.flatMap(file => ['-i', file]),
     '-filter_complex', `amix=inputs=${mixInputs.length}:weights='${mixWeights}':duration=longest:normalize=0,alimiter=limit=0.99`,
     '-c:a', 'aac', '-b:a', config.outputBitrate, instrumental,
-  ])
+  ], signal)
 
   const remuxed = path.join(workDir, `remuxed${path.extname(job.source)}`)
   setInstrumentalProgress(35)
@@ -326,7 +348,7 @@ async function generateInstrumental (
     '-metadata:s:a:1', 'title=Instrumental', '-disposition:a:1', '0',
     ...(path.extname(job.source).toLowerCase() === '.mp4' ? ['-movflags', '+faststart'] : []),
     remuxed,
-  ])
+  ], signal)
   setInstrumentalProgress(90)
   if (await audioTrackCount(remuxed) !== 2) throw new Error('Remuxed video does not contain exactly two audio tracks')
 
@@ -343,7 +365,12 @@ async function generateInstrumental (
   log.info('%s generated instrumental as A2 for mediaId=%s', job.replaceInstrumental ? 'Replaced' : 'Added', job.mediaId)
 }
 
-async function generateScript (job: Job, vocal: string | undefined, workDir: string): Promise<ScriptTimings | undefined> {
+async function generateScript (
+  job: Job,
+  vocal: string | undefined,
+  workDir: string,
+  signal: AbortSignal,
+): Promise<ScriptTimings | undefined> {
   currentStage = 'scripting'
   currentScriptingProgress = 0
   currentProgress = 0
@@ -357,13 +384,13 @@ async function generateScript (job: Job, vocal: string | undefined, workDir: str
     '-i', vocal || job.source,
     ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
-  ])
+  ], signal)
   setScriptingProgress(10)
   const { language, srt, timings } = await transcribeWithElevenLabs(scriptingInput, apiKey, {
     language: config.scripting.language,
     maxLineWidth: config.scripting.maxLineWidth ?? 36,
     minLineWidth: config.scripting.minLineWidth ?? 12,
-  })
+  }, signal)
   setScriptingProgress(95)
   await fsPromises.writeFile(`${scriptPath(job.source)}.partial`, srt, 'utf8')
   await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
@@ -421,7 +448,7 @@ async function mediaDuration (filename: string): Promise<number> {
   return Number.isFinite(duration) ? duration : 0
 }
 
-async function runSeparator (args: string[]): Promise<void> {
+async function runSeparator (args: string[], signal?: AbortSignal): Promise<void> {
   const handleOutput = (chunk: Buffer) => {
     for (const match of chunk.toString().matchAll(/(\d{1,3})(?:\.\d+)?%/g)) {
       setProgress(Math.min(100, Number(match[1])))
@@ -439,6 +466,7 @@ async function runSeparator (args: string[]): Promise<void> {
     onStdout: handleOutput,
     onStderr: handleOutput,
     retryOnNoChildProcess: 3,
+    signal,
     timeoutMs: positiveInteger(process.env.KES_SEPARATOR_TIMEOUT_MS, 30 * 60_000),
   })
 }
@@ -446,10 +474,12 @@ async function runSeparator (args: string[]): Promise<void> {
 async function execFile (
   command: string,
   args: string[],
+  signal?: AbortSignal,
 ): Promise<{ stdout: string, stderr: string }> {
   return runProcessText(command, args, {
     maxStderrBytes: 10 * 1024 * 1024,
     retryOnNoChildProcess: 3,
+    signal,
     timeoutMs: command === ffprobePath
       ? positiveInteger(process.env.KES_FFPROBE_TIMEOUT_MS, 30_000)
       : positiveInteger(process.env.KES_MEDIA_PROCESS_TIMEOUT_MS, 10 * 60_000),

@@ -21,8 +21,9 @@ import {
   ROOM_PREFS_PUSH_REQUEST,
   STAR_SONG,
   UNSTAR_SONG,
-  VOCAL_SEPARATION_PAUSE,
+  VOCAL_SEPARATION_STOP,
   VOCAL_SEPARATION_RESUME,
+  VOCAL_SEPARATION_RETRY,
 } from '../../shared/actionTypes.js'
 
 const NO_PAYLOAD = new Set([
@@ -31,7 +32,7 @@ const NO_PAYLOAD = new Set([
   PLAYER_REQ_PAUSE,
   PLAYER_REQ_PLAY,
   QUEUE_SYNC,
-  VOCAL_SEPARATION_PAUSE,
+  VOCAL_SEPARATION_STOP,
   VOCAL_SEPARATION_RESUME,
 ])
 
@@ -45,6 +46,8 @@ export function validateSocketAction (action: unknown): string | null {
     case STAR_SONG:
     case UNSTAR_SONG:
       return isIntegerField(payload, 'songId') ? null : 'songId must be an integer'
+    case VOCAL_SEPARATION_RETRY:
+      return isIntegerField(payload, 'mediaId') ? null : 'mediaId must be an integer'
     case QUEUE_MOVE:
     case QUEUE_PLAY_NEXT:
       return isIntegerField(payload, 'queueId') && isIntegerField(payload, 'prevQueueId') && hasBaseRevision(action)

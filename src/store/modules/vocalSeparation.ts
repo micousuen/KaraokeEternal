@@ -1,7 +1,8 @@
 import { createAction, createReducer } from '@reduxjs/toolkit'
 import {
-  VOCAL_SEPARATION_PAUSE,
+  VOCAL_SEPARATION_STOP,
   VOCAL_SEPARATION_RESUME,
+  VOCAL_SEPARATION_RETRY,
   VOCAL_SEPARATION_STATUS,
 } from 'shared/actionTypes'
 
@@ -19,7 +20,7 @@ export interface VocalSeparationState {
   completedThisRun: Array<{
     mediaId: number
     song: string
-    status: 'processing' | 'succeeded' | 'failed'
+    status: 'processing' | 'succeeded' | 'failed' | 'interrupted'
     attempts: number
     startedAt: number | null
     completedAt: number | null
@@ -41,8 +42,9 @@ interface ProcessingTask {
 }
 
 const statusReceived = createAction<VocalSeparationState>(VOCAL_SEPARATION_STATUS)
-export const pauseVocalSeparation = createAction(VOCAL_SEPARATION_PAUSE)
+export const stopVocalSeparation = createAction(VOCAL_SEPARATION_STOP)
 export const resumeVocalSeparation = createAction(VOCAL_SEPARATION_RESUME)
+export const retryVocalSeparation = createAction<{ mediaId: number }>(VOCAL_SEPARATION_RETRY)
 
 const initialState: VocalSeparationState = {
   enabled: false,

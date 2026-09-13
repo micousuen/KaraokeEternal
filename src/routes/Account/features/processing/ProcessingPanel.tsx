@@ -5,8 +5,9 @@ import Panel from 'components/Panel/Panel'
 import { useAppDispatch, useAppSelector } from 'store/hooks'
 import { requestScanAll } from 'store/modules/prefs'
 import {
-  pauseVocalSeparation,
   resumeVocalSeparation,
+  retryVocalSeparation,
+  stopVocalSeparation,
 } from 'store/modules/vocalSeparation'
 import styles from './ProcessingPanel.css'
 import HttpApi from 'lib/HttpApi'
@@ -22,16 +23,60 @@ interface BulkRegenerationResult {
   errors: string[]
 }
 
+type BulkOutput = 'script' | 'instrumental' | 'name'
+
+interface BulkActionConfig {
+  output: BulkOutput
+  button: string
+  title: string
+  description: string
+  confirm: string
+  pending: string
+  result: (result: BulkRegenerationResult) => string
+}
+
+const BULK_ACTIONS: BulkActionConfig[] = [
+  {
+    output: 'script',
+    button: 'Regenerate scripts',
+    title: 'Regenerate scripts',
+    description: 'This queues every YouTube download that already has an SRT script. Vocal separation and scripting will run again, and each existing script will only be replaced after its new script succeeds.',
+    confirm: 'Regenerate all scripts',
+    pending: 'Queuing scripts…',
+    result: result => `Queued ${result.queued} of ${result.eligible} YouTube downloads.`,
+  },
+  {
+    output: 'instrumental',
+    button: 'Regenerate instrumentals',
+    title: 'Regenerate instrumentals',
+    description: 'This queues every YouTube download for vocal separation. Each existing instrumental track will only be replaced after its new track succeeds.',
+    confirm: 'Regenerate all instrumentals',
+    pending: 'Queuing instrumentals…',
+    result: result => `Queued ${result.queued} of ${result.eligible} YouTube downloads.`,
+  },
+  {
+    output: 'name',
+    button: 'Reparse filenames',
+    title: 'Reparse downloaded filenames',
+    description: 'The artist and song title of every YouTube download that still carries its original YouTube filename will be extracted with DeepSeek and renamed to the Artist-Title format used across the library.',
+    confirm: 'Reparse all filenames',
+    pending: 'Reparsing filenames…',
+    result: result => `Renamed ${result.queued} of ${result.eligible} YouTube downloads.`,
+  },
+]
+
 const ProcessingPanel = () => {
   const status = useAppSelector(state => state.vocalSeparation)
   const isScanning = useAppSelector(state => state.prefs.isScanning)
+  const isDeepSeekConfigured = useAppSelector(state => state.prefs.isDeepSeekApiKeyConfigured)
   const dispatch = useAppDispatch()
   const [now, setNow] = useState(0)
   const [openList, setOpenList] = useState<'queued' | 'completed' | null>(null)
-  const [isRegenerateOpen, setRegenerateOpen] = useState(false)
+  const [bulkOutput, setBulkOutput] = useState<BulkOutput | null>(null)
   const [isRegenerating, setRegenerating] = useState(false)
   const [regenerationError, setRegenerationError] = useState('')
-  const [regenerationResult, setRegenerationResult] = useState<BulkRegenerationResult | null>(null)
+  const [regenerationResult, setRegenerationResult] = useState<{ output: BulkOutput, result: BulkRegenerationResult } | null>(null)
+  const bulkAction = BULK_ACTIONS.find(action => action.output === bulkOutput) || null
 
   useEffect(() => {
     if (status.currentStartedAt === null) return
@@ -47,18 +92,23 @@ const ProcessingPanel = () => {
   const elapsed = status.currentStartedAt === null || now === 0
     ? null
     : Math.max(0, Math.floor((now - status.currentStartedAt) / 1000))
-  const handleRegenerateScripts = async () => {
+  const handleRegenerate = async (output: BulkOutput) => {
     setRegenerating(true)
     setRegenerationError('')
     try {
-      const result = await api.post<BulkRegenerationResult>('library/scripts/regenerate')
-      setRegenerationResult(result)
-      setRegenerateOpen(false)
+      const result = await api.post<BulkRegenerationResult>('library/downloads/regenerate', { body: { output } })
+      setRegenerationResult({ output, result })
+      setBulkOutput(null)
     } catch (err) {
       setRegenerationError(err instanceof Error ? err.message : String(err))
     } finally {
       setRegenerating(false)
     }
+  }
+  const isBulkDisabled = (output: BulkOutput): boolean => {
+    if (isRegenerating) return true
+    if (output === 'name') return !isDeepSeekConfigured
+    return !status.enabled
   }
   return (
     <Panel title='Media processing' contentClassName={styles.content}>
@@ -119,28 +169,35 @@ const ProcessingPanel = () => {
           <Button
             variant={status.isPaused ? 'primary' : 'default'}
             disabled={!status.enabled || (!status.isPaused && !status.currentSong && status.queuedSongs === 0)}
-            onClick={() => dispatch(status.isPaused ? resumeVocalSeparation() : pauseVocalSeparation())}
+            onClick={() => dispatch(status.isPaused ? resumeVocalSeparation() : stopVocalSeparation())}
           >
             {status.isPaused ? 'Resume processing' : 'Stop processing'}
           </Button>
         </div>
-        <div className={styles.bulkAction}>
-          <Button
-            variant='default'
-            disabled={!status.enabled || isRegenerating}
-            onClick={() => {
-              setRegenerationError('')
-              setRegenerateOpen(true)
-            }}
-          >
-            {isRegenerating ? 'Queuing existing scripts…' : 'Regenerate existing scripts'}
-          </Button>
+        <div className={styles.bulkActions}>
+          {BULK_ACTIONS.map(action => (
+            <Button
+              key={action.output}
+              variant='default'
+              disabled={isBulkDisabled(action.output)}
+              title={action.output === 'name' && !isDeepSeekConfigured
+                ? 'Configure a DeepSeek API key in Preferences first'
+                : undefined}
+              onClick={() => {
+                setRegenerationError('')
+                setBulkOutput(action.output)
+              }}
+            >
+              {action.button}
+            </Button>
+          ))}
         </div>
         {regenerationResult && (
           <div className={styles.bulkResult} role='status'>
-            {`Queued ${regenerationResult.queued} of ${regenerationResult.eligible} existing scripts.`}
-            {regenerationResult.skipped > 0 && ` ${regenerationResult.skipped} skipped.`}
-            {regenerationResult.errors.length > 0 && ` ${regenerationResult.errors[0]}`}
+            {BULK_ACTIONS.find(action => action.output === regenerationResult.output)
+              ?.result(regenerationResult.result)}
+            {regenerationResult.result.skipped > 0 && ` ${regenerationResult.result.skipped} skipped.`}
+            {regenerationResult.result.errors.length > 0 && ` ${regenerationResult.result.errors[0]}`}
           </div>
         )}
         <div className={styles.primaryAction}>
@@ -179,6 +236,15 @@ const ProcessingPanel = () => {
                       {item.attempts > 1 ? ` · ${item.attempts} attempts` : ''}
                     </small>
                   </div>
+                  {(item.status === 'failed' || item.status === 'interrupted') && (
+                    <button
+                      type='button'
+                      className={styles.rerun}
+                      onClick={() => dispatch(retryVocalSeparation({ mediaId: item.mediaId }))}
+                    >
+                      Rerun
+                    </button>
+                  )}
                   {item.error && (
                     <details className={styles.errorDetails}>
                       <summary>Show failure details</summary>
@@ -209,18 +275,15 @@ const ProcessingPanel = () => {
             </div>
           </Modal>
         )}
-        {isRegenerateOpen && (
-          <Modal title='Regenerate existing scripts' onClose={() => !isRegenerating && setRegenerateOpen(false)}>
-            <p>
-              This queues every song that already has an SRT script. Vocal separation and scripting will run again,
-              and each existing script will only be replaced after its new script succeeds.
-            </p>
+        {bulkAction && (
+          <Modal title={bulkAction.title} onClose={() => !isRegenerating && setBulkOutput(null)}>
+            <p>{bulkAction.description}</p>
             {regenerationError && <div className={styles.error} role='alert'>{regenerationError}</div>}
             <div className={styles.modalActions}>
-              <Button variant='primary' disabled={isRegenerating} onClick={handleRegenerateScripts}>
-                {isRegenerating ? 'Queuing…' : 'Regenerate all existing scripts'}
+              <Button variant='primary' disabled={isRegenerating} onClick={() => void handleRegenerate(bulkAction.output)}>
+                {isRegenerating ? bulkAction.pending : bulkAction.confirm}
               </Button>
-              <Button disabled={isRegenerating} onClick={() => setRegenerateOpen(false)}>Cancel</Button>
+              <Button disabled={isRegenerating} onClick={() => setBulkOutput(null)}>Cancel</Button>
             </div>
           </Modal>
         )}

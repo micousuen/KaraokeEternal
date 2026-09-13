@@ -4,7 +4,7 @@ import { db } from '../lib/Database.js'
 export interface SeparationHistoryItem {
   mediaId: number
   song: string
-  status: 'processing' | 'succeeded' | 'failed'
+  status: 'processing' | 'succeeded' | 'failed' | 'interrupted'
   attempts: number
   startedAt: number | null
   completedAt: number | null
@@ -52,7 +52,7 @@ export class VocalSeparationHistory {
 
   markFinished (
     job: HistoryJob,
-    status: 'succeeded' | 'failed',
+    status: 'succeeded' | 'failed' | 'interrupted',
     audioSeconds: number | null,
     elapsedSeconds: number,
     error: string | null,

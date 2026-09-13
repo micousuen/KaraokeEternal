@@ -6,6 +6,8 @@ import Prefs from '../Prefs/Prefs.js'
 import Media from '../Media/Media.js'
 import Queue from '../Queue/Queue.js'
 import { getMediaQueueReadiness } from '../Media/MediaQueueReadiness.js'
+import { extractSongNameWithDeepSeek, type SongName } from '../Media/DeepSeekSongNamer.js'
+import { isManagedDownloadSong, managedDownloadInput } from './AiSongNaming.js'
 import type { YouTubeJob, YouTubeSearchResponse, YouTubeSearchResult } from '../../shared/types.js'
 import { ProcessExecutionError, runProcessText } from '../lib/runProcess.js'
 
@@ -357,6 +359,9 @@ async function runDownload (
       }
     }
     if (downloadError) throw downloadError
+    // Start AI song naming now so its latency overlaps with library scanning
+    // and instrumental/script preparation.
+    const aiNaming = startAiSongNaming(job)
     job.status = 'scanning'
     job.progress = 100
     job.message = 'Download complete; scanning the library'
@@ -370,8 +375,9 @@ async function runDownload (
     job.message = 'Preparing instrumental track before queueing'
     options.pushJobs()
     await waitForMediaPreparation(media.mediaId, signal)
+    const songId = await applyAiSongName(media.songId, job, aiNaming)
     signal.throwIfAborted()
-    Queue.add({ roomId: job.roomId, songId: media.songId, userId: job.userId })
+    Queue.add({ roomId: job.roomId, songId, userId: job.userId })
     job.status = 'complete'
     job.message = 'Processing complete; added to the queue.'
     options.pushJobs()
@@ -450,6 +456,46 @@ function resolveDownloadLibraryPath (downloadsPath: string): { pathId: number, b
       isManagedDownloadPath: true,
     }),
     basePath: normalized,
+  }
+}
+
+function startAiSongNaming (job: YouTubeJob): Promise<SongName | undefined> | undefined {
+  const apiKey = Prefs.getDeepSeekApiKey()
+  if (!apiKey) return undefined
+  const input = songNamingInput(job)
+  if (!input) return undefined
+  return extractSongNameWithDeepSeek(input, apiKey).catch((error) => {
+    log.warn('AI song naming failed for %s: %s', job.videoId, error instanceof Error ? error.message : String(error))
+    return undefined
+  })
+}
+
+export function songNamingInput (job: YouTubeJob): string {
+  if (job.title && job.title !== 'YouTube video') {
+    return job.title.replace(/\s+/g, ' ').trim().slice(0, 300)
+  }
+  if (job.file) return managedDownloadInput(job.file)
+  return ''
+}
+
+async function applyAiSongName (
+  songId: number,
+  job: YouTubeJob,
+  aiNaming: Promise<SongName | undefined> | undefined,
+): Promise<number> {
+  const naming = aiNaming ? await aiNaming : undefined
+  if (!naming) return songId
+  // AI naming is for YouTube downloads only; if the download was matched to a
+  // song that contains media from the library's regular folders, leave the
+  // song untouched.
+  if (!isManagedDownloadSong(songId)) return songId
+  try {
+    const result = await Media.renameSong(songId, naming.title, naming.artist)
+    log.info('Renamed the YouTube download for %s to "%s-%s"', job.videoId, naming.artist, naming.title)
+    return result.songId
+  } catch (error) {
+    log.warn('Could not rename the YouTube download for %s: %s', job.videoId, error instanceof Error ? error.message : String(error))
+    return songId
   }
 }
 
