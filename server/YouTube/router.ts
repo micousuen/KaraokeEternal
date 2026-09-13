@@ -75,7 +75,7 @@ router.post('/', (ctx) => {
     ctx.status = 202
     ctx.body = job
   } catch (error) {
-    ctx.throw(/queue is busy/.test(error.message) ? 429 : 422, error.message)
+    ctx.throw(422, error.message)
   }
 })
 

@@ -21,6 +21,9 @@ const SEARCH_CANDIDATES_PER_PAGE = 20
 const MAX_SEARCH_PAGE = 10
 const SEARCH_TIMEOUT_MS = 15 * 1000
 const MEDIA_PREPARATION_TIMEOUT_MS = positiveInteger(process.env.KES_YOUTUBE_PROCESSING_TIMEOUT_MS, 60 * 60 * 1000)
+// Concurrent yt-dlp runs only; excess jobs wait in the queue instead of being
+// rejected, so there is no limit on how many jobs may be pending.
+const MAX_ACTIVE_DOWNLOADS = positiveInteger(process.env.KES_YOUTUBE_MAX_CONCURRENT_DOWNLOADS, 2)
 // yt-dlp fallback chain. The mp4/m4a pairing at the top gives cleanly
 // re-muxable streams when YouTube offers them. The height-unrestricted tail
 // catches videos where every ≤1080p option only exists as VP9/AV1/Opus, letting
@@ -49,8 +52,16 @@ interface YouTubeOptions {
   pushQueue: () => void
 }
 
+interface WaitingJob {
+  job: YouTubeJob
+  url: string
+  options: YouTubeOptions
+  signal: AbortSignal
+}
+
 const jobs = new Map<string, YouTubeJob>()
 const jobControllers = new Map<string, AbortController>()
+const waitingJobs: WaitingJob[] = []
 const searchCache = new Map<string, { expiresAt: number, response: YouTubeSearchResponse }>()
 const pendingSearches = new Map<string, Promise<YouTubeSearchResponse>>()
 let activeDownloads = 0
@@ -101,7 +112,6 @@ export function createYouTubeJob (
     && job.status !== 'error'
   ))
   if (duplicate) return duplicate
-  if (activeDownloads >= 2) throw new Error('The YouTube download queue is busy; try again shortly')
 
   const job: YouTubeJob = {
     jobId: randomUUID(),
@@ -117,12 +127,8 @@ export function createYouTubeJob (
   const controller = new AbortController()
   jobControllers.set(job.jobId, controller)
   options.pushJobs()
-  activeDownloads++
-  void runDownload(job, normalizedUrl, options, controller.signal).finally(() => {
-    activeDownloads--
-    jobControllers.delete(job.jobId)
-    if (jobs.has(job.jobId)) setTimeout(() => jobs.delete(job.jobId), 30 * 60 * 1000).unref()
-  })
+  waitingJobs.push({ job, url: normalizedUrl, options, signal: controller.signal })
+  pumpDownloads()
 
   return job
 }
@@ -140,7 +146,10 @@ export function cancelYouTubeJob (jobId: string, roomId: number): boolean {
   const job = jobs.get(jobId)
   if (!job || job.roomId !== roomId) return false
   jobs.delete(jobId)
+  const waitingIndex = waitingJobs.findIndex(entry => entry.job.jobId === jobId)
+  if (waitingIndex !== -1) waitingJobs.splice(waitingIndex, 1)
   jobControllers.get(jobId)?.abort()
+  jobControllers.delete(jobId)
   return true
 }
 
@@ -286,103 +295,124 @@ function pruneSearchCache (): void {
   while (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value!)
 }
 
-async function runDownload (
+async function runDownloadPhase (
   job: YouTubeJob,
   url: string,
   options: YouTubeOptions,
   signal: AbortSignal,
-): Promise<void> {
-  try {
-    fs.mkdirSync(options.downloadsPath, { recursive: true })
-    const libraryPath = resolveDownloadLibraryPath(options.downloadsPath)
+): Promise<{ pathId: number, basePath: string }> {
+  fs.mkdirSync(options.downloadsPath, { recursive: true })
+  const libraryPath = resolveDownloadLibraryPath(options.downloadsPath)
 
-    job.status = 'downloading'
-    job.message = 'Downloading from YouTube'
-    options.pushJobs()
+  job.status = 'downloading'
+  job.message = 'Downloading from YouTube'
+  options.pushJobs()
 
-    const args = [
-      '--no-playlist',
-      '--no-overwrites',
-      '--newline',
-      '--force-ipv4',
-      '--js-runtimes', 'node',
-      '--extractor-retries', '3',
-      '--fragment-retries', '3',
-      '--match-filter', `!is_live & duration <= ${options.maxDuration}`,
-      '--max-filesize', '2G',
-      '--merge-output-format', 'mp4/mkv',
-      '--remux-video', 'mp4/mkv',
-      '--format', DOWNLOAD_FORMAT,
-      '--output', path.join(options.downloadsPath, 'YouTube-%(title).150B-YouTube [%(id)s].%(ext)s'),
-      '--progress-template', 'download:progress:%(progress._percent_str)s',
-      '--print', 'before_dl:title:%(title)s',
-      '--print', 'after_move:filepath:%(filepath)s',
-    ]
+  const args = [
+    '--no-playlist',
+    '--no-overwrites',
+    '--newline',
+    '--force-ipv4',
+    '--js-runtimes', 'node',
+    '--extractor-retries', '3',
+    '--fragment-retries', '3',
+    '--match-filter', `!is_live & duration <= ${options.maxDuration}`,
+    '--max-filesize', '2G',
+    '--merge-output-format', 'mp4/mkv',
+    '--remux-video', 'mp4/mkv',
+    '--format', DOWNLOAD_FORMAT,
+    '--output', path.join(options.downloadsPath, 'YouTube-%(title).150B-YouTube [%(id)s].%(ext)s'),
+    '--progress-template', 'download:progress:%(progress._percent_str)s',
+    '--print', 'before_dl:title:%(title)s',
+    '--print', 'after_move:filepath:%(filepath)s',
+  ]
 
-    if (options.providerUrl) {
-      args.push('--extractor-args', 'youtube:player-client=web_embedded')
-      args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${options.providerUrl}`)
-    }
-    args.push(url)
+  if (options.providerUrl) {
+    args.push('--extractor-args', 'youtube:player-client=web_embedded')
+    args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${options.providerUrl}`)
+  }
+  args.push(url)
 
-    // YouTube's default `web` client streams DASH manifests protected by SABR /
-    // PO tokens; without a provider running, those return HTTP 403 partway
-    // through the download even when format extraction succeeded. The android
-    // and ios clients still hand out pre-muxed MP4s that download without a
-    // token — lower resolution, but reliable. `recode` re-encodes to H.264/AAC
-    // MP4 locally as a last-ditch compatibility fallback.
-    const attempts: Array<{ label: string, message: string, transform: (a: string[]) => string[] }> = [
-      { label: 'preferred', message: '', transform: a => a },
-      { label: 'no-provider', message: 'Retrying without extractor hints', transform: argsWithoutProvider },
-      { label: 'android', message: 'Retrying with the YouTube android client', transform: a => withPlayerClient(argsWithoutProvider(a), 'android') },
-      { label: 'ios', message: 'Retrying with the YouTube ios client', transform: a => withPlayerClient(argsWithoutProvider(a), 'ios') },
-      { label: 'recode', message: 'Downloading a compatibility source for local transcoding', transform: a => withRecode(withPlayerClient(argsWithoutProvider(a), 'android')) },
-    ]
+  // YouTube's default `web` client streams DASH manifests protected by SABR /
+  // PO tokens; without a provider running, those return HTTP 403 partway
+  // through the download even when format extraction succeeded. The android
+  // and ios clients still hand out pre-muxed MP4s that download without a
+  // token — lower resolution, but reliable. `recode` re-encodes to H.264/AAC
+  // MP4 locally as a last-ditch compatibility fallback.
+  const attempts: Array<{ label: string, message: string, transform: (a: string[]) => string[] }> = [
+    { label: 'preferred', message: '', transform: a => a },
+    { label: 'no-provider', message: 'Retrying without extractor hints', transform: argsWithoutProvider },
+    { label: 'android', message: 'Retrying with the YouTube android client', transform: a => withPlayerClient(argsWithoutProvider(a), 'android') },
+    { label: 'ios', message: 'Retrying with the YouTube ios client', transform: a => withPlayerClient(argsWithoutProvider(a), 'ios') },
+    { label: 'recode', message: 'Downloading a compatibility source for local transcoding', transform: a => withRecode(withPlayerClient(argsWithoutProvider(a), 'android')) },
+  ]
 
-    let downloadError: Error | undefined
-    for (let index = 0; index < attempts.length; index++) {
-      signal.throwIfAborted()
-      const attempt = attempts[index]
-      if (index > 0) {
-        job.progress = 0
-        job.message = attempt.message
-        options.pushJobs()
-      }
-      try {
-        job.file = await spawnYtDlp(attempt.transform(args), job, options.pushJobs, signal)
-        downloadError = undefined
-        break
-      } catch (error) {
-        downloadError = error instanceof Error ? error : new Error(String(error))
-        if (!isRetryableDownloadError(downloadError.message)) throw downloadError
-        log.warn('YouTube download attempt "%s" failed: %s', attempt.label, downloadError.message.split(/\r?\n/)[0])
-      }
-    }
-    if (downloadError) throw downloadError
-    // Start AI song naming now so its latency overlaps with library scanning
-    // and instrumental/script preparation.
-    const aiNaming = startAiSongNaming(job)
-    job.status = 'scanning'
-    job.progress = 100
-    job.message = 'Download complete; scanning the library'
-    options.pushJobs()
-    options.startScanner(libraryPath.pathId)
-
-    const relPath = path.relative(libraryPath.basePath, job.file).replace(/\\/g, '/')
-    const media = await waitForMedia(libraryPath.pathId, relPath, signal)
-    job.status = 'processing'
-    job.progress = null
-    job.message = 'Preparing instrumental track before queueing'
-    options.pushJobs()
-    await waitForMediaPreparation(media.mediaId, signal)
-    const songId = await applyAiSongName(media.songId, job, aiNaming)
+  let downloadError: Error | undefined
+  for (let index = 0; index < attempts.length; index++) {
     signal.throwIfAborted()
-    Queue.add({ roomId: job.roomId, songId, userId: job.userId })
-    job.status = 'complete'
-    job.message = 'Processing complete; added to the queue.'
-    options.pushJobs()
-    options.pushQueue()
-    log.info('Downloaded %s', job.file)
+    const attempt = attempts[index]
+    if (index > 0) {
+      job.progress = 0
+      job.message = attempt.message
+      options.pushJobs()
+    }
+    try {
+      job.file = await spawnYtDlp(attempt.transform(args), job, options.pushJobs, signal)
+      downloadError = undefined
+      break
+    } catch (error) {
+      downloadError = error instanceof Error ? error : new Error(String(error))
+      if (!isRetryableDownloadError(downloadError.message)) throw downloadError
+      log.warn('YouTube download attempt "%s" failed: %s', attempt.label, downloadError.message.split(/\r?\n/)[0])
+    }
+  }
+  if (downloadError) throw downloadError
+  return libraryPath
+}
+
+async function runProcessingPhase (
+  job: YouTubeJob,
+  options: YouTubeOptions,
+  signal: AbortSignal,
+  libraryPath: { pathId: number, basePath: string },
+): Promise<void> {
+  // Start AI song naming now so its latency overlaps with library scanning
+  // and instrumental/script preparation.
+  const aiNaming = startAiSongNaming(job)
+  job.status = 'scanning'
+  job.progress = 100
+  job.message = 'Download complete; scanning the library'
+  options.pushJobs()
+  options.startScanner(libraryPath.pathId)
+
+  const relPath = path.relative(libraryPath.basePath, job.file).replace(/\\/g, '/')
+  const media = await waitForMedia(libraryPath.pathId, relPath, signal)
+  job.status = 'processing'
+  job.progress = null
+  job.message = 'Preparing instrumental track before queueing'
+  options.pushJobs()
+  await waitForMediaPreparation(media.mediaId, signal)
+  const songId = await applyAiSongName(media.songId, job, aiNaming)
+  signal.throwIfAborted()
+  Queue.add({ roomId: job.roomId, songId, userId: job.userId })
+  job.status = 'complete'
+  job.message = 'Processing complete; added to the queue.'
+  options.pushJobs()
+  options.pushQueue()
+  log.info('Downloaded %s', job.file)
+}
+
+async function runJob (entry: WaitingJob): Promise<void> {
+  const { job, options, signal, url } = entry
+  try {
+    // The concurrency slot covers only the yt-dlp download itself; scanning
+    // and instrumental/script preparation continue after it is released.
+    const libraryPath = await runDownloadPhase(job, url, options, signal)
+      .finally(() => {
+        activeDownloads--
+        pumpDownloads()
+      })
+    await runProcessingPhase(job, options, signal, libraryPath)
   } catch (error) {
     if (signal.aborted) {
       log.info('Canceled YouTube job %s (%s)', job.jobId, job.videoId)
@@ -398,6 +428,18 @@ async function runDownload (
       options.pushJobs()
     }, 10000).unref()
     log.warn('YouTube download failed: %s', message)
+  } finally {
+    jobControllers.delete(job.jobId)
+    if (jobs.has(job.jobId)) setTimeout(() => jobs.delete(job.jobId), 30 * 60 * 1000).unref()
+  }
+}
+
+function pumpDownloads (): void {
+  while (waitingJobs.length && activeDownloads < MAX_ACTIVE_DOWNLOADS) {
+    const next = waitingJobs.shift()
+    if (!next || next.signal.aborted) continue
+    activeDownloads++
+    void runJob(next)
   }
 }
 
