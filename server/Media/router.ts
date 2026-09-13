@@ -51,20 +51,21 @@ router.post('/precache', async (ctx) => {
     const res = Media.search({ mediaId })
     if (!res.result.length) continue
 
-    const { pathId, relPath } = res.entities[mediaId]
+    const { pathId, relPath, isManagedDownload, pathData } = res.entities[mediaId]
     const file = path.join(paths.entities[pathId].path, relPath)
     const mimeType = fileTypes[getExt(file)]?.mimeType
     if (!mimeType?.startsWith('video/')) continue
     const sourceInfo = await getSourceMediaInfo(file)
     const canStreamVideo = supportsType(videoTypes, mimeType, sourceInfo.videoCodec)
+    const preferPreparedVideo = !!isManagedDownload || isManagedDownloadPath(pathData)
     const unsupportedAudioTracks = sourceInfo.audioTracks
       .map((track, index) => supportsType(audioTypes, track.mimeType, track.codec) ? -1 : index)
       .filter(index => index >= 0)
-    if (combinedPlayback || !canStreamVideo || unsupportedAudioTracks.length) {
+    if (combinedPlayback || preferPreparedVideo || !canStreamVideo || unsupportedAudioTracks.length) {
       items.push({
         source: file,
         mediaId,
-        prepareVideo: combinedPlayback || !canStreamVideo,
+        prepareVideo: combinedPlayback || preferPreparedVideo || !canStreamVideo,
         prepareCombined: combinedPlayback,
         audioFormat: combinedPlayback ? 'aac' : 'mp3',
         audioTracks: combinedPlayback
@@ -78,6 +79,15 @@ router.post('/precache', async (ctx) => {
   prefetchBrowserMedia(items)
   ctx.status = 202
 })
+
+function isManagedDownloadPath (data: unknown): boolean {
+  if (typeof data !== 'string') return false
+  try {
+    return !!JSON.parse(data).isManagedDownloadPath
+  } catch {
+    return false
+  }
+}
 
 // stream a media file
 router.get('/:mediaId', async (ctx) => {

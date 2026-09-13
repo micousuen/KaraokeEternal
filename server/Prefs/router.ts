@@ -7,8 +7,9 @@ import Prefs from './Prefs.js'
 import Media from '../Media/Media.js'
 import pushQueuesAndLibrary from '../lib/pushQueuesAndLibrary.js'
 import { scheduleDatabaseVacuum } from '../lib/DatabaseMaintenance.js'
-import { PREFS_PATHS_CHANGED } from '../../shared/actionTypes.js'
+import { PREFS_PATHS_CHANGED, PREFS_PUSH } from '../../shared/actionTypes.js'
 import { publishAllQueues } from '../Queue/QueuePublisher.js'
+import { ADMIN_SOCKETS } from '../lib/socketRooms.js'
 import type { Prefs as PrefsType } from '../../shared/types.js'
 
 interface RequestWithBody {
@@ -30,6 +31,22 @@ router.get('/', (ctx) => {
 
   // non-admins only get roles
   ctx.body = { roles: prefs.roles }
+})
+
+// Store the transcription credential without returning or logging its value.
+router.put('/elevenlabs', (ctx) => {
+  if (!ctx.user.isAdmin) ctx.throw(401)
+  const { apiKey } = (ctx.request as unknown as RequestWithBody).body
+  if (typeof apiKey !== 'string') {
+    ctx.throw(422, 'Invalid ElevenLabs API key')
+    return
+  }
+
+  Prefs.setElevenLabsApiKey(apiKey)
+  log.info('%s updated the ElevenLabs API key', ctx.user.name)
+  const prefs = Prefs.get()
+  ctx.body = prefs
+  ctx.io.to(ADMIN_SOCKETS).emit('action', { type: PREFS_PUSH, payload: prefs })
 })
 
 // add a media path

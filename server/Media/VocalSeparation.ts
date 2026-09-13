@@ -4,11 +4,11 @@ import path from 'node:path'
 import getLogger from '../lib/Log.js'
 import { db } from '../lib/Database.js'
 import { runProcess, runProcessText } from '../lib/runProcess.js'
-import asrWorker, { type AsrSettings } from './AsrWorker.js'
 import { loadVocalSeparationConfig } from './VocalSeparationConfig.js'
 import { VocalSeparationHistory, type ScriptTimings, type SeparationHistoryItem } from './VocalSeparationHistory.js'
 import { MediaProcessingQueue } from './MediaProcessingQueue.js'
-import { downloadCreatorCaption, youtubeVideoIdFromFilename, type CreatorCaption } from '../YouTube/YouTubeCaptions.js'
+import { transcribeWithElevenLabs } from './ElevenLabsTranscriber.js'
+import Prefs from '../Prefs/Prefs.js'
 
 const log = getLogger('VocalSeparation')
 const downloadsPath = process.env.KES_PATH_DOWNLOADS || '/media/downloads'
@@ -348,27 +348,24 @@ async function generateScript (job: Job, vocal: string | undefined, workDir: str
   currentScriptingProgress = 0
   currentProgress = 0
   emitStatus()
-  let caption: CreatorCaption | undefined
-  const youtubeVideoId = youtubeVideoIdFromFilename(job.source)
-  if (youtubeVideoId) {
-    try {
-      caption = await downloadCreatorCaption(youtubeVideoId, workDir)
-      if (caption) log.info('Using creator-provided YouTube captions for mediaId=%s', job.mediaId)
-    } catch (error) {
-      log.warn('Could not load creator captions for mediaId=%s; using Qwen3-ASR: %s', job.mediaId, errorMessage(error))
-    }
-  }
-  // Give the ASR pipeline a simple, decoder-independent audio input. This also
-  // matches the sample rate required by its Silero VAD implementation.
-  const scriptingInput = path.join(workDir, 'vocals-for-asr.wav')
+  const apiKey = Prefs.getElevenLabsApiKey()
+  if (!apiKey) throw new Error('Configure an ElevenLabs API key in Admin > Preferences > Transcription')
+  // Upload a compact, decoder-independent mono WAV instead of the source video.
+  const scriptingInput = path.join(workDir, 'vocals-for-scribe.wav')
   await execFile(ffmpegPath, [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
     '-i', vocal || job.source,
     ...(vocal ? [] : ['-map', `0:a:${job.vocalTrack}`]),
     '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', scriptingInput,
   ])
-  const { language, srt, timings } = await runTranscription(scriptingInput, workDir, caption)
-  await fsPromises.copyFile(srt, `${scriptPath(job.source)}.partial`)
+  setScriptingProgress(10)
+  const { language, srt, timings } = await transcribeWithElevenLabs(scriptingInput, apiKey, {
+    language: config.scripting.language,
+    maxLineWidth: config.scripting.maxLineWidth ?? 36,
+    minLineWidth: config.scripting.minLineWidth ?? 12,
+  })
+  setScriptingProgress(95)
+  await fsPromises.writeFile(`${scriptPath(job.source)}.partial`, srt, 'utf8')
   await fsPromises.rename(`${scriptPath(job.source)}.partial`, scriptPath(job.source))
   db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = ?', [job.mediaId])
   db.run(`
@@ -403,7 +400,7 @@ function tasksForJob (
   })
   if (job.needsScript) tasks.push({
     type: 'scripting',
-    label: 'Create SRT script (Qwen3-ASR CPU)',
+    label: 'Create SRT script (ElevenLabs Scribe v2)',
     status: !live || currentScriptingProgress === undefined
       ? 'queued'
       : currentScriptingProgress >= 100 ? 'completed' : 'processing',
@@ -414,36 +411,6 @@ function tasksForJob (
 
 function scriptPath (source: string): string {
   return path.join(path.dirname(source), `${path.basename(source, path.extname(source))}.srt`)
-}
-
-async function runTranscription (
-  vocal: string,
-  outputDir: string,
-  caption?: CreatorCaption,
-): Promise<{ language: string, srt: string, timings?: ScriptTimings }> {
-  // The worker mounts itself on demand and stays alive for subsequent songs,
-  // avoiding repeated ASR/VAD model startup.
-  const result = await asrWorker.transcribe(vocal, outputDir, asrSettings(), (progress) => {
-    setScriptingProgress(Math.min(99, Math.round(progress)))
-  }, () => {
-    emitStatus()
-  }, caption)
-  return result
-}
-
-function asrSettings (): AsrSettings {
-  return {
-    model: config.scripting.model,
-    alignerModel: config.scripting.alignerModel,
-    language: config.scripting.language,
-    vadOnset: config.scripting.vadOnset ?? 0.35,
-    vadOffset: config.scripting.vadOffset ?? Math.max(0.01, (config.scripting.vadOnset ?? 0.35) - 0.15),
-    vadChunkSeconds: config.scripting.vadChunkSeconds ?? 15,
-    batchSize: config.scripting.batchSize ?? 2,
-    maxLineWidth: config.scripting.maxLineWidth ?? 36,
-    maxLineCount: config.scripting.maxLineCount ?? 2,
-    minLineWidth: config.scripting.minLineWidth ?? 12,
-  }
 }
 
 async function mediaDuration (filename: string): Promise<number> {

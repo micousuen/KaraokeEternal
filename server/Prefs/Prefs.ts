@@ -5,13 +5,16 @@ import { db } from '../lib/Database.js'
 import getLogger from '../lib/Log.js'
 
 const log = getLogger('Prefs')
+const ELEVENLABS_API_KEY = 'elevenLabsApiKey'
+const PRIVATE_KEYS = new Set(['jwtKey', ELEVENLABS_API_KEY])
 
 class Prefs {
   /**
-   * Get all global preferences (includes media paths; excludes JWT secret key)
+   * Get all global preferences (includes media paths; excludes private credentials)
    */
   static get () {
     const prefs = {
+      isElevenLabsApiKeyConfigured: false,
       paths: { result: [], entities: {} },
       roles: { result: [], entities: {} },
     }
@@ -19,7 +22,7 @@ class Prefs {
     {
       const query = sql`
         SELECT * FROM prefs
-        WHERE key != 'jwtKey'
+        WHERE key NOT IN ('jwtKey', 'elevenLabsApiKey')
       `
       const rows = db.all<{ key: string, data: string }>(String(query), query.parameters)
 
@@ -28,6 +31,8 @@ class Prefs {
         prefs[row.key] = JSON.parse(row.data)
       })
     }
+
+    prefs.isElevenLabsApiKeyConfigured = !!Prefs.getElevenLabsApiKey()
 
     // include roles
     {
@@ -69,12 +74,43 @@ class Prefs {
    * @return Success/fail boolean
    */
   static set (key: string, data: any): boolean {
+    if (PRIVATE_KEYS.has(key)) throw new Error('Private preferences must use their dedicated setter')
     const query = sql`
       REPLACE INTO prefs (key, data)
       VALUES (${key}, ${JSON.stringify(data)})
     `
     const res = db.run(String(query), query.parameters)
     return res.changes === 1
+  }
+
+  /** Read the ElevenLabs credential without exposing it through get(). */
+  static getElevenLabsApiKey (): string | undefined {
+    const query = sql`
+      SELECT data FROM prefs
+      WHERE key = ${ELEVENLABS_API_KEY}
+    `
+    const row = db.get<{ data: string }>(String(query), query.parameters)
+    if (!row) return undefined
+    try {
+      const value = JSON.parse(row.data)
+      return typeof value === 'string' && value.trim() ? value.trim() : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** Store or clear the database-backed ElevenLabs credential. */
+  static setElevenLabsApiKey (apiKey: string): boolean {
+    const value = apiKey.trim()
+    if (value.length > 512) throw new Error('ElevenLabs API key is too long')
+    if (!value) {
+      return db.run('DELETE FROM prefs WHERE key = ?', [ELEVENLABS_API_KEY]).changes <= 1
+    }
+    const query = sql`
+      REPLACE INTO prefs (key, data)
+      VALUES (${ELEVENLABS_API_KEY}, ${JSON.stringify(value)})
+    `
+    return db.run(String(query), query.parameters).changes === 1
   }
 
   /**

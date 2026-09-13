@@ -48,6 +48,7 @@ interface YouTubeOptions {
 }
 
 const jobs = new Map<string, YouTubeJob>()
+const jobControllers = new Map<string, AbortController>()
 const searchCache = new Map<string, { expiresAt: number, response: YouTubeSearchResponse }>()
 const pendingSearches = new Map<string, Promise<YouTubeSearchResponse>>()
 let activeDownloads = 0
@@ -87,25 +88,38 @@ export function createYouTubeJob (
   url: string,
   owner: Pick<YouTubeJob, 'roomId' | 'userId' | 'userDisplayName' | 'userDateUpdated'>,
   options: YouTubeOptions,
+  initialTitle?: string,
 ): YouTubeJob {
+  const normalizedUrl = normalizeYouTubeUrl(url)
+  const videoId = new URL(normalizedUrl).searchParams.get('v')!
+  const duplicate = Array.from(jobs.values()).find(job => (
+    job.roomId === owner.roomId
+    && job.videoId === videoId
+    && job.status !== 'complete'
+    && job.status !== 'error'
+  ))
+  if (duplicate) return duplicate
   if (activeDownloads >= 2) throw new Error('The YouTube download queue is busy; try again shortly')
 
-  const normalizedUrl = normalizeYouTubeUrl(url)
   const job: YouTubeJob = {
     jobId: randomUUID(),
+    videoId,
     ...owner,
-    title: 'YouTube video',
+    title: initialTitle?.trim().slice(0, 300) || 'YouTube video',
     status: 'queued',
     progress: 0,
     message: 'Waiting to download',
   }
 
   jobs.set(job.jobId, job)
+  const controller = new AbortController()
+  jobControllers.set(job.jobId, controller)
   options.pushJobs()
   activeDownloads++
-  void runDownload(job, normalizedUrl, options).finally(() => {
+  void runDownload(job, normalizedUrl, options, controller.signal).finally(() => {
     activeDownloads--
-    setTimeout(() => jobs.delete(job.jobId), 30 * 60 * 1000).unref()
+    jobControllers.delete(job.jobId)
+    if (jobs.has(job.jobId)) setTimeout(() => jobs.delete(job.jobId), 30 * 60 * 1000).unref()
   })
 
   return job
@@ -118,6 +132,14 @@ export function getYouTubeJob (jobId: string, userId: number): YouTubeJob | unde
 
 export function getRoomYouTubeJobs (roomId: number): YouTubeJob[] {
   return Array.from(jobs.values()).filter(job => job.roomId === roomId && job.status !== 'complete')
+}
+
+export function cancelYouTubeJob (jobId: string, roomId: number): boolean {
+  const job = jobs.get(jobId)
+  if (!job || job.roomId !== roomId) return false
+  jobs.delete(jobId)
+  jobControllers.get(jobId)?.abort()
+  return true
 }
 
 export async function searchYouTube (
@@ -262,7 +284,12 @@ function pruneSearchCache (): void {
   while (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value!)
 }
 
-async function runDownload (job: YouTubeJob, url: string, options: YouTubeOptions): Promise<void> {
+async function runDownload (
+  job: YouTubeJob,
+  url: string,
+  options: YouTubeOptions,
+  signal: AbortSignal,
+): Promise<void> {
   try {
     fs.mkdirSync(options.downloadsPath, { recursive: true })
     const libraryPath = resolveDownloadLibraryPath(options.downloadsPath)
@@ -312,6 +339,7 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
 
     let downloadError: Error | undefined
     for (let index = 0; index < attempts.length; index++) {
+      signal.throwIfAborted()
       const attempt = attempts[index]
       if (index > 0) {
         job.progress = 0
@@ -319,7 +347,7 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
         options.pushJobs()
       }
       try {
-        job.file = await spawnYtDlp(attempt.transform(args), job, options.pushJobs)
+        job.file = await spawnYtDlp(attempt.transform(args), job, options.pushJobs, signal)
         downloadError = undefined
         break
       } catch (error) {
@@ -336,12 +364,13 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
     options.startScanner(libraryPath.pathId)
 
     const relPath = path.relative(libraryPath.basePath, job.file).replace(/\\/g, '/')
-    const media = await waitForMedia(libraryPath.pathId, relPath)
+    const media = await waitForMedia(libraryPath.pathId, relPath, signal)
     job.status = 'processing'
     job.progress = null
     job.message = 'Preparing instrumental track before queueing'
     options.pushJobs()
-    await waitForMediaPreparation(media.mediaId)
+    await waitForMediaPreparation(media.mediaId, signal)
+    signal.throwIfAborted()
     Queue.add({ roomId: job.roomId, songId: media.songId, userId: job.userId })
     job.status = 'complete'
     job.message = 'Processing complete; added to the queue.'
@@ -349,6 +378,10 @@ async function runDownload (job: YouTubeJob, url: string, options: YouTubeOption
     options.pushQueue()
     log.info('Downloaded %s', job.file)
   } catch (error) {
+    if (signal.aborted) {
+      log.info('Canceled YouTube job %s (%s)', job.jobId, job.videoId)
+      return
+    }
     const message = error instanceof Error ? error.message : String(error)
     job.status = 'error'
     job.progress = null
@@ -420,7 +453,12 @@ function resolveDownloadLibraryPath (downloadsPath: string): { pathId: number, b
   }
 }
 
-async function spawnYtDlp (args: string[], job: YouTubeJob, pushJobs: () => void): Promise<string> {
+async function spawnYtDlp (
+  args: string[],
+  job: YouTubeJob,
+  pushJobs: () => void,
+  signal: AbortSignal,
+): Promise<string> {
   let finalPath = ''
   let lastPush = 0
   let lineBuffer = ''
@@ -453,6 +491,7 @@ async function spawnYtDlp (args: string[], job: YouTubeJob, pushJobs: () => void
       maxStdoutBytes: 16000,
       maxStderrBytes: 16000,
       onStdout: handleStdout,
+      signal,
     })
     return finalPath || stdout.trim().split(/\r?\n/).pop() || ''
   } catch (error) {
@@ -464,10 +503,15 @@ async function spawnYtDlp (args: string[], job: YouTubeJob, pushJobs: () => void
   }
 }
 
-async function waitForMedia (pathId: number, relPath: string): Promise<{ mediaId: number, songId: number }> {
+async function waitForMedia (
+  pathId: number,
+  relPath: string,
+  signal: AbortSignal,
+): Promise<{ mediaId: number, songId: number }> {
   const deadline = Date.now() + 10 * 60 * 1000
 
   while (Date.now() < deadline) {
+    signal.throwIfAborted()
     const result = Media.search({ pathId, relPath })
     if (result.result.length) return result.entities[result.result[0]]
     await new Promise(resolve => setTimeout(resolve, 500))
@@ -476,10 +520,11 @@ async function waitForMedia (pathId: number, relPath: string): Promise<{ mediaId
   throw new Error('The download finished, but the library scan did not complete in time')
 }
 
-async function waitForMediaPreparation (mediaId: number): Promise<void> {
+async function waitForMediaPreparation (mediaId: number, signal: AbortSignal): Promise<void> {
   const deadline = Date.now() + MEDIA_PREPARATION_TIMEOUT_MS
 
   while (Date.now() < deadline) {
+    signal.throwIfAborted()
     const readiness = getMediaQueueReadiness(mediaId)
     if (readiness === 'ready') return
     if (readiness === 'missing') throw new Error('The downloaded media disappeared during processing')

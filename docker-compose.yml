@@ -7,7 +7,7 @@ services:
     image: karaoke-eternal:transcode
     pull_policy: never
     restart: unless-stopped
-    # Reap FFmpeg, separator, and ASR subprocesses reliably. Without an
+    # Reap FFmpeg and separator subprocesses reliably. Without an
     # init process, long preprocessing runs can eventually fail with ECHILD.
     init: true
     depends_on:
@@ -26,6 +26,8 @@ services:
       # FFmpeg tuning for the browser-compatible H.264 output.
       KES_TRANSCODE_PRESET: veryfast
       KES_TRANSCODE_CRF: "20"
+      # Cap browser playback renditions to reduce decode load on TVs and low-power clients.
+      KES_TRANSCODE_MAX_HEIGHT: "720"
       KES_TRANSCODE_AUDIO_BITRATE: 192k
       KES_TRANSCODE_MAX_SIZE_GB: "8"
       KES_PRECACHE_COUNT: "5"

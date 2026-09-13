@@ -45,7 +45,7 @@ const PlaybackCtrl = () => {
   }
 
   if (!status.isPlayerPresent) {
-    return (isAdmin && isInRoom && screenfull.isEnabled) ? <NoPlayer /> : null
+    return isInRoom ? <NoPlayer canLaunchPlayer={isAdmin && screenfull.isEnabled} /> : null
   }
 
   return (

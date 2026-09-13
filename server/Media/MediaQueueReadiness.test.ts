@@ -31,7 +31,7 @@ describe('YouTube media queue readiness', () => {
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
 
-  it('blocks a managed download until A2 is ready when scripting is disabled', () => {
+  it('blocks a managed download until its instrumental and script are ready', () => {
     expect(getMediaQueueReadiness(1)).toBe('processing')
     expect(getSongQueueReadiness(1)).toBe('processing')
     expect(buildLibrarySnapshot(db, 1).songs.entities[1].isProcessing).toBe(true)
@@ -45,9 +45,15 @@ describe('YouTube media queue readiness', () => {
       VALUES (1, 2, 1, 1, 100, 1000, 1000, 240, 0)
     `)
 
+    expect(getMediaQueueReadiness(1)).toBe('processing')
+    expect(getSongQueueReadiness(1)).toBe('processing')
+    expect(buildLibrarySnapshot(db, 2).songs.entities[1].isProcessing).toBe(true)
+
+    db.run('UPDATE audioTrackAnalysis SET scriptReady = 1 WHERE mediaId = 1')
+
     expect(getMediaQueueReadiness(1)).toBe('ready')
     expect(getSongQueueReadiness(1)).toBe('ready')
-    expect(buildLibrarySnapshot(db, 2).songs.entities[1].isProcessing).toBe(false)
+    expect(buildLibrarySnapshot(db, 3).songs.entities[1].isProcessing).toBe(false)
     expect(() => Queue.add({ roomId: 1, songId: 1, userId: 1 })).not.toThrow()
   })
 

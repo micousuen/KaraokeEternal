@@ -10,7 +10,7 @@ import Button from 'components/Button/Button'
 import PaddedList from 'components/PaddedList/PaddedList'
 import ArtistItem from '../ArtistItem/ArtistItem'
 import SongList from '../SongList/SongList'
-import type { YouTubeSearchResponse, YouTubeSearchResult } from 'shared/types'
+import type { YouTubeJob, YouTubeSearchResponse, YouTubeSearchResult } from 'shared/types'
 import type { ListImperativeAPI, RowComponentProps } from 'react-window'
 import styles from './SearchResults.css'
 
@@ -46,12 +46,13 @@ interface CustomRowProps {
   expandedArtistResults: number[]
   filterKeywords: string[]
   rows: SearchRow[]
+  queuedYouTubeIds: ReadonlySet<string>
   queuedSongs: ReadonlySet<number>
   starredSongs: ReadonlySet<number>
   previewId: string | null
   downloadingId: string | null
   isYouTubeSearching: boolean
-  onDownload(url: string, id: string): void
+  onDownload(url: string, id: string, title?: string): void
   onPreview(id: string): void
   onSearchYouTube(query: string): void
   onYouTubePage(page: number): void
@@ -79,6 +80,7 @@ const RowComponent = ({
   expandedArtistResults,
   filterKeywords,
   rows,
+  queuedYouTubeIds,
   queuedSongs,
   starredSongs,
   previewId,
@@ -121,14 +123,20 @@ const RowComponent = ({
 
     case 'direct-url': {
       const isDownloading = downloadingId === 'direct-url'
+      const videoId = youtubeVideoId(row.url)
+      const isQueued = videoId !== null && queuedYouTubeIds.has(videoId)
       return (
         <div style={style} className={styles.sourceAction}>
           <button
             type='button'
-            disabled={downloadingId !== null}
+            disabled={downloadingId !== null || isQueued}
             onClick={() => onDownload(row.url, 'direct-url')}
           >
-            <strong>{isDownloading ? 'Adding to download queue…' : 'Download video from this URL'}</strong>
+            <strong>
+              {isDownloading
+                ? 'Adding to processing queue…'
+                : isQueued ? '✓ Added to processing queue' : 'Download video from this URL'}
+            </strong>
             <span>{row.url}</span>
           </button>
         </div>
@@ -160,6 +168,7 @@ const RowComponent = ({
       const { result } = row
       const isPreviewing = previewId === result.id
       const isDownloading = downloadingId === result.id
+      const isQueued = queuedYouTubeIds.has(result.id)
       return (
         <div style={style} className={styles.youtubeResult}>
           <div className={styles.youtubeCard}>
@@ -180,10 +189,12 @@ const RowComponent = ({
               </Button>
               <Button
                 variant='primary'
-                disabled={downloadingId !== null}
-                onClick={() => onDownload(result.url, result.id)}
+                icon={isQueued ? 'CHECK' : undefined}
+                disabled={downloadingId !== null || isQueued}
+                onClick={() => onDownload(result.url, result.id, result.title)}
+                aria-label={isQueued ? 'Added to processing queue' : 'Download'}
               >
-                {isDownloading ? 'Adding…' : 'Download'}
+                {isDownloading ? 'Adding…' : isQueued ? 'Added' : 'Download'}
               </Button>
             </div>
           </div>
@@ -232,17 +243,22 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
   const { filterStr, filterStarred } = useAppSelector(state => state.library)
   const { artistsResult, songsResult } = useAppSelector(getSearchResults)
   const starredSongs = useAppSelector(getStarredSongSet)
+  const youtubeJobs = useAppSelector(state => state.youtubeJobs)
   const { queued: queuedSongs } = useAppSelector(getSongsStatus)
   const [youtubeResults, setYouTubeResults] = useState<YouTubeSearchResult[]>([])
   const [youtubeQuery, setYouTubeQuery] = useState('')
   const [youtubePage, setYouTubePage] = useState(1)
   const [hasNextYouTubePage, setHasNextYouTubePage] = useState(false)
   const [youtubeError, setYouTubeError] = useState('')
-  const [downloadMessage, setDownloadMessage] = useState('')
+  const [downloadNotice, setDownloadNotice] = useState('')
+  const [recentlyAddedIds, setRecentlyAddedIds] = useState<ReadonlySet<string>>(new Set())
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [isYouTubeSearching, setYouTubeSearching] = useState(false)
   const activeQuery = useRef('')
+  const addingIds = useRef(new Set<string>())
+  const feedbackTimers = useRef(new Set<ReturnType<typeof setTimeout>>())
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestId = useRef(0)
   const listRef = useRef<ListImperativeAPI | null>(null)
   const query = filterStr.trim()
@@ -256,18 +272,22 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     setYouTubePage(1)
     setHasNextYouTubePage(false)
     setYouTubeError('')
-    setDownloadMessage('')
     setPreviewId(null)
     setDownloadingId(null)
     setYouTubeSearching(false)
   }, [query])
+
+  useEffect(() => () => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    feedbackTimers.current.forEach(clearTimeout)
+  }, [])
 
   const searchYouTube = useCallback(async (searchQuery: string, page = 1) => {
     const requestId = ++searchRequestId.current
     setYouTubeSearching(true)
     setYouTubeQuery(searchQuery)
     setYouTubeError('')
-    setDownloadMessage('')
+    setDownloadNotice('')
     setYouTubeResults([])
     setPreviewId(null)
     try {
@@ -288,20 +308,45 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     void searchYouTube(youtubeQuery, page)
   }, [searchYouTube, youtubeQuery])
 
-  const download = useCallback(async (url: string, id: string) => {
+  const download = useCallback(async (url: string, id: string, title?: string) => {
+    if (addingIds.current.has(id)) return
     const requestQuery = activeQuery.current
+    addingIds.current.add(id)
     setDownloadingId(id)
-    setDownloadMessage('')
     setYouTubeError('')
     try {
-      await api.post('/', { body: { url } })
-      if (activeQuery.current === requestQuery) setDownloadMessage('Added to the YouTube download queue.')
+      const job = await api.post<YouTubeJob>('/', { body: { url, title } })
+      setRecentlyAddedIds(current => new Set(current).add(job.videoId))
+      const feedbackTimer = setTimeout(() => {
+        setRecentlyAddedIds((current) => {
+          const next = new Set(current)
+          next.delete(job.videoId)
+          return next
+        })
+        feedbackTimers.current.delete(feedbackTimer)
+      }, 8000)
+      feedbackTimers.current.add(feedbackTimer)
+      setDownloadNotice(`“${title || job.title}” has been added to the processing queue.`)
+      if (noticeTimer.current) clearTimeout(noticeTimer.current)
+      noticeTimer.current = setTimeout(() => {
+        setDownloadNotice('')
+        noticeTimer.current = null
+      }, 5000)
     } catch (err) {
       if (activeQuery.current === requestQuery) setYouTubeError(err instanceof Error ? err.message : String(err))
     } finally {
+      addingIds.current.delete(id)
       if (activeQuery.current === requestQuery) setDownloadingId(null)
     }
   }, [])
+
+  const queuedYouTubeIds = useMemo(() => new Set([
+    ...recentlyAddedIds,
+    ...youtubeJobs.result.flatMap((jobId) => {
+      const job = youtubeJobs.entities[jobId]
+      return job && job.status !== 'error' ? [job.videoId] : []
+    }),
+  ]), [recentlyAddedIds, youtubeJobs])
 
   const togglePreview = useCallback((id: string) => {
     setPreviewId(current => current === id ? null : id)
@@ -324,7 +369,6 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
     ]
     if (looksLikeUrl(query)) resultRows.push({ type: 'direct-url', url: query })
     resultRows.push({ type: 'youtube-search', query })
-    if (downloadMessage) resultRows.push({ type: 'status', key: 'download', message: downloadMessage })
     if (youtubeError) resultRows.push({ type: 'status', key: 'youtube-error', message: youtubeError, isError: true })
     if (youtubeQuery && youtubeResults.length) {
       resultRows.push({
@@ -341,7 +385,7 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
       resultRows.push({ type: 'youtube-pagination', page: youtubePage, hasNextPage: false })
     }
     return resultRows
-  }, [artistsResult, downloadMessage, filterStarred, hasNextYouTubePage, previewId, query, songsResult, youtubeError, youtubePage, youtubeQuery, youtubeResults])
+  }, [artistsResult, filterStarred, hasNextYouTubePage, previewId, query, songsResult, youtubeError, youtubePage, youtubeQuery, youtubeResults])
 
   useEffect(() => {
     if (isYouTubeSearching || (!youtubeError && !youtubeResults.length)) return
@@ -381,34 +425,60 @@ const SearchResults = ({ ui }: SearchResultsProps) => {
   }
 
   return (
-    <PaddedList
-      rowComponent={RowComponent}
-      rowProps={{
-        artists,
-        dispatch,
-        downloadingId,
-        expandedArtistResults,
-        filterKeywords,
-        isYouTubeSearching,
-        onDownload: download,
-        onPreview: togglePreview,
-        onSearchYouTube: searchYouTube,
-        onYouTubePage: changeYouTubePage,
-        previewId,
-        queuedSongs,
-        rows,
-        starredSongs,
-      }}
-      rowHeight={rowHeight}
-      numRows={rows.length}
-      paddingTop={ui.headerHeight}
-      paddingRight={4}
-      paddingBottom={ui.footerHeight}
-      height={ui.innerHeight}
-      width={ui.innerWidth}
-      onRef={handleRef}
-    />
+    <>
+      {downloadNotice && (
+        <div
+          className={styles.downloadNotice}
+          style={{ top: ui.headerHeight + 8 }}
+          role='status'
+          aria-live='polite'
+        >
+          <span aria-hidden='true'>✓</span>
+          {downloadNotice}
+        </div>
+      )}
+      <PaddedList
+        rowComponent={RowComponent}
+        rowProps={{
+          artists,
+          dispatch,
+          downloadingId,
+          expandedArtistResults,
+          filterKeywords,
+          isYouTubeSearching,
+          onDownload: download,
+          onPreview: togglePreview,
+          onSearchYouTube: searchYouTube,
+          onYouTubePage: changeYouTubePage,
+          previewId,
+          queuedSongs,
+          queuedYouTubeIds,
+          rows,
+          starredSongs,
+        }}
+        rowHeight={rowHeight}
+        numRows={rows.length}
+        paddingTop={ui.headerHeight}
+        paddingRight={4}
+        paddingBottom={ui.footerHeight}
+        height={ui.innerHeight}
+        width={ui.innerWidth}
+        onRef={handleRef}
+      />
+    </>
   )
+}
+
+function youtubeVideoId (input: string): string | null {
+  try {
+    const url = new URL(input)
+    const id = url.hostname.toLowerCase() === 'youtu.be'
+      ? url.pathname.split('/').filter(Boolean)[0]
+      : url.searchParams.get('v') || url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)/)?.[1]
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null
+  } catch {
+    return null
+  }
 }
 
 export default SearchResults

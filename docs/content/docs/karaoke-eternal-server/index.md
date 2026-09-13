@@ -221,6 +221,7 @@ The customized source build also supports these video transcoding environment va
 | `KES_SEPARATOR_TIMEOUT_MS` | Maximum runtime for one vocal-separation process | `1800000` |
 | `KES_AUDIO_CLASSIFIER_TIMEOUT_MS` | Maximum runtime for audio-track classification | `120000` |
 | `KES_METADATA_TIMEOUT_MS` | Maximum runtime for slow technical metadata analysis | `120000` |
+| `KES_ELEVENLABS_TIMEOUT_MS` | Maximum runtime for one ElevenLabs Scribe v2 request | `600000` |
 | `KES_DATABASE_MAINTENANCE_DELAY_MS` | Delay before background database compaction after cleanup | `60000` |
 | `KES_SESSION_MAX_AGE_SECONDS` | Login session lifetime; account and role changes still revoke sessions immediately | `604800` |
 | `KES_LOGIN_MAX_CONCURRENT` | Maximum simultaneous password verification operations | `4` |

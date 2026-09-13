@@ -95,7 +95,7 @@
     <p>
       This document is the design inventory for runtime configuration. It covers server startup,
       authentication, guest retention, media delivery, transcoding, background processing,
-      WhisperX, vocal separation, audio-track classification, and maintenance.
+      ElevenLabs Scribe v2, vocal separation, audio-track classification, and maintenance.
     </p>
   </header>
 
@@ -181,7 +181,7 @@
           <tr><td><code>KES_SEPARATOR_TIMEOUT_MS</code></td><td><code>1800000</code> (30 min)</td><td>One audio-separator/Demucs invocation</td><td>The separation task fails and the queue advances.</td></tr>
           <tr><td><code>KES_AUDIO_CLASSIFIER_TIMEOUT_MS</code></td><td><code>120000</code> (2 min)</td><td>Dual-audio vocal/instrumental classifier worker</td><td>The worker terminates; callers may fall back to physical track order.</td></tr>
           <tr><td><code>KES_METADATA_TIMEOUT_MS</code></td><td><code>120000</code> (2 min)</td><td>Slow technical metadata worker</td><td>The worker terminates and the next background metadata job can run.</td></tr>
-          <tr><td><code>KES_WHISPERX_TIMEOUT_MS</code></td><td><code>600000</code> (10 min)</td><td>Each WhisperX worker request, including mount/transcribe commands</td><td>The pending request fails; the worker can be restarted for later work.</td></tr>
+          <tr><td><code>KES_ELEVENLABS_TIMEOUT_MS</code></td><td><code>600000</code> (10 min)</td><td>Each ElevenLabs Scribe v2 transcription request</td><td>The scripting task fails and the queue advances without replacing an existing SRT.</td></tr>
           <tr><td><code>KES_YOUTUBE_PROCESSING_TIMEOUT_MS</code></td><td><code>3600000</code> (60 min)</td><td>Maximum time a completed YouTube download waits for its script and instrumental track before it can enter the queue.</td><td>The download remains in the library but is not queued, and the YouTube job reports an error.</td></tr>
         </tbody>
       </table>
@@ -225,9 +225,7 @@
           <tr><td><code>KES_PATH_FFMPEG</code></td><td><code>ffmpeg</code></td><td>FFmpeg executable.</td></tr>
           <tr><td><code>KES_PATH_FFPROBE</code></td><td><code>ffprobe</code></td><td>FFprobe executable.</td></tr>
           <tr><td><code>KES_PATH_AUDIO_SEPARATOR</code></td><td><code>audio-separator</code></td><td>audio-separator executable used for Demucs inference.</td></tr>
-          <tr><td><code>KES_PATH_PYTHON</code></td><td><code>python</code></td><td>Python executable used for the persistent WhisperX worker.</td></tr>
-          <tr><td><code>KES_PATH_WHISPERX_WORKER</code></td><td><code>/opt/processing/whisperx_worker.py</code></td><td>WhisperX JSON-line worker entry point.</td></tr>
-          <tr><td><code>KES_PATH_VOCAL_SEPARATION_CONFIG</code></td><td><code>config/vocal-separation.yaml</code></td><td>Separation, instrumental-mixing, WhisperX, VAD, and subtitle-layout configuration.</td></tr>
+          <tr><td><code>KES_PATH_VOCAL_SEPARATION_CONFIG</code></td><td><code>config/vocal-separation.yaml</code></td><td>Separation, instrumental-mixing, Scribe enablement, language, and subtitle-layout configuration.</td></tr>
           <tr><td><code>KES_PATH_KTV_DETECTOR_CONFIG</code></td><td><code>config/ktv-detector.yaml</code></td><td>Dual-audio vocal/instrumental classification configuration.</td></tr>
         </tbody>
       </table>
@@ -262,17 +260,9 @@
           <tr><td><code>outputBitrate</code></td><td><code>192k</code></td><td>AAC bitrate for the generated instrumental track.</td></tr>
           <tr><td><code>instrumentalVocalMix</code></td><td><code>0.1</code></td><td>Separated vocal blended into the instrumental, constrained to 0–1.</td></tr>
           <tr><td><code>scripting.enabled</code></td><td><code>true</code></td><td>Enables SRT generation where media-processing policy requires it.</td></tr>
-          <tr><td><code>scripting.model</code></td><td><code>large-v3</code></td><td>Whisper model mounted by the persistent worker.</td></tr>
-          <tr><td><code>scripting.language</code></td><td>unset</td><td>Unset means automatic language detection. A configured value forces that language.</td></tr>
-          <tr><td><code>scripting.vadOnset</code></td><td><code>0.15</code></td><td>Silero voice threshold, strictly between 0 and 1. Lower values retain quieter sung vocals but may increase false lyric lines.</td></tr>
-          <tr><td><code>scripting.vadChunkSeconds</code></td><td><code>15</code></td><td>VAD/transcription chunk duration, constrained to 5–30 seconds.</td></tr>
-          <tr><td><code>scripting.beamSize</code></td><td><code>8</code></td><td>Positive integer decoding beam size. Higher values cost more CPU.</td></tr>
-          <tr><td><code>scripting.patience</code></td><td><code>2</code></td><td>Beam-search patience from 1 to 5. Higher values retain more completed candidates before stopping.</td></tr>
-          <tr><td><code>scripting.lengthPenalty</code></td><td><code>1.2</code></td><td>Positive decoding length penalty up to 3. Values slightly above 1 favor more complete lyric output.</td></tr>
+          <tr><td><code>scripting.language</code></td><td>unset</td><td>Unset means Scribe automatically detects the language. A two- or three-letter ISO-639 code forces that language.</td></tr>
           <tr><td><code>scripting.maxLineWidth</code></td><td><code>36</code></td><td>Preferred Latin-script subtitle width. Chinese and Cantonese use approximately half this width.</td></tr>
-          <tr><td><code>scripting.maxLineCount</code></td><td><code>2</code></td><td>Maximum composed subtitle lines per cue.</td></tr>
           <tr><td><code>scripting.minLineWidth</code></td><td><code>12</code></td><td>Minimum preferred phrase length before retaining text after punctuation; Chinese and Cantonese use approximately half.</td></tr>
-          <tr><td><code>scripting.initialPrompt</code></td><td>unset</td><td>Optional Whisper prompt. Keeping it unset avoids prompt text being hallucinated as lyrics.</td></tr>
         </tbody>
       </table>
     </div>
@@ -306,7 +296,7 @@ KES_GUEST_RETENTION_DAYS=7
 KES_TRANSCODE_CONCURRENCY=2
 KES_TRANSCODE_QUEUE_LIMIT=50
 KES_PRECACHE_COUNT=5
-KES_WHISPERX_TIMEOUT_MS=600000</code></pre>
+KES_ELEVENLABS_TIMEOUT_MS=600000</code></pre>
 
     <h3>Low-power CPU</h3>
     <pre><code>KES_TRANSCODE_CONCURRENCY=1

@@ -2,10 +2,10 @@ import KoaRouter from '@koa/router'
 import { YOUTUBE_JOBS_PUSH } from '../../shared/actionTypes.js'
 import { publishQueue } from '../Queue/QueuePublisher.js'
 import { roomSockets } from '../lib/socketRooms.js'
-import { createYouTubeJob, getRoomYouTubeJobs, getYouTubeJob, searchYouTube } from './YouTube.js'
+import { cancelYouTubeJob, createYouTubeJob, getRoomYouTubeJobs, getYouTubeJob, searchYouTube } from './YouTube.js'
 
 interface RequestWithBody {
-  body: { url?: unknown }
+  body: { url?: unknown, title?: unknown }
 }
 
 const router = new KoaRouter({ prefix: '/api/youtube' })
@@ -43,6 +43,10 @@ router.post('/', (ctx) => {
   const url = (ctx.request as unknown as RequestWithBody).body.url
   if (typeof url !== 'string' || !url.trim()) ctx.throw(422, 'Enter a YouTube video URL')
   const normalizedInput = String(url).trim()
+  const title = (ctx.request as unknown as RequestWithBody).body.title
+  if (title !== undefined && (typeof title !== 'string' || title.length > 300)) {
+    ctx.throw(422, 'Invalid YouTube video title')
+  }
 
   try {
     const roomId = ctx.user.roomId
@@ -63,12 +67,24 @@ router.post('/', (ctx) => {
       startScanner: ctx.startScanner,
       pushJobs,
       pushQueue: () => publishQueue(ctx.io, roomId),
-    })
+    }, typeof title === 'string' ? title : undefined)
     ctx.status = 202
     ctx.body = job
   } catch (error) {
     ctx.throw(/queue is busy/.test(error.message) ? 429 : 422, error.message)
   }
+})
+
+router.delete('/:jobId', (ctx) => {
+  requireRoomMember(ctx)
+  if (!cancelYouTubeJob(ctx.params.jobId, ctx.user.roomId)) {
+    ctx.throw(404, 'YouTube download job not found')
+  }
+  ctx.io.to(roomSockets(ctx.user.roomId)).emit('action', {
+    type: YOUTUBE_JOBS_PUSH,
+    payload: getRoomYouTubeJobs(ctx.user.roomId),
+  })
+  ctx.status = 204
 })
 
 router.get('/:jobId', (ctx) => {

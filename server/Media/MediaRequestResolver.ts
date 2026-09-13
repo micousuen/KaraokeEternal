@@ -41,7 +41,7 @@ export async function resolveMediaRequest (
   const result = Media.search({ mediaId })
   if (!result.result.length) throw new MediaRequestError(404, 'mediaId not found')
 
-  const { pathId, relPath } = result.entities[mediaId]
+  const { pathId, relPath, isManagedDownload, pathData } = result.entities[mediaId]
   const basePath = Prefs.get().paths.entities[pathId].path
   const file = path.join(basePath, relPath)
 
@@ -70,6 +70,7 @@ export async function resolveMediaRequest (
         audioTrackCount: sourceInfo.audioTrackCount,
         videoMimeType: mimeType || null,
         videoCodec: sourceInfo.videoCodec,
+        preferPreparedVideo: !!isManagedDownload || isManagedDownloadPath(pathData),
         audioTracks: [0, 1].map((requestedTrack) => {
           const track = getPhysicalAudioTrack(requestedTrack, analysis.audioTrackCount, analysis.ktvTrack)
           return track === null ? null : sourceInfo.audioTracks[track]
@@ -163,6 +164,15 @@ export async function resolveMediaRequest (
 
   if (!mimeType) throw new MediaRequestError(404, `Unknown MIME type: ${file}`)
   return fileResponse(file, mimeType, length)
+}
+
+function isManagedDownloadPath (data: unknown): boolean {
+  if (typeof data !== 'string') return false
+  try {
+    return !!JSON.parse(data).isManagedDownloadPath
+  } catch {
+    return false
+  }
 }
 
 export function getPhysicalAudioTrack (

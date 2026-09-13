@@ -18,6 +18,7 @@ export interface Song {
 
 export interface YouTubeJob {
   jobId: string
+  videoId: string
   userId: number
   userDisplayName: string
   userDateUpdated: number
@@ -217,6 +218,7 @@ export interface Media {
 
 export interface Prefs {
   isFirstRun?: boolean
+  isElevenLabsApiKeyConfigured: boolean
   isScanning: boolean
   isReplayGainEnabled: boolean
   paths: {

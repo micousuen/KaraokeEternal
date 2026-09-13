@@ -65,6 +65,30 @@
   color: var(--danger-color, #ff9b9b);
 }
 
+.downloadNotice {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  display: flex;
+  width: min(calc(100% - 2 * var(--space-m)), 34rem);
+  padding: var(--space-m);
+  box-sizing: border-box;
+  align-items: center;
+  gap: var(--space-s);
+  border: 1px solid hsl(var(--hue-blue), 70%, 55%);
+  border-radius: var(--border-radius);
+  background: hsl(var(--hue-blue), 50%, 15%);
+  color: #d9ffd9;
+  box-shadow: var(--box-shadow);
+  transform: translateX(-50%);
+}
+
+.downloadNotice span {
+  color: var(--queued-item-color);
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
 .youtubeResult {
   padding-top: 4px;
 }

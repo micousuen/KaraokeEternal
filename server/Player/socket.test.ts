@@ -1,5 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PLAYER_EMIT_CLAIM, PLAYER_EMIT_POSITION, PLAYER_POSITION, PLAYER_STATUS } from '../../shared/actionTypes.js'
+import {
+  PLAYER_CMD_NEXT,
+  PLAYER_CMD_OPTIONS,
+  PLAYER_CMD_PAUSE,
+  PLAYER_CMD_PLAY,
+  PLAYER_CMD_SEEK,
+  PLAYER_CMD_VOLUME,
+  PLAYER_EMIT_CLAIM,
+  PLAYER_EMIT_POSITION,
+  PLAYER_POSITION,
+  PLAYER_REQ_NEXT,
+  PLAYER_REQ_OPTIONS,
+  PLAYER_REQ_PAUSE,
+  PLAYER_REQ_PLAY,
+  PLAYER_REQ_SEEK,
+  PLAYER_REQ_VOLUME,
+  PLAYER_STATUS,
+} from '../../shared/actionTypes.js'
 import { createInitialPlaybackStatus } from '../../shared/types.js'
 
 const mocks = vi.hoisted(() => ({
@@ -53,5 +70,28 @@ describe('player socket status', () => {
       type: PLAYER_POSITION,
       payload: { position: 42 },
     })
+  })
+
+  it.each([
+    [PLAYER_REQ_PLAY, PLAYER_CMD_PLAY, undefined],
+    [PLAYER_REQ_PAUSE, PLAYER_CMD_PAUSE, undefined],
+    [PLAYER_REQ_NEXT, PLAYER_CMD_NEXT, undefined],
+    [PLAYER_REQ_SEEK, PLAYER_CMD_SEEK, 42],
+    [PLAYER_REQ_VOLUME, PLAYER_CMD_VOLUME, 0.5],
+    [PLAYER_REQ_OPTIONS, PLAYER_CMD_OPTIONS, { audioTrack: 1, showScript: true }],
+  ])('allows a non-admin room member to send %s', (request, command, payload) => {
+    const emit = vi.fn()
+    const socket = {
+      id: 'member-socket',
+      user: { isAdmin: false, isGuest: true, roomId: 810 },
+      server: { to: vi.fn(() => ({ emit })) },
+    }
+
+    handlers[request](socket, { payload })
+
+    expect(socket.server.to).toHaveBeenCalledWith('ROOM_ID_810')
+    expect(emit).toHaveBeenCalledWith('action', payload === undefined
+      ? { type: command }
+      : { type: command, payload })
   })
 })

@@ -65,6 +65,7 @@ const maxProcesses = positiveInteger(process.env.KES_TRANSCODE_CONCURRENCY, 2)
 const maxQueuedProcesses = positiveInteger(process.env.KES_TRANSCODE_QUEUE_LIMIT, 50)
 const transcodeTimeoutMs = positiveInteger(process.env.KES_TRANSCODE_TIMEOUT_MS, 10 * 60_000)
 const probeTimeoutMs = positiveInteger(process.env.KES_FFPROBE_TIMEOUT_MS, 30_000)
+const maxVideoHeight = positiveInteger(process.env.KES_TRANSCODE_MAX_HEIGHT, 720)
 
 export async function getBrowserVideo (
   source: string,
@@ -75,6 +76,7 @@ export async function getBrowserVideo (
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
     '-i', source,
     '-map', '0:v:0', '-an',
+    '-vf', `scale=-2:min(${maxVideoHeight}\\,ih)`,
     '-c:v', 'libx264',
     '-preset', process.env.KES_TRANSCODE_PRESET || 'veryfast',
     '-crf', process.env.KES_TRANSCODE_CRF || '20',

@@ -190,6 +190,8 @@ The Preferences panel allows admins to set these global preferences:
   - Add folders with [supported media files]({{< ref "docs/karaoke-eternal-server#media-files" >}}) to scan them into the library. You can re-arrange the folder order by dragging and dropping, and when songs have multiple versions the one in the folder highest in the list will be used.
 - **Player**
   - **ReplayGain (clip-safe)**: [ReplayGain](https://en.wikipedia.org/wiki/ReplayGain){{% icon-external %}} metadata tags allow the player to automatically minimize volume differences between songs, resulting in a better experience for all, and without affecting the dynamic range of each song (no compression). This option should generally only be enabled when you know all of your media is properly tagged. It normally reduces the player's overall volume significantly, so just turn your output up, and/or your mics down.
+- **Transcription**
+  - Add or replace the ElevenLabs API key used by Scribe v2 to generate timed karaoke SRT files. The key is stored in the server database and is not sent back to the browser after it is saved.
 
 ### My Account
 

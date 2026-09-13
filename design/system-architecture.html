@@ -223,7 +223,7 @@
           <div class="node worker"><strong>Scanner child</strong><small>Read-only DB · filename discovery · metadata pool · IPC writes</small></div>
           <div class="node worker"><strong>Watcher child</strong><small>Filesystem events → scan requests</small></div>
           <div class="node worker"><strong>Worker threads</strong><small>Library snapshots · metadata · classifier · VACUUM</small></div>
-          <div class="node external"><strong>External processes</strong><small>FFmpeg · FFprobe · yt-dlp · audio-separator · Python/WhisperX</small></div>
+          <div class="node external"><strong>External tools and APIs</strong><small>FFmpeg · FFprobe · yt-dlp · audio-separator · ElevenLabs Scribe v2</small></div>
         </div>
       </div>
       <p class="caption">IPC serializes scanner-originated database mutations through the main server-side handlers. Shutdown closes sockets and the database and terminates supervised children.</p>
@@ -352,7 +352,7 @@
 
   <section id="separation">
     <h2>8. Separation, instrumental generation, and scripting</h2>
-    <p>The expensive stem split runs once. After the vocal stem exists, instrumental construction and WhisperX scripting can proceed concurrently because both only read shared temporary output.</p>
+    <p>The expensive stem split runs once. After the vocal stem exists, instrumental construction and Scribe v2 transcription can proceed concurrently because both only read shared temporary output.</p>
     <div class="diagram-frame" role="img" aria-label="Vocal separation and scripting pipeline">
       <div class="diagram flow">
         <div class="node store"><strong>Classified vocal track</strong></div>
@@ -363,7 +363,7 @@
         <div class="arrow"><strong>⇉</strong><br>parallel</div>
         <div class="column">
           <div class="node worker"><strong>Instrumental branch</strong><small>Mix non-vocal stems + 10% vocal · AAC · remux A2 · transcode unsupported video codecs</small></div>
-          <div class="node worker"><strong>Scripting branch</strong><small>16 kHz mono WAV · persistent WhisperX · Silero VAD · alignment · SRT post-processing</small></div>
+          <div class="node worker"><strong>Scripting branch</strong><small>16 kHz mono WAV · ElevenLabs Scribe v2 · word timestamps · SRT post-processing</small></div>
         </div>
         <div class="arrow"><strong>→</strong></div>
         <div class="column">
@@ -371,11 +371,11 @@
           <div class="node store"><strong>SRT + language</strong><small>Sidecar file + song database field</small></div>
         </div>
       </div>
-      <p class="caption">The persistent WhisperX Python worker mounts ASR/VAD/alignment models on demand and can be mounted, unmounted, paused, or resumed from the admin UI.</p>
+      <p class="caption">The ElevenLabs key is stored as a private database preference. Only a configured/not-configured flag is returned to admin browsers.</p>
     </div>
     <div class="diagram-frame" role="img" aria-label="Subtitle post-processing">
       <div class="diagram flow">
-        <div class="node worker"><strong>WhisperX words</strong><small>Word-level aligned timestamps</small></div><div class="arrow">→</div>
+        <div class="node worker"><strong>Scribe v2 words</strong><small>Word-level timestamps</small></div><div class="arrow">→</div>
         <div class="node process"><strong>Punctuation-aware phrases</strong><small>Prefer sentence · comma · ! · ? boundaries</small></div><div class="arrow">→</div>
         <div class="node process"><strong>Readable width</strong><small>36 Latin · approximately half CJK · configurable minimum</small></div><div class="arrow">→</div>
         <div class="node process"><strong>Timed two-line cues</strong><small>Rolling replacement layout</small></div><div class="arrow">→</div>

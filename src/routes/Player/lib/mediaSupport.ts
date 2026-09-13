@@ -21,7 +21,7 @@ export const getSupportedMediaTypes = (): { videoTypes: string[], audioTypes: st
 }
 
 export const supportsSourceVideo = (video: HTMLVideoElement, info: SourceMediaInfo): boolean =>
-  canPlay(video, info.videoMimeType, info.videoCodec)
+  !info.preferPreparedVideo && canPlay(video, info.videoMimeType, info.videoCodec)
 
 export const supportsSourceAudio = (audio: HTMLAudioElement, track: SourceAudioTrack | null | undefined): boolean =>
   canPlay(audio, track?.mimeType || null, track?.codec || null)

@@ -1,6 +1,6 @@
 // Increment whenever the browser-facing transcode format changes. This also
 // versions media URLs so browsers cannot reuse bytes from an older container.
-export const BROWSER_MEDIA_VERSION = 6
+export const BROWSER_MEDIA_VERSION = 7
 
 export interface SourceAudioTrack {
   codec: string | null
@@ -13,6 +13,7 @@ export interface SourceMediaInfo {
   videoMimeType: string | null
   videoCodec: string | null
   audioTracks: Array<SourceAudioTrack | null>
+  preferPreparedVideo?: boolean
 }
 
 export const VIDEO_MEDIA_CANDIDATES = [

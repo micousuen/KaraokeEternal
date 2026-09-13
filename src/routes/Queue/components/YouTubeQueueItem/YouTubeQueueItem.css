@@ -15,6 +15,21 @@
   margin-left: var(--container-padding);
 }
 
+.remove {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  align-self: center;
+  margin: 0 var(--space-s);
+  color: var(--btn-danger-bg-color);
+  filter: var(--btn-danger-filter);
+}
+
+.remove svg {
+  width: 100%;
+  height: 100%;
+}
+
 .title,
 .status,
 .user {
@@ -52,5 +67,12 @@
 
   .status {
     font-size: var(--font-size-s);
+  }
+
+  .remove {
+    flex-basis: 38px;
+    width: 38px;
+    height: 38px;
+    margin: 0 var(--space-xs);
   }
 }
