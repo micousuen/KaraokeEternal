@@ -2,6 +2,7 @@ import KoaRouter from '@koa/router'
 import { YOUTUBE_JOBS_PUSH } from '../../shared/actionTypes.js'
 import { publishQueue } from '../Queue/QueuePublisher.js'
 import { roomSockets } from '../lib/socketRooms.js'
+import { invalidateLibrary } from '../Library/LibraryPublisher.js'
 import { cancelYouTubeJob, createYouTubeJob, getRoomYouTubeJobs, getYouTubeJob, searchYouTube } from './YouTube.js'
 
 interface RequestWithBody {
@@ -66,7 +67,10 @@ router.post('/', (ctx) => {
       providerUrl: ctx.env.KES_YOUTUBE_POT_PROVIDER_URL,
       startScanner: ctx.startScanner,
       pushJobs,
-      pushQueue: () => publishQueue(ctx.io, roomId),
+      pushQueue: () => {
+        invalidateLibrary(ctx.io)
+        publishQueue(ctx.io, roomId)
+      },
     }, typeof title === 'string' ? title : undefined)
     ctx.status = 202
     ctx.body = job

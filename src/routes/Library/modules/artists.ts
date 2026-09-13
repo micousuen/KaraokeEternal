@@ -39,6 +39,8 @@ const artistsReducer = createReducer(initialState, (builder) => {
           state.entities[artistId] = incoming
         } else {
           existing.name = incoming.name
+          existing.sortKey = incoming.sortKey
+          existing.sortLetter = incoming.sortLetter
           existing.songIds = [...new Set([...existing.songIds, ...incoming.songIds])]
         }
       }

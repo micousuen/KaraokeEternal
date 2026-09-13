@@ -1,6 +1,9 @@
 export interface Artist {
   artistId: number
   name: string
+  requestCount: number
+  sortKey: string
+  sortLetter: string
   songIds: number[]
 }
 
@@ -11,6 +14,9 @@ export interface Song {
   songId: number
   title: string
   numMedia: number
+  requestCount: number
+  sortKey: string
+  sortLetter: string
   isManagedDownload?: boolean
   hasSingleAudioTrack?: boolean
   isProcessing?: boolean

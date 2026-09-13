@@ -15,6 +15,8 @@
 }
 
 .searchInput {
+  flex: 1 1 auto;
+  min-width: 0;
   align-self: stretch;
   padding: var(--space-xs) var(--space-s) var(--space-xs) var(--space-xs) !important;
   font-size: var(--font-size-m) !important;
@@ -42,5 +44,19 @@
 .btnStar {
   svg {
     height: 3rem;
+  }
+}
+
+.btnSort {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0 var(--space-xs);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+
+  svg {
+    height: 2.5rem;
   }
 }

@@ -7,6 +7,7 @@ import { Song, Artist } from '../../shared/types.js'
 import Media from '../Media/Media.js'
 import { getSongQueueReadiness, managedDownloadsRequireScript } from '../Media/MediaQueueReadiness.js'
 import type { LibrarySnapshot } from './LibrarySnapshot.js'
+import { compareLibrarySortMetadata, getLibrarySortMetadata } from './LibrarySort.js'
 
 const log = getLogger('Library')
 let lastCacheVersion = 0
@@ -66,6 +67,10 @@ class Library {
     }
 
     const isManagedDownload = result.some(mediaId => !!entities[mediaId].isManagedDownload || isManagedDownloadPath(entities[mediaId].pathData))
+    const requestCount = db.get<{ requestCount: number }>(
+      'SELECT requestCount FROM songs WHERE songId = ?',
+      [songId],
+    )?.requestCount || 0
     return {
       [songId]: {
         artistId: media.artistId,
@@ -74,6 +79,8 @@ class Library {
         songId: media.songId,
         title: media.title,
         numMedia: result.length,
+        requestCount,
+        ...getLibrarySortMetadata(media.title),
         isManagedDownload,
         hasSingleAudioTrack: db.get<{ audioTrackCount: number }>(
           'SELECT audioTrackCount FROM audioTrackAnalysis WHERE mediaId = ?',
@@ -89,13 +96,13 @@ class Library {
     artists: { result: number[], entities: Record<number, Artist> }
     songs: { result: number[], entities: Record<number, Song> }
   } {
-    const artists = { result: [], entities: {} }
-    const songs = { result: [], entities: {} }
+    const artists: { result: number[], entities: Record<number, Artist> } = { result: [], entities: {} }
+    const songs: { result: number[], entities: Record<number, Song> } = { result: [], entities: {} }
     if (!songIds.length) return { artists, songs }
 
     const query = sql`
       SELECT artists.artistId, artists.name, songs.songId, songs.title, songs.language,
-        MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia,
+        songs.requestCount, MAX(media.duration) AS duration, COUNT(DISTINCT media.mediaId) AS numMedia,
         MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
         MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack,
         MAX(CASE WHEN
@@ -113,7 +120,7 @@ class Library {
       GROUP BY songs.songId
       ORDER BY songs.titleNorm
     `
-    const rows = db.all<Omit<Song, 'isManagedDownload' | 'hasSingleAudioTrack' | 'isProcessing'> & {
+    const rows = db.all<Omit<Song, 'sortKey' | 'sortLetter' | 'isManagedDownload' | 'hasSingleAudioTrack' | 'isProcessing'> & {
       name: string
       isManagedDownload: number
       hasSingleAudioTrack: number
@@ -126,6 +133,7 @@ class Library {
       songs.entities[song.songId] = {
         artistId,
         ...song,
+        ...getLibrarySortMetadata(song.title),
         isManagedDownload: !!song.isManagedDownload,
         hasSingleAudioTrack: !!song.hasSingleAudioTrack,
         isProcessing: !!song.isManagedDownload && !isQueueReady,
@@ -133,9 +141,25 @@ class Library {
 
       if (!artists.entities[artistId]) {
         artists.result.push(artistId)
-        artists.entities[artistId] = { artistId, name, songIds: [] }
+        artists.entities[artistId] = {
+          artistId,
+          name,
+          requestCount: 0,
+          songIds: [],
+          ...getLibrarySortMetadata(name),
+        }
       }
       artists.entities[artistId].songIds.push(song.songId)
+      artists.entities[artistId].requestCount += song.requestCount
+    }
+
+    songs.result.sort((leftId, rightId) =>
+      compareLibrarySortMetadata(songs.entities[leftId], songs.entities[rightId]) || leftId - rightId)
+    artists.result.sort((leftId, rightId) =>
+      compareLibrarySortMetadata(artists.entities[leftId], artists.entities[rightId]) || leftId - rightId)
+    for (const artist of Object.values(artists.entities)) {
+      artist.songIds.sort((leftId, rightId) =>
+        compareLibrarySortMetadata(songs.entities[leftId], songs.entities[rightId]) || leftId - rightId)
     }
 
     return { artists, songs }

@@ -82,6 +82,7 @@ describe('song rename', () => {
   it('merges into an existing author and song', async () => {
     db.run('INSERT INTO artists (artistId, name, nameNorm) VALUES (2, ?, ?)', ['Known author', 'Known author'])
     db.run('INSERT INTO songs (songId, artistId, title, titleNorm) VALUES (2, 2, ?, ?)', ['Known title', 'Known title'])
+    db.run('UPDATE songs SET requestCount = CASE songId WHEN 1 THEN 3 WHEN 2 THEN 5 END')
     db.run('INSERT INTO queue (queueId, roomId, songId, userId) VALUES (1, 1, 1, 1)')
 
     const result = await Media.renameSong(1, 'Known title', 'Known author')
@@ -92,6 +93,7 @@ describe('song rename', () => {
       relPath: 'Known author-Known title.mp4',
     })
     expect(db.get('SELECT songId FROM queue WHERE queueId = 1')).toEqual({ songId: 2 })
+    expect(db.get('SELECT requestCount FROM songs WHERE songId = 2')).toEqual({ requestCount: 8 })
     expect(db.get('SELECT songId FROM songs WHERE songId = 1')).toBeUndefined()
   })
 })

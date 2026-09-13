@@ -1,6 +1,7 @@
 import { createSelector } from '@reduxjs/toolkit'
 import { Searcher } from 'fast-fuzzy'
 import { RootState } from 'store/store'
+import { sortArtistIds, sortSongIds } from '../lib/sortLibrary'
 
 const getArtists = (state: RootState) => state.artists
 const getSongs = (state: RootState) => state.songs
@@ -8,6 +9,7 @@ const getFilterStr = (state: RootState) => state.library.filterStr.trim().toLowe
 const getFilterStarred = (state: RootState) => state.library.filterStarred
 const getStarredArtists = (state: RootState) => state.userStars.starredArtists
 const getStarredSongs = (state: RootState) => state.userStars.starredSongs
+const getSortMode = (state: RootState) => state.library.sortMode
 
 const getArtistSearcher = createSelector(
   [getArtists],
@@ -64,10 +66,10 @@ const getSongsByView = createSelector(
 )
 
 const getSearchResults = createSelector(
-  [getArtistsByView, getSongsByView],
-  (artistsResult, songsResult) => ({
-    artistsResult,
-    songsResult,
+  [getArtistsByView, getSongsByView, getArtists, getSongs, getSortMode],
+  (artistsResult, songsResult, artists, songs, sortMode) => ({
+    artistsResult: sortArtistIds(artistsResult, artists.entities, sortMode),
+    songsResult: sortSongIds(songsResult, songs.entities, sortMode),
   }),
 )
 

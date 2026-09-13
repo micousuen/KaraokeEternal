@@ -5,6 +5,7 @@ import { emitToRoom } from '../lib/socketActions.js'
 import { getQueueSnapshot, publishQueue, sendQueueSnapshot } from './QueuePublisher.js'
 import type { SocketHandlerMap } from '../../shared/socketProtocol.js'
 import { runQueueOperation } from './QueueOperationLane.js'
+import { invalidateLibrary } from '../Library/LibraryPublisher.js'
 
 // ------------------------------------
 // Action Handlers
@@ -34,6 +35,8 @@ const ACTION_HANDLERS = {
         error: err instanceof Error ? err.message : String(err),
       })
     }
+
+    invalidateLibrary(sock.server)
 
     // success
     acknowledge({ type: QUEUE_ADD + '_SUCCESS' })

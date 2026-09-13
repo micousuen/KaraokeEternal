@@ -9,6 +9,7 @@ import PaddedList from 'components/PaddedList/PaddedList'
 import AlphaPicker from '../AlphaPicker/AlphaPicker'
 import ArtistItem from '../ArtistItem/ArtistItem'
 import type { ListImperativeAPI, RowComponentProps } from 'react-window'
+import getOrderedArtistIds from '../../selectors/getOrderedArtistIds'
 
 const ROW_HEIGHT_ARTIST = 48
 const ROW_HEIGHT_SONG = 56
@@ -20,6 +21,7 @@ interface ArtistListProps {
 interface CustomRowProps {
   dispatch: ReturnType<typeof useAppDispatch>
   artists: RootState['artists']
+  artistIds: number[]
   expandedArtists: number[]
   queuedSongs: ReadonlySet<number>
   starredSongs: ReadonlySet<number>
@@ -33,13 +35,14 @@ const RowComponent = ({
   // below are also used in ArtistList and passed via rowProps to avoid duplicate effort
   dispatch,
   artists,
+  artistIds,
   expandedArtists,
   queuedSongs,
   starredSongs,
 }: RowComponentProps<CustomRowProps>) => {
   const starredArtistCounts = useAppSelector(state => state.starCounts.artists)
 
-  const artist = artists.entities[artists.result[index]]
+  const artist = artists.entities[artistIds[index]]
 
   return (
     <ArtistItem
@@ -60,10 +63,11 @@ const ArtistList = ({
   ui,
 }: ArtistListProps) => {
   const dispatch = useAppDispatch()
-  const { expandedArtists } = useAppSelector(state => state.library)
+  const { expandedArtists, sortMode } = useAppSelector(state => state.library)
   const scrollRow = useAppSelector(state => state.library.scrollRow)
   const alphaPickerMap = useAppSelector(getAlphaPickerMap)
   const artists = useAppSelector(state => state.artists)
+  const artistIds = useAppSelector(getOrderedArtistIds)
   const starredSongs = useAppSelector(getStarredSongSet)
   const { queued: queuedSongs } = useAppSelector(getSongsStatus)
 
@@ -76,8 +80,16 @@ const ArtistList = ({
     }
   }, [dispatch])
 
+  const previousSortMode = useRef(sortMode)
+  useEffect(() => {
+    if (previousSortMode.current === sortMode) return
+    previousSortMode.current = sortMode
+    lastScrollRow.current = 0
+    list.current?.scrollToRow({ index: 0, align: 'start', behavior: 'instant' })
+  }, [sortMode])
+
   const rowHeight = (index: number) => {
-    const artistId = artists.result[index]
+    const artistId = artistIds[index]
     let height = ROW_HEIGHT_ARTIST
 
     if (expandedArtists.includes(artistId)) {
@@ -111,28 +123,30 @@ const ArtistList = ({
     }
   }
 
-  if (artists.result.length === 0) return null
+  if (artistIds.length === 0) return null
 
   return (
     <div>
       <PaddedList
         rowComponent={RowComponent}
-        rowProps={{ dispatch, artists, expandedArtists, queuedSongs, starredSongs }}
+        rowProps={{ dispatch, artists, artistIds, expandedArtists, queuedSongs, starredSongs }}
         rowHeight={rowHeight}
-        numRows={artists.result.length}
+        numRows={artistIds.length}
         onRowsRendered={handleRowsRendered}
         onRef={handleRef}
         paddingTop={ui.headerHeight}
-        paddingRight={30} // width of AlphaPicker
+        paddingRight={sortMode === 'alphabetical' ? 30 : 4}
         paddingBottom={ui.footerHeight}
         width={ui.innerWidth}
         height={ui.innerHeight}
       />
-      <AlphaPicker
-        onPick={handleAlphaPick}
-        height={ui.innerHeight - ui.headerHeight - ui.footerHeight}
-        top={ui.headerHeight}
-      />
+      {sortMode === 'alphabetical' && (
+        <AlphaPicker
+          onPick={handleAlphaPick}
+          height={ui.innerHeight - ui.headerHeight - ui.footerHeight}
+          top={ui.headerHeight}
+        />
+      )}
     </div>
   )
 }

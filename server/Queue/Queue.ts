@@ -30,14 +30,26 @@ class Queue {
       )
     )`)
 
-    const query = sql`
-      INSERT INTO queue ${sql.tuple(Array.from(fields.keys()).map(sql.column))}
-      VALUES ${sql.tuple(Array.from(fields.values()))}
-    `
-    const res = db.run(String(query), query.parameters)
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const query = sql`
+        INSERT INTO queue ${sql.tuple(Array.from(fields.keys()).map(sql.column))}
+        VALUES ${sql.tuple(Array.from(fields.values()))}
+      `
+      const res = db.run(String(query), query.parameters)
 
-    if (res.changes !== 1) {
-      throw new Error('Could not add song to queue')
+      if (res.changes !== 1) throw new Error('Could not add song to queue')
+
+      const countUpdate = db.run(
+        'UPDATE songs SET requestCount = requestCount + 1 WHERE songId = ?',
+        [songId],
+      )
+      if (countUpdate.changes !== 1) throw new Error('Could not record song request')
+
+      db.exec('COMMIT')
+    } catch (err) {
+      db.exec('ROLLBACK')
+      throw err
     }
   }
 

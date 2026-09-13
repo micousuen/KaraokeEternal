@@ -101,6 +101,14 @@ class Media {
         [artistId, titleNorm, songId],
       )
       if (targetSong) {
+        db.run(`
+          UPDATE songs
+          SET requestCount = requestCount + COALESCE(
+            (SELECT requestCount FROM songs WHERE songId = ?),
+            0
+          )
+          WHERE songId = ?
+        `, [songId, targetSong.songId])
         db.run('UPDATE media SET songId = ? WHERE songId = ?', [targetSong.songId, songId])
         db.run('UPDATE queue SET songId = ? WHERE songId = ?', [targetSong.songId, songId])
         db.run(`

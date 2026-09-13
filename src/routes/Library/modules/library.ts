@@ -3,6 +3,7 @@ import {
   LIBRARY_FILTER_STRING,
   LIBRARY_FILTER_STRING_RESET,
   LIBRARY_FILTER_TOGGLE_STARRED,
+  LIBRARY_SORT_TOGGLE,
   LIBRARY_PUSH,
   LIBRARY_SCAN_BATCH,
   TOGGLE_ARTIST_EXPANDED,
@@ -21,6 +22,7 @@ const libraryScanBatch = createAction(LIBRARY_SCAN_BATCH)
 
 export const resetFilterStr = createAction(LIBRARY_FILTER_STRING_RESET)
 export const toggleFilterStarred = createAction<void>(LIBRARY_FILTER_TOGGLE_STARRED)
+export const toggleLibrarySort = createAction<void>(LIBRARY_SORT_TOGGLE)
 export const setFilterStr = createAction(LIBRARY_FILTER_STRING, (payload: string) => ({
   payload,
   meta: {
@@ -34,11 +36,14 @@ export const setFilterStr = createAction(LIBRARY_FILTER_STRING, (payload: string
 // ------------------------------------
 // Reducer
 // ------------------------------------
+export type LibrarySortMode = 'alphabetical' | 'requested'
+
 interface LibraryState {
   isLoading: boolean
   version: number
   filterStr: string
   filterStarred: boolean
+  sortMode: LibrarySortMode
   scrollRow: number
   expandedArtists: number[]
   expandedArtistResults: number[]
@@ -49,6 +54,7 @@ const initialState: LibraryState = {
   version: 0,
   filterStr: '',
   filterStarred: false,
+  sortMode: 'alphabetical',
   scrollRow: 0,
   expandedArtists: [],
   expandedArtistResults: [],
@@ -64,6 +70,10 @@ const libraryReducer = createReducer(initialState, (builder) => {
     })
     .addCase(toggleFilterStarred, (state) => {
       state.filterStarred = !state.filterStarred
+    })
+    .addCase(toggleLibrarySort, (state) => {
+      state.sortMode = state.sortMode === 'alphabetical' ? 'requested' : 'alphabetical'
+      state.scrollRow = 0
     })
     .addCase(scrollArtists, (state, { payload }) => {
       state.scrollRow = payload

@@ -1,6 +1,7 @@
 import type { DatabaseWrapper } from '../lib/Database.js'
 import type { Artist, Song } from '../../shared/types.js'
 import { loadVocalSeparationConfig } from '../Media/VocalSeparationConfig.js'
+import { compareLibrarySortMetadata, getLibrarySortMetadata } from './LibrarySort.js'
 
 // Keep this worker-safe: importing MediaQueueReadiness here would eagerly load
 // Database and its logger before librarySnapshotWorker initializes either one.
@@ -16,14 +17,14 @@ export function buildLibrarySnapshot (database: DatabaseWrapper, version: number
   const songIdsByArtist: Record<number, number[]> = {}
   const artists: LibrarySnapshot['artists'] = { result: [], entities: {} }
   const songs: LibrarySnapshot['songs'] = { result: [], entities: {} }
-  const songRows = database.all<Omit<Song, 'isManagedDownload' | 'hasSingleAudioTrack' | 'isProcessing'> & {
+  const songRows = database.all<Omit<Song, 'sortKey' | 'sortLetter' | 'isManagedDownload' | 'hasSingleAudioTrack' | 'isProcessing'> & {
     isPreferred: number
     isManagedDownload: number
     hasSingleAudioTrack: number
     isQueueReady: number
   }>(`
     SELECT media.duration AS duration, songs.artistId AS artistId, songs.songId AS songId, songs.title AS title,
-      songs.language AS language,
+      songs.language AS language, songs.requestCount AS requestCount,
       MAX(isPreferred) AS isPreferred, COUNT(DISTINCT media.mediaId) AS numMedia,
       MAX(media.isManagedDownload OR COALESCE(json_extract(paths.data, '$.isManagedDownloadPath'), 0)) AS isManagedDownload,
       MAX(COALESCE(audioTrackAnalysis.audioTrackCount, 0)) = 1 AS hasSingleAudioTrack,
@@ -47,6 +48,7 @@ export function buildLibrarySnapshot (database: DatabaseWrapper, version: number
     delete song.isQueueReady
     songs.entities[row.songId] = {
       ...song,
+      ...getLibrarySortMetadata(row.title),
       isManagedDownload: !!row.isManagedDownload,
       hasSingleAudioTrack: !!row.hasSingleAudioTrack,
       isProcessing: !!row.isManagedDownload && !row.isQueueReady,
@@ -55,12 +57,26 @@ export function buildLibrarySnapshot (database: DatabaseWrapper, version: number
     ;(songIdsByArtist[row.artistId] ||= []).push(row.songId)
   }
 
-  const artistRows = database.all<Artist>('SELECT artistId, name FROM artists ORDER BY nameNorm ASC')
+  const artistRows = database.all<Pick<Artist, 'artistId' | 'name'>>('SELECT artistId, name FROM artists')
   for (const row of artistRows) {
     const songIds = songIdsByArtist[row.artistId]
     if (!songIds) continue
     artists.result.push(row.artistId)
-    artists.entities[row.artistId] = { ...row, songIds }
+    artists.entities[row.artistId] = {
+      ...row,
+      ...getLibrarySortMetadata(row.name),
+      requestCount: songIds.reduce((total, songId) => total + songs.entities[songId].requestCount, 0),
+      songIds,
+    }
+  }
+
+  songs.result.sort((leftId, rightId) =>
+    compareLibrarySortMetadata(songs.entities[leftId], songs.entities[rightId]) || leftId - rightId)
+  artists.result.sort((leftId, rightId) =>
+    compareLibrarySortMetadata(artists.entities[leftId], artists.entities[rightId]) || leftId - rightId)
+  for (const artist of Object.values(artists.entities)) {
+    artist.songIds.sort((leftId, rightId) =>
+      compareLibrarySortMetadata(songs.entities[leftId], songs.entities[rightId]) || leftId - rightId)
   }
 
   return { artists, songs, version }

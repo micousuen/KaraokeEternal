@@ -55,6 +55,10 @@ describe('YouTube media queue readiness', () => {
     expect(getSongQueueReadiness(1)).toBe('ready')
     expect(buildLibrarySnapshot(db, 3).songs.entities[1].isProcessing).toBe(false)
     expect(() => Queue.add({ roomId: 1, songId: 1, userId: 1 })).not.toThrow()
+    expect(db.get('SELECT requestCount FROM songs WHERE songId = 1')).toEqual({ requestCount: 1 })
+    const requestedSnapshot = buildLibrarySnapshot(db, 4)
+    expect(requestedSnapshot.songs.entities[1].requestCount).toBe(1)
+    expect(requestedSnapshot.artists.entities[1].requestCount).toBe(1)
   })
 
   it('allows a song when it also has a normal ready library file', () => {

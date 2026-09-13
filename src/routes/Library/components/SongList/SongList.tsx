@@ -6,6 +6,7 @@ import { showSongInfo } from 'store/modules/songInfo'
 import { toggleSongStarred } from 'store/modules/userStars'
 import getSongsStatus from '../../selectors/getSongsStatus'
 import getStarredSongSet from '../../selectors/getStarredSongSet'
+import { sortSongIds } from '../../lib/sortLibrary'
 
 interface SongListProps {
   filterKeywords?: string[]
@@ -19,6 +20,7 @@ const SongList = (props: SongListProps) => {
   const songs = useAppSelector(state => state.songs.entities)
   const starredSongs = useAppSelector(getStarredSongSet)
   const starredSongCounts = useAppSelector(state => state.starCounts.songs)
+  const sortMode = useAppSelector(state => state.library.sortMode)
   const isAdmin = useAppSelector(state => state.user.isAdmin)
   const { played, queued } = useAppSelector(getSongsStatus)
 
@@ -26,7 +28,9 @@ const SongList = (props: SongListProps) => {
   const handleSongInfo = (songId: number) => dispatch(showSongInfo(songId))
   const handleSongStar = (songId: number) => dispatch(toggleSongStarred(songId))
 
-  return props.songIds.flatMap((songId) => {
+  const orderedSongIds = sortSongIds(props.songIds, songs, sortMode)
+
+  return orderedSongIds.flatMap((songId) => {
     const song = songs[songId]
     if (!song) return []
     const artistName = artists[song.artistId]?.name || 'Unknown artist'
