@@ -1,4 +1,5 @@
 import fs from 'fs'
+import fsPromises from 'node:fs/promises'
 import path from 'path'
 import getLogger from '../lib/Log.js'
 import { getExt } from '../lib/util.js'
@@ -118,6 +119,37 @@ router.get('/:mediaId', async (ctx) => {
   ctx.length = resolved.length!
   log.verbose('streaming %s (%sMB): %s', ctx.type, (ctx.length / 1000000).toFixed(2), resolved.file)
   streamMedia(ctx, resolved.file!, resolved.length!)
+})
+
+// replace a media file's SRT script
+router.put('/:mediaId/script', async (ctx) => {
+  if (!ctx.user.isAdmin) ctx.throw(401)
+
+  const mediaId = parseInt(ctx.params.mediaId, 10)
+  if (Number.isNaN(mediaId)) ctx.throw(422, 'Invalid mediaId')
+
+  const body = (ctx.request.body || {}) as { script?: unknown }
+  const script = body.script
+  if (typeof script !== 'string' || !script.trim() || script.length > 1_000_000) {
+    ctx.throw(422, 'Invalid script')
+    return
+  }
+  if (!script.includes('-->')) {
+    ctx.throw(422, 'The script is not valid SRT')
+    return
+  }
+
+  const res = Media.search({ mediaId })
+  if (!res.result.length) ctx.throw(404, 'mediaId not found')
+  const { pathId, relPath } = res.entities[mediaId]
+  const basePath = Prefs.get().paths.entities[pathId].path
+  const file = path.join(basePath, relPath)
+  const scriptPath = path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.srt`)
+
+  await fsPromises.writeFile(`${scriptPath}.partial`, script, 'utf8')
+  await fsPromises.rename(`${scriptPath}.partial`, scriptPath)
+  log.info('%s updated the script for mediaId=%s', ctx.user.name, mediaId)
+  ctx.status = 204
 })
 
 // set isPreferred flag

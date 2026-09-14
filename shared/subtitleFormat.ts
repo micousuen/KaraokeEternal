@@ -178,6 +178,44 @@ export function formatSrtTimestamp (seconds: number): string {
     + `,${String(milliseconds).padStart(3, '0')}`
 }
 
+export interface KaraokeWord {
+  end: number
+  start: number
+  text: string
+}
+
+/** Convert edited words into generator transcript input, in time order. */
+export function wordsToTranscript (words: KaraokeWord[]): TranscriptWord[] {
+  return words
+    .filter(word => word.text.trim() && Number.isFinite(word.start) && Number.isFinite(word.end)
+      && word.end > word.start)
+    .sort((a, b) => a.start - b.start)
+    .map(word => ({ end: word.end, start: word.start, text: word.text.trim(), type: 'word' }))
+}
+
+/**
+ * Extract the timed word list encoded in generated karaoke SRT cues. Cues
+ * without the A/C/P word metadata (legacy scripts) are skipped.
+ */
+export function parseKaraokeWords (source: string): KaraokeWord[] {
+  return source.trim().split(/\r?\n\s*\r?\n/).flatMap((block) => {
+    const lines = block.split(/\r?\n/)
+    const timingIndex = lines.findIndex(line => line.includes('-->'))
+    if (timingIndex === -1) return []
+    const [, rest] = lines[timingIndex].split('-->')
+    const activeMatch = rest.match(/\bA(\d+)\b/)
+    const characterMatch = rest.match(/\bC(\d+)-(\d+)\b/)
+    const progressMatch = rest.match(/\bP(\d+)-(\d+)\b/)
+    if (!activeMatch || !characterMatch || !progressMatch) return []
+    const activeLine = lines[timingIndex + 1 + Number(activeMatch[1])]
+    if (activeLine === undefined) return []
+    const text = activeLine.slice(Number(characterMatch[1]), Number(characterMatch[2])).trim()
+    const start = Number(progressMatch[1]) / 1000
+    const end = Number(progressMatch[2]) / 1000
+    return text && end > start ? [{ text, start, end }] : []
+  })
+}
+
 function timedWords (words: TranscriptWord[]): TimedWord[] {
   return words.flatMap((word) => {
     const text = word.text.trim()

@@ -1,7 +1,7 @@
 import fsPromises from 'node:fs/promises'
 import path from 'node:path'
 import type { ScriptTimings } from './VocalSeparationHistory.js'
-import { createRollingSrt, type TranscriptWord } from './SubtitleFormat.js'
+import { createRollingSrt, type TranscriptWord } from '../../shared/subtitleFormat.js'
 
 const endpoint = 'https://api.elevenlabs.io/v1/speech-to-text'
 const defaultTimeoutMs = 10 * 60_000

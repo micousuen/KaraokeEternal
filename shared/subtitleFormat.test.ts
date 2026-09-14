@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { createRollingSrt, lyricLines, rollingCues, type TranscriptWord } from './SubtitleFormat.js'
+import {
+  createRollingSrt,
+  lyricLines,
+  parseKaraokeWords,
+  rollingCues,
+  wordsToTranscript,
+  type TranscriptWord,
+} from './subtitleFormat.js'
 
 const words = (values: Array<[string, number, number]>): TranscriptWord[] => values.map(([text, start, end]) => ({
   end,
@@ -66,4 +73,45 @@ it('writes the custom active-row marker into valid SRT timing lines', () => {
   expect(createRollingSrt(words([['Hello.', 1.2345, 2.5]]), 'en', 36, 12)).toBe(
     '1\n00:00:01,235 --> 00:00:02,500 A0 C0-6 P1235-2500\nHello.\n',
   )
+})
+
+describe('karaoke word round-trip', () => {
+  it('recovers the timed word list from generated SRT cues', () => {
+    const transcript = words([
+      ['Sing', 0, 0.4], ['with', 0.5, 0.9], ['me', 1, 1.4],
+      ['Another', 2, 2.5], ['line.', 2.6, 3],
+    ])
+    const srt = createRollingSrt(transcript, 'en', 36, 12)
+    expect(parseKaraokeWords(srt)).toEqual([
+      { text: 'Sing', start: 0, end: 0.4 },
+      { text: 'with', start: 0.5, end: 0.9 },
+      { text: 'me', start: 1, end: 1.4 },
+      { text: 'Another', start: 2, end: 2.5 },
+      { text: 'line.', start: 2.6, end: 3 },
+    ])
+  })
+
+  it('skips legacy cues without word metadata', () => {
+    expect(parseKaraokeWords('1\n00:00:01,000 --> 00:00:02,000\nHello\n')).toEqual([])
+  })
+
+  it('filters and orders edited words back into transcript input', () => {
+    expect(wordsToTranscript([
+      { text: ' late', start: 2, end: 3 },
+      { text: '', start: 0, end: 1 },
+      { text: 'first', start: 0, end: 1 },
+      { text: 'bad', start: 5, end: 5 },
+    ])).toEqual([
+      { text: 'first', start: 0, end: 1, type: 'word' },
+      { text: 'late', start: 2, end: 3, type: 'word' },
+    ])
+  })
+
+  it('regenerates an equivalent script from recovered words', () => {
+    const transcript = words([
+      ['One', 0, 0.5], ['two.', 0.6, 1], ['Three', 1.2, 1.6], ['four.', 1.7, 2.2],
+    ])
+    const srt = createRollingSrt(transcript, 'en', 36, 12)
+    expect(createRollingSrt(wordsToTranscript(parseKaraokeWords(srt)), 'en', 36, 12)).toBe(srt)
+  })
 })

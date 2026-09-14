@@ -15,6 +15,7 @@ import RenameSongModal from './RenameSongModal'
 import RegenerateSongModal, { type RegenerateOutput } from './RegenerateSongModal'
 import AiRenameSongModal from './AiRenameSongModal'
 import DeleteSongModal from './DeleteSongModal'
+import ScriptEditorModal from './ScriptEditor/ScriptEditorModal'
 
 interface SongItemProps {
   songId: number
@@ -61,6 +62,7 @@ const SongItem = ({
   const [isRenameOpen, setRenameOpen] = useState(false)
   const [isAiRenameOpen, setAiRenameOpen] = useState(false)
   const [isDeleteOpen, setDeleteOpen] = useState(false)
+  const [isScriptEditorOpen, setScriptEditorOpen] = useState(false)
   const [regenerateOutput, setRegenerateOutput] = useState<RegenerateOutput | null>(null)
   const [actionMenu, setActionMenu] = useState<{ x: number, y: number } | null>(null)
   const actionMenuRef = useRef<HTMLDivElement>(null)
@@ -93,7 +95,7 @@ const SongItem = ({
   const closeActionMenu = () => setActionMenu(null)
   const openActionMenu = (x: number, y: number) => {
     const menuWidth = 240
-    const menuHeight = isManagedDownload ? 220 : 132
+    const menuHeight = isManagedDownload ? 264 : 176
     setActionMenu({
       x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
       y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
@@ -139,6 +141,11 @@ const SongItem = ({
   const handleDelete = () => {
     closeActionMenu()
     setDeleteOpen(true)
+  }
+
+  const handleEditScript = () => {
+    closeActionMenu()
+    setScriptEditorOpen(true)
   }
 
   const handleRegenerate = (output: RegenerateOutput) => {
@@ -235,6 +242,7 @@ const SongItem = ({
           <button type='button' role='menuitem' onClick={() => handleRegenerate('script')}>
             Regenerate script
           </button>
+          <button type='button' role='menuitem' onClick={handleEditScript}>Edit script</button>
           {isManagedDownload && (
             <button type='button' role='menuitem' onClick={handleDelete}>Delete</button>
           )}
@@ -261,6 +269,14 @@ const SongItem = ({
           title={title}
           artist={author}
           onClose={() => setDeleteOpen(false)}
+        />
+      )}
+      {isScriptEditorOpen && (
+        <ScriptEditorModal
+          songId={songId}
+          title={title}
+          artist={author}
+          onClose={() => setScriptEditorOpen(false)}
         />
       )}
       {regenerateOutput && (
